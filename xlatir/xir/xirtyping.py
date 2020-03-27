@@ -99,7 +99,11 @@ class PolyTyDef(object):
         if self.uqvars and subst is None:
             raise ValueError("subst is None: Can't have an empty substitution for polymorphic typedef")
 
-        return self.typedef.copy(subst)
+        # first make a copy
+        cp = self.typedef.copy(subst)
+
+        #TODO: we should get rid of the duplicates
+        return cp
 
 def test_PolyTyDef():
     add_tydef = PolyTyDef(["gamma"],

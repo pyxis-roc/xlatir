@@ -17,6 +17,20 @@ from collections import namedtuple
 import astunparse
 from xirtyping import *
 
+Def_GenericCompare = PolyTyDef(["gamma"], TyApp(TyConstant('bool'),
+                                                [TyVar("gamma"), TyVar("gamma")]))
+
+Def_GenericBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
+                                              [TyVar("gamma"), TyVar("gamma")]))
+
+Def_GenericUnaryOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"), [TyVar("gamma")]))
+
+Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
+                                          [TyConstant('bool'),
+                                           TyVar("if_gamma"),
+                                           TyVar("if_gamma")]))
+
+
 class TypeEqnGenerator(ast.NodeVisitor):
     def __init__(self):
         self.type_variables = {}
@@ -57,19 +71,25 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         return self.generic_visit(node)
 
-    def _generate_poly_call_eqns(self, fn, args):
+    def _generate_poly_call_eqns(self, fn, args, typedef):
         ret = self.get_or_gen_ty_var(f"ret{self.ret}")
         fnt = self.get_or_gen_ty_var(f"{fn}{self.ret}") # this is polymorphic ops
-        gmt = self.get_or_gen_ty_var(f"gamma{self.ret}") # this are polymorphic ops
+
+        subst = {}
+        for uqv in typedef.uqvars:
+            uqt = self.get_or_gen_ty_var(f"{uqv}{self.ret}")
+            subst[uqv] = uqt.name
+
         self.ret += 1
 
         arg_types = [self.visit(a) for a in args]
-
         app = TyApp(ret, arg_types)
-        self.equations.append(TyEqn(fnt, app))
-        self.equations.append(TyEqn(app, TyApp(gmt, [gmt] * len(args))))
+        defty = typedef.get(subst)
 
-        return ret, fnt, gmt, app
+        self.equations.append(TyEqn(fnt, app))
+        self.equations.append(TyEqn(app, defty))
+
+        return ret, fnt, defty, app
 
     def visit_Compare(self, node):
         # not supported
@@ -83,17 +103,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
         else:
             raise NotImplementedError(f"Unknown compare operator: {node.ops[0]}")
 
-        ret = self.get_or_gen_ty_var(f"ret{self.ret}")
-        fnt = self.get_or_gen_ty_var(f"{fn}{self.ret}") # this is polymorphic ops
-        gmt = self.get_or_gen_ty_var(f"gamma{self.ret}") # this are polymorphic ops
-        self.ret += 1
-
-        arg_types = [self.visit(a) for a in [node.left, node.comparators[0]]]
-
-        app = TyApp(ret, arg_types)
-        self.equations.append(TyEqn(fnt, app))
-        #TODO: this requires a typedef
-        self.equations.append(TyEqn(app, TyApp(TyConstant('bool'), [gmt, gmt])))
+        args = [node.left, node.comparators[0]]
+        ret, fnt, defty, app = self._generate_poly_call_eqns(fn, args,
+                                                             Def_GenericCompare)
 
         node._xir_type = fnt
 
@@ -115,7 +127,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
         else:
             raise NotImplementedError(f"Unknown binary operator: {node.op}")
 
-        ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.left, node.right])
+        ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.left, node.right],
+                                                       Def_GenericBinOp)
         node._xir_type = fnt
 
         return ret
@@ -132,10 +145,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         else:
             raise NotImplementedError(f"Unknown operator: {node.op}")
 
-        ret, fnt, _, app = self._generate_poly_call_eqns(fn, [node.operand])
-
-        # not needed?
-        #self.equations.append(TyEqn(ret, app.args[0])) # unary operators have the same type as their arguments
+        ret, fnt, _, app = self._generate_poly_call_eqns(fn, [node.operand], Def_GenericUnaryOp)
         node._xir_type = fnt
 
         return ret
@@ -180,7 +190,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 return tv
             elif fn in ('add', 'sub', 'mul', 'div', 'pow'):
                 #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
-                ret, fnt, gmt, _ = self._generate_poly_call_eqns(fn, node.args[:2])
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               Def_GenericBinOp)
                 node._xir_type = fnt
 
                 return ret
@@ -195,21 +206,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return fnt
 
     def visit_IfExp(self, node):
-        tt = self.visit(node.test)
-        tcbool = TyConstant('bool')
-        self.equations.append(TyEqn(tt, tcbool))
-
-        bt = self.visit(node.body)
-        ort = self.visit(node.orelse)
-
-        ret = self.get_or_gen_ty_var(f"if_{self.ret}")
-        gt = self.get_or_gen_ty_var(f"if_gamma_{self.ret}")
-        self.ret += 1
-
-        #TODO: use type definitions
-        self.equations.append(TyEqn(TyApp(ret, [tcbool, bt, ort]),
-                                    TyApp(gt, [tcbool, gt, gt])))
-
+        ret, fnt, depty, _ = self._generate_poly_call_eqns("if_exp",
+                                                           [node.test, node.body, node.orelse],
+                                                           Def_IfExp)
         return ret
 
     def visit_Name(self, node):
@@ -225,28 +224,33 @@ class TypeEqnGenerator(ast.NodeVisitor):
         # no return because this is a statement
 
 
-def find(n):
-    if not hasattr(n, '_rep') and isinstance(n, (TyConstant, TyApp)):
-        n._rep = n
+def find(n, reps):
+    key = str(n)
 
-    if n._rep is not n:
-        r = find(n._rep)
-        n._rep = r # short
+    if key not in reps:
+        reps[key] = n
 
-    return n._rep
+    if reps[key] is not n:
+        r = find(reps[key], reps)
+        reps[key] = r
 
-def union(s, t):
+    return reps[key]
+
+def union(s, t, reps):
     if isinstance(s, TyConstant):
-        t._rep = s._rep
+        reps[str(t)] = reps[str(s)]
     elif isinstance(t, TyConstant):
-        s._rep = t._rep
+        reps[str(s)] = reps[str(t)]
     else:
-        s._rep = t._rep
+        reps[str(s)] = reps[str(t)]
 
 # dragon book, figure 6.32
-def unify(m, n):
-    s = find(m)
-    t = find(n)
+def unify(m, n, reps = None):
+    if reps is None:
+        reps = {}
+
+    s = find(m, reps)
+    t = find(n, reps)
 
     #print(f"{m} {s}")
     #print(f"{n} {t}")
@@ -257,12 +261,12 @@ def unify(m, n):
 
     if isinstance(s, TyApp) and isinstance(t, TyApp):
         if len(s.args) == len(t.args):
-            union(s, t)
-            if not unify(s.ret, t.ret):
+            union(s, t, reps)
+            if not unify(s.ret, t.ret, reps):
                 return False
 
             for a, b in zip(s.args, t.args):
-                if not unify(a, b):
+                if not unify(a, b, reps):
                     print(f"Failed to unify {a} and {b}")
                     return False
 
@@ -271,7 +275,7 @@ def unify(m, n):
             return False
 
     if isinstance(s, TyVar) or isinstance(t, TyVar):
-        union(s, t)
+        union(s, t, reps)
         return True
 
     print("FAIL", s, t)
@@ -283,22 +287,20 @@ def infer_types(insn_sem):
     print(ast.dump(insn_sem))
     eqg = TypeEqnGenerator()
     eqg.visit(insn_sem)
-    print(eqg.type_variables)
+    reps = {}
+    #print(eqg.type_variables)
     #print(eqg.equations)
-
-    tyvar = eqg.type_variables
-    for v in tyvar:
-        tyvar[v]._rep = tyvar[v]
 
     for eq in eqg.equations:
         print(eq)
 
     for eq in eqg.equations:
-        if not unify(eq.lhs, eq.rhs):
+        if not unify(eq.lhs, eq.rhs, reps):
             assert False, f"Failing to unify: {eq}"
 
-    for v in tyvar:
-        print(v, tyvar[v], find(tyvar[v]))
+    print("****")
+    for v in reps:
+        print(v, reps[v], find(reps[v], reps))
 
     pass
 
