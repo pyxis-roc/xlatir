@@ -36,6 +36,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.type_variables = {}
         self.equations = []
         self.ret = 0
+        self.fn = None
 
     def generate_type_variable(self, name, literal=None):
         assert name not in self.type_variables
@@ -63,13 +64,25 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node):
         for a in node.args.args:
-            self.get_or_gen_ty_var(a.arg)
+            t = self.get_or_gen_ty_var(a.arg)
+            a._xir_type = t
+
+        ret = self.get_or_gen_ty_var(f"fn_{node.name}_retval")
+        fnty = TyApp(ret, [a._xir_type for a in node.args.args])
+        node._xir_type = fnty
 
         # not supported
         assert node.args.vararg is None
         assert node.args.kwarg is None
 
-        return self.generic_visit(node)
+        self.fn = node
+        x = self.generic_visit(node)
+        self.fn = None
+        return x
+
+    def visit_Return(self, node):
+        tyv = self.visit(node.value)
+        self.equations.append(TyEqn(tyv, self.fn._xir_type.ret))
 
     def _generate_poly_call_eqns(self, fn, args, typedef):
         ret = self.get_or_gen_ty_var(f"ret{self.ret}")
@@ -212,7 +225,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return ret
 
     def visit_Name(self, node):
-        return self.get_or_gen_ty_var(node.id)
+        v = self.get_or_gen_ty_var(node.id)
+        node._xir_type = v
+        return v
 
     def visit_Assign(self, node):
         assert len(node.targets) == 1, "Multiple targets in assign not supported"
@@ -302,8 +317,7 @@ def infer_types(insn_sem):
     for v in reps:
         print(v, reps[v], find(reps[v], reps))
 
-    pass
-
+    return reps
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Run various bits of xir on a semantic")
