@@ -62,6 +62,24 @@ class TyConstant(TyTerm):
     def copy(self, subst = None):
         return TyConstant(self.value)
 
+class TyPtr(TyTerm):
+    def __init__(self, pointee_type):
+        self.pty = pointee_type
+
+    def __eq__(self, other):
+        #name is the value of the literal...
+        return (self is other) or (isinstance(other, TyPtr) and other.pty == self.pty)
+
+    def __str__(self):
+        return f"TyPtr({self.pty})"
+
+    __repr__ = __str__
+
+    def copy(self, subst = None):
+        pty_copy = self.pty.copy(subst)
+
+        return TyPtr(pty_copy)
+
 class TyApp(TyTerm):
     def __init__(self, ret, args):
         self.ret = ret

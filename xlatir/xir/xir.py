@@ -81,7 +81,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return x
 
     def visit_Return(self, node):
-        tyv = self.visit(node.value)
+        if node.value:
+            tyv = self.visit(node.value)
+        else:
+            tyv = TyConstant('void')
+
         self.equations.append(TyEqn(tyv, self.fn._xir_type.ret))
 
     def _generate_poly_call_eqns(self, fn, args, typedef):
@@ -210,6 +214,17 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 return ret
             elif fn in ('set_round', 'FTZ', 'saturate', 'ABSOLUTE', 'isnan'):
                 # note: saturate also carries a type, but not a width ...
+                argty = self.visit(node.args[0])
+                #TODO: add equations?
+                node._xir_type = TyApp(argty, [argty])
+                return argty
+            elif fn == 'set_memory':
+                sm_var = self.get_or_gen_ty_var(fn)
+                addrty = self.visit(node.args[0])
+                sm_ty = TyApp(TyConstant('void'), [TyConstant('intptr_t'), self.visit(node.args[1])])
+                self.equations.append(TyEqn(sm_var, sm_ty))
+                self.equations.append(TyEqn(addrty, TyConstant('intptr_t')))
+            elif fn == 'int':
                 return self.visit(node.args[0])
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn{self.ret}')
