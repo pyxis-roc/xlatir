@@ -30,7 +30,7 @@ XIR_TO_C_OPS = {('add', '*', '*'): '+',
                 ('mul', '*', '*'): '*',
                 ('div', '*', '*'): '/',
                 ('pow', 'float', 'float'): 'powf',
-                ('pow', 'double', 'double'): 'double',
+                ('pow', 'double', 'double'): 'pow',
                 ('ABSOLUTE', 'int32_t'): 'abs',
                 ('ABSOLUTE', 'int64_t'): 'labs', # depends on 64-bit model
                 ('ABSOLUTE', 'int16_t'): 'abs',
@@ -194,7 +194,7 @@ class XIRToC(ast.NodeVisitor):
         elif n == 'pow':
             opkey = self._get_op_type(n, node._xir_type)
             assert opkey in XIR_TO_C_OPS, f"Missing {opkey}"
-            return f"pow({self.visit(node.args[0])}, {self.visit(node.args[1])})"
+            return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])}, {self.visit(node.args[1])})"
         elif n == 'set_memory':
             return f"set_memory({self.visit(node.args[0])}, {self.visit(node.args[1])})"
         elif n == 'int':
