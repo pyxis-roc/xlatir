@@ -205,7 +205,16 @@ class XIRToC(ast.NodeVisitor):
             #TODO: C is undefined for max neg int
             opkey = self._get_op_type(n, node._xir_type)
             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])})"
-
+        elif n == 'set_round':
+            #TODO: use fesetenv before the operation!
+            return self.visit(node.args[0])
+        elif n == 'FTZ':
+            #TODO: implement force to zero
+            return self.visit(node.args[0])
+        elif n == 'saturate':
+            #TODO: actually implement saturate
+            return self.visit(node.args[0])
+        
         args = [str(self.visit(a)) for a in node.args]
         return f"{n}({', '.join(args)})"
 
