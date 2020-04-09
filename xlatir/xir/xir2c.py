@@ -5,6 +5,7 @@ import xir
 import ast
 import extract_ex_semantics
 from xirtyping import *
+import os
 
 XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'b16': 'uint16_t',
@@ -252,6 +253,8 @@ class XIRToC(ast.NodeVisitor):
 
         func = node.name
 
+        self.defns.append(f"{retval} {func} ({', '.join(args)});")
+
         #TODO: return a C AST?
         output = f"""\
 {retval} {func} ({', '.join(args)}) {{
@@ -264,6 +267,7 @@ class XIRToC(ast.NodeVisitor):
 
     def translate(self, sem, types):
         self.types = types
+        self.defns = []
         return self.visit(sem)
 
 if __name__ == "__main__":
@@ -287,19 +291,31 @@ if __name__ == "__main__":
 
     translator = XIRToC()
     out = []
-
+    out_defns = []
     for pi in args.ptxinsn:
         sem = semantics["execute_" + pi]
         ast.dump(sem)
         ty = xir.infer_types(sem)
         out.append(translator.translate(sem, ty))
+        out_defns.extend(translator.defns)
 
     if args.output:
+        header = os.path.basename(args.output)[:-2] + ".h"
+        print(f"Writing {args.output}")
         with open(args.output, "w") as f:
+            f.write("#include <stdlib.h>\n")
+            f.write("#include <stdint.h>\n")
+            f.write("#include <math.h>\n")
+            f.write(f'#include "{header}"\n')
+            f.write("\n\n".join(out))
+
+        print(f"Writing {header}")
+        with open(os.path.join(os.path.dirname(args.output), header), "w") as f:
             f.write("#include <stdlib.h>\n\n")
             f.write("#include <stdint.h>\n\n")
             f.write("#include <math.h>\n\n")
             f.write("struct cc_register { int cf;};\n")
-            f.write("\n\n".join(out))
+            f.write('\n')
+            f.write("\n".join(out_defns))
     else:
         print("\n\n".join(out))
