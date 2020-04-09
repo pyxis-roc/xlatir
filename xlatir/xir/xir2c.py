@@ -214,7 +214,7 @@ class XIRToC(ast.NodeVisitor):
         elif n == 'saturate':
             #TODO: actually implement saturate
             return self.visit(node.args[0])
-        
+
         args = [str(self.visit(a)) for a in node.args]
         return f"{n}({', '.join(args)})"
 
