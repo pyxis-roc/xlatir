@@ -26,12 +26,20 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'void': 'void'
                   }
 
-XIR_TO_C_OPS = {('add', '*', '*'): '+',
-                ('sub', '*', '*'): '-',
-                ('mul', '*', '*'): '*',
-                ('div', '*', '*'): '/',
-                ('pow', 'float', 'float'): 'powf',
-                ('pow', 'double', 'double'): 'pow',
+XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
+                ('SUB', '*', '*'): '-',
+                ('MUL', '*', '*'): '*',
+                ('DIV', '*', '*'): '/',
+                ('REM', '*', '*'): '%',
+
+                ('GT', '*', '*'): '>',
+                ('LT', '*', '*'): '<',
+
+                ('AND', '*', '*'): '&',
+
+                ('POW', 'float', 'float'): 'powf',
+                ('POW', 'double', 'double'): 'pow',
+
                 ('ABSOLUTE', 'int32_t'): 'abs',
                 ('ABSOLUTE', 'int64_t'): 'labs', # depends on 64-bit model
                 ('ABSOLUTE', 'int16_t'): 'abs',
@@ -183,19 +191,28 @@ class XIRToC(ast.NodeVisitor):
         n = self.visit(node.func)
         if n == 'set_sign_bitWidth':
             return self.visit(node.args[0])
-        elif n in ('add', 'sub', 'mul', 'div'):
+        elif (n in xir.ARITH_FNS or n in xir.BITWISE_FNS) and n not in ('POW',): #binary only
             # right now, since operators are not differentiated by type in C, this is okay
             # but we may need it for half, etc.
+            op, t1, t2 = self._get_op_type(n, node._xir_type)
+            assert (n, '*', '*') in XIR_TO_C_OPS, (n, '*', '*')
+
+            opkey = (n, '*', '*')
+            # returnin ASTs would make this so much nicer ...
+            return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
+        elif n in xir.COMPARE_FNS:
             op, t1, t2 = self._get_op_type(n, node._xir_type)
             assert (n, '*', '*') in XIR_TO_C_OPS
 
             opkey = (n, '*', '*')
             # returnin ASTs would make this so much nicer ...
             return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
-        elif n == 'pow':
+        elif n == 'POW':
             opkey = self._get_op_type(n, node._xir_type)
             assert opkey in XIR_TO_C_OPS, f"Missing {opkey}"
             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])}, {self.visit(node.args[1])})"
+        elif n == 'ISNAN':
+            return f"isnan({self.visit(node.args[0])})"
         elif n == 'set_memory':
             return f"set_memory({self.visit(node.args[0])}, {self.visit(node.args[1])})"
         elif n == 'int':
@@ -206,13 +223,13 @@ class XIRToC(ast.NodeVisitor):
             #TODO: C is undefined for max neg int
             opkey = self._get_op_type(n, node._xir_type)
             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])})"
-        elif n == 'set_round':
+        elif n == 'ROUND':
             #TODO: use fesetenv before the operation!
             return self.visit(node.args[0])
         elif n == 'FTZ':
             #TODO: implement force to zero
             return self.visit(node.args[0])
-        elif n == 'saturate':
+        elif n == 'SATURATE':
             #TODO: actually implement saturate
             return self.visit(node.args[0])
 

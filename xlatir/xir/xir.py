@@ -31,6 +31,11 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
                                            TyVar("if_gamma")]))
 
 
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM'])
+BITWISE_FNS = set(['AND'])
+COMPARE_FNS = set(['GT', 'LT'])
+FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
+
 class TypeEqnGenerator(ast.NodeVisitor):
     def __init__(self):
         self.type_variables = {}
@@ -205,14 +210,19 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 tv = self.get_or_gen_ty_var(v)
                 self.equations.append(TyEqn(tv, TyConstant(fullty)))
                 return tv
-            elif fn in ('add', 'sub', 'mul', 'div', 'pow'):
+            elif fn in ARITH_FNS or fn in BITWISE_FNS:
                 #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericBinOp)
                 node._xir_type = fnt
 
                 return ret
-            elif fn in ('set_round', 'FTZ', 'saturate', 'ABSOLUTE', 'isnan'):
+            elif fn in COMPARE_FNS:
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                               Def_GenericCompare)
+
+                node._xir_type = fnt
+            elif fn in FLOAT_FNS:
                 # note: saturate also carries a type, but not a width ...
                 argty = self.visit(node.args[0])
                 #TODO: add equations?
