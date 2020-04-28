@@ -70,6 +70,12 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('compare_hi', 'uint64_t', 'uint64_t'): '>', # for unsigned (see set)
                 ('compare_hs', 'uint64_t', 'uint64_t'): '>=', # for unsigned (see set)
 
+                ('compare_num', 'float', 'float'): '()', # for type checking only
+                ('compare_num', 'double', 'double'): '()',  # for type checking only
+
+                ('compare_nan', 'float', 'float'): '()', # for type checking only
+                ('compare_nan', 'double', 'double'): '()',  # for type checking only
+
                 ('POW', 'float', 'float'): 'powf',
                 ('POW', 'double', 'double'): 'pow',
 
@@ -294,6 +300,28 @@ class XIRToC(ast.NodeVisitor):
 
                 # returnin ASTs would make this so much nicer ...
                 return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
+            elif n in ('compare_num', 'compare_nan'):
+                op, t1, t2 = self._get_op_type(n, node._xir_type)
+                assert (op, t1, t2) in XIR_TO_C_OPS, f"Incorrect type for {n}"
+
+                if n == 'compare_nan':
+                    return f"isnan({self.visit(node.args[0])}) || isnan({self.visit(node.args[1])})"
+                elif n == 'compare_num':
+                    return f"!(isnan({self.visit(node.args[0])}) || isnan({self.visit(node.args[1])}))"
+            else:
+                assert n[-1] == 'u' # unordered
+                n = n[:-1]
+                op, t1, t2 = self._get_op_type(n, node._xir_type)
+                if (n, t1, t2) in XIR_TO_C_OPS:
+                    opkey = (n, t1, t2)
+                else:
+                    opkey = (n, '*', '*')
+
+                assert opkey in XIR_TO_C_OPS, (n, t1, t2)
+                a1 = self.visit(node.args[0])
+                a2 = self.visit(node.args[1])
+
+                return f"isnan({a1}) || isnan({a2}) || (({a1}) {XIR_TO_C_OPS[opkey]} ({a2}))"
         elif n == 'POW':
             opkey = self._get_op_type(n, node._xir_type)
             assert opkey in XIR_TO_C_OPS, f"Missing {opkey}"
