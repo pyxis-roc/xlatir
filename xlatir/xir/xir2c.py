@@ -366,6 +366,14 @@ class XIRToC(ast.NodeVisitor):
 
         return f"{self.visit(node.targets[0])} = {self.visit(node.value)}"
 
+    def visit_While(self, node):
+        assert len(node.orelse) == 0
+
+        test = self.visit(node.test)
+        body = ["\t\t" + self.visit(x) + ";" for x in node.body]
+
+        return f"while({test}) {{" + "\n" + "\n".join(body) + "\n}"
+
     def visit_FunctionDef(self, node):
         # perhaps make this per block?
         self.fn = node
