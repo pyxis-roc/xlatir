@@ -271,14 +271,19 @@ class TypeEqnGenerator(ast.NodeVisitor):
             width = widtharg.n
 
             if ty == 'Integer':
+                assert width in (16, 32, 64), f"Invalid width {width} for Integer"
                 fullty = f"{'s' if sign else 'u'}{width}"
             elif ty == 'Float':
+                assert width == 32, f"Invalid width {width} for float"
                 fullty = f"f{width}"
             elif ty == 'Double':
+                assert width == 64, f"Invalid width {width} for double"
                 fullty = f"f{width}"
             elif ty == 'Binary':
+                assert width in (16, 32, 64), f"Invalid width {width} for Binary"
                 fullty = f"b{width}"
             elif ty == 'Pred':
+                assert width ==1 , f"Invalid width {width} for Pred"
                 fullty = "bool"
             else:
                 assert False, f"Unrecognized type: {ty}"
