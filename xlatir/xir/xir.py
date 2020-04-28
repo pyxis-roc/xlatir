@@ -23,6 +23,9 @@ Def_GenericCompare = PolyTyDef(["gamma"], TyApp(TyConstant('bool'),
 Def_GenericBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
                                               [TyVar("gamma"), TyVar("gamma")]))
 
+Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
+                                                       [TyVar("gamma_in"), TyVar("gamma_in")]))
+
 Def_GenericUnaryOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"), [TyVar("gamma")]))
 
 Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
@@ -32,8 +35,9 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM'])
-BITWISE_FNS = set(['AND'])
-COMPARE_FNS = set(['GT', 'LT'])
+BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL'])
+COMPARE_FNS = set(['GT', 'LT',
+                   'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
 
 class TypeEqnGenerator(ast.NodeVisitor):
@@ -133,6 +137,21 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         return ret
 
+    def visit_BoolOp(self, node):
+        if isinstance(node.op, ast.Or):
+            fn = f'op_BoolOr'
+        elif isinstance(node.op, ast.And):
+            fn = f'op_BoolAnd'
+        else:
+            raise NotImplementedError(f"Unknown binary operator: {node.op}")
+
+
+        tyd = PolyTyDef([], TyApp(TyConstant("bool"), [TyConstant("bool")]*len(node.values)))
+        ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.values, tyd)
+        node._xir_type = fnt
+
+        return ret
+
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Add):
             fn = f'op_Add'
@@ -164,8 +183,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         if isinstance(node.op, ast.USub):
             fn = f'op_USub'
+        elif isinstance(node.op, ast.Not):
+            fn = f'op_Not'
+        elif isinstance(node.op, ast.Invert):
+            fn = f'op_Invert'
         else:
-            raise NotImplementedError(f"Unknown operator: {node.op}")
+            raise NotImplementedError(f"Unknown unary operator: {node.op}")
 
         ret, fnt, _, app = self._generate_poly_call_eqns(fn, [node.operand], Def_GenericUnaryOp)
         node._xir_type = fnt
@@ -190,6 +213,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 fullty = f"{'s' if sign else 'u'}{width}"
             elif ty == 'Float':
                 fullty = f"f{width}"
+            elif ty == 'Double':
+                fullty = f"f{width}"
+            elif ty == 'Binary':
+                fullty = f"b{width}"
+            elif ty == 'Pred':
+                fullty = "bool"
             else:
                 assert False, f"Unrecognized type: {ty}"
 
@@ -210,10 +239,36 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 tv = self.get_or_gen_ty_var(v)
                 self.equations.append(TyEqn(tv, TyConstant(fullty)))
                 return tv
+            elif fn == 'compare':
+                #TODO: support bool and pred
+                tv = self.get_or_gen_ty_var('compare')
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               PolyTyDef(["gamma"],
+                                                                         TyApp(TyConstant('bool'),
+                                                                               [TyVar("gamma"),
+                                                                                TyVar("gamma")])))
+                node._xir_type = fnt
+
+                return ret
+            elif fn == 'booleanOp':
+                tv = self.get_or_gen_ty_var('booleanOp')
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               PolyTyDef([],
+                                                                         TyApp(TyConstant('bool'),
+                                                                               [TyConstant("bool"),
+                                                                                TyConstant("bool")])))
+                node._xir_type = fnt
+
+                return ret
+
             elif fn in ARITH_FNS or fn in BITWISE_FNS:
                 #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
-                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                               Def_GenericBinOp)
+                if fn != 'MUL':
+                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                                   Def_GenericBinOp)
+                else:
+                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                                   Def_MulOp)
                 node._xir_type = fnt
 
                 return ret
@@ -297,7 +352,8 @@ def unify(m, n, reps = None):
 
     if s is t: return True
 
-    if isinstance(s, TyConstant) and isinstance(t, TyConstant) and s == t: return True
+    if isinstance(s, TyConstant) and isinstance(t, TyConstant):
+        if s == t: return True
 
     if isinstance(s, TyApp) and isinstance(t, TyApp):
         if len(s.args) == len(t.args):

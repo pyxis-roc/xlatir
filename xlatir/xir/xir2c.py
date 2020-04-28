@@ -21,9 +21,11 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   's64': 'int64_t',
                   'f32': 'float',
                   'f64': 'double',
+                  'pred': 'uint32_t', #TODO
                   # not part of ptx
                   'intptr_t': 'intptr_t',
-                  'void': 'void'
+                  'void': 'void',
+                  'bool': 'int', #TODO
                   }
 
 XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
@@ -32,10 +34,17 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('DIV', '*', '*'): '/',
                 ('REM', '*', '*'): '%',
 
+                ('SHR', '*', '*'): '>>',
+                ('SHL', '*', '*'): '<<',
+
                 ('GT', '*', '*'): '>',
                 ('LT', '*', '*'): '<',
+                ('NOTEQ', '*', '*'): '!=',
+                ('GTE', '*', '*'): '>=',
+                ('EQ', '*', '*'): '==',
 
                 ('AND', '*', '*'): '&',
+                ('OR', '*', '*'): '|',
 
                 ('POW', 'float', 'float'): 'powf',
                 ('POW', 'double', 'double'): 'pow',
@@ -155,6 +164,10 @@ class XIRToC(ast.NodeVisitor):
     def visit_UnaryOp(self, node):
         if isinstance(node.op, ast.USub):
             op = '-'
+        elif isinstance(node.op, ast.Not):
+            op = '!' # logical not
+        elif isinstance(node.op, ast.Invert):
+            op = '~'
         else:
             raise NotImplementedError(node.op)
 
@@ -186,6 +199,9 @@ class XIRToC(ast.NodeVisitor):
         out.append('\t}')
 
         return '\n'.join(out)
+
+    def visit_Break(self, node):
+        return "break\n"
 
     def visit_Call(self, node):
         n = self.visit(node.func)
@@ -301,7 +317,73 @@ if __name__ == "__main__":
                          'execute_ld_param_u32',
                          'execute_ld_param_f32',
                          'execute_ld_param_f64',
-                         'execute_cvta_to_global_u64']) # temporary
+                         'execute_cvta_to_global_u64',
+                         'execute_st_global_u16',
+                         'execute_st_global_u32',
+                         'execute_st_global_u64',
+                         'execute_mad_wide_u16',
+                         'execute_mad_wide_s16',
+                         'execute_mad_wide_s32',
+                         'execute_mad_wide_u32',
+                         'execute_mad_wide_s64',
+                         'execute_mad_wide_u64',
+                         'execute_bfind_b32', # while
+                         'execute_bfind_s32',
+                         'execute_bfind_u32',
+                         'execute_bfind_u64',
+                         'execute_bfe_u32', # bitwise, and type error, uses multiplication to get strings of length X
+                         'execute_bfe_s32', # bitwise, and type error
+                         'execute_bfe_s64', # bitwise, and type error
+                         'execute_bfe_u64',
+                         'execute_fns_unsigned_s32',
+                         'execute_fns_unsigned_b32',
+                         'execute_fns_signed_s32',
+                         'execute_fns_signed_s32',
+                         'execute_bfi_b32', # type errors, binary strings?
+                         'execute_bfi_b64', # type errors, binary strings?
+                         'execute_dp4a_u32_u32', # type errors, not using right sign
+                         'execute_dp4a_u32_s32', # type errors, not using right sign
+                         'execute_dp4a_s32_u32', # type errors, not using right sign [also array type]
+                         'execute_dp4a_s32_s32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_lo_u32_u32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_lo_s32_s32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_lo_u32_s32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_lo_s32_u32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_hi_u32_u32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_hi_s32_s32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_hi_u32_s32', # type errors, not using right sign [also array type]
+                         'execute_dp2a_hi_s32_u32', # type errors, not using right sign [also array type]
+                         'execute_st_global_f32',
+                         'execute_st_global_f64',
+                         'execute_testp_finite_f32',
+                         'execute_testp_finite_f64',
+                         'execute_mov_s32',
+                         'execute_shr_b16', # while
+                         'execute_shr_b32', # while
+                         'execute_shr_b64', # while
+
+                         'execute_shr_s16', # while
+                         'execute_shr_s32', # while
+                         'execute_shr_s64', # while
+
+                         'execute_shr_u16', # while
+                         'execute_shr_u32', # while
+                         'execute_shr_u64', # while
+                         'execute_lop3_b32', # immLut type
+                         'execute_prmt_f4e_b32', # array type
+                         'execute_prmt_b4e_b32', # array type
+                         'execute_prmt_rc8_b32', # array type
+                         'execute_prmt_ecl_b32', # array type
+                         'execute_prmt_ecr_b32', # array type
+                         'execute_prmt_rc16_b32', # array type
+                         'execute_setp_eq_s32',
+                         'execute_setp_eq_ftz_f32', # sign of bitWidth
+                         'execute_setp_eq_and_ftz_f32',
+                         'execute_setp_eq_and_ftz_invert_f32',
+                         'execute_setp_eq_or_ftz_f32',
+                         'execute_setp_q.*' # multiple return values
+
+    ]) # temporary
 
     if len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all':
         args.ptxinsn = [k[len("execute_"):] for k in semantics if k not in debug_exclude]
@@ -311,6 +393,8 @@ if __name__ == "__main__":
     out_defns = []
     for pi in args.ptxinsn:
         sem = semantics["execute_" + pi]
+        if pi.startswith('setp_q'): continue
+
         ast.dump(sem)
         ty = xir.infer_types(sem)
         out.append(translator.translate(sem, ty))
