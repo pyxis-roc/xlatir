@@ -25,7 +25,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   # not part of ptx
                   'intptr_t': 'intptr_t',
                   'void': 'void',
-                  'bool': 'int', #TODO
+                  'bool': 'unsigned int', #TODO
                   }
 
 XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
@@ -45,6 +45,30 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
 
                 ('AND', '*', '*'): '&',
                 ('OR', '*', '*'): '|',
+                ('XOR', '*', '*'): '^',
+
+                ('compare_eq', '*', '*'): '==',
+                ('compare_ne', '*', '*'): '!=',
+
+                ('compare_lt', '*', '*'): '<', # for signed and unsigned (see set)
+                ('compare_le', '*', '*'): '<=', # for signed and unsigned (see set)
+                ('compare_gt', '*', '*'): '>', # for signed and unsigned (see set)
+                ('compare_ge', '*', '*'): '>', # for signed and unsigned (see set)
+
+                ('compare_lo', 'uint32_t', 'uint32_t'): '<', # for unsigned (see set)
+                ('compare_ls', 'uint32_t', 'uint32_t'): '<=', # for unsigned (see set)
+                ('compare_hi', 'uint32_t', 'uint32_t'): '>', # for unsigned (see set)
+                ('compare_hs', 'uint32_t', 'uint32_t'): '>=', # for unsigned (see set)
+
+                ('compare_lo', 'uint16_t', 'uint16_t'): '<', # for unsigned (see set)
+                ('compare_ls', 'uint16_t', 'uint16_t'): '<=', # for unsigned (see set)
+                ('compare_hi', 'uint16_t', 'uint16_t'): '>', # for unsigned (see set)
+                ('compare_hs', 'uint16_t', 'uint16_t'): '>=', # for unsigned (see set)
+
+                ('compare_lo', 'uint64_t', 'uint64_t'): '<', # for unsigned (see set)
+                ('compare_ls', 'uint64_t', 'uint64_t'): '<=', # for unsigned (see set)
+                ('compare_hi', 'uint64_t', 'uint64_t'): '>', # for unsigned (see set)
+                ('compare_hs', 'uint64_t', 'uint64_t'): '>=', # for unsigned (see set)
 
                 ('POW', 'float', 'float'): 'powf',
                 ('POW', 'double', 'double'): 'pow',
@@ -96,6 +120,14 @@ class XIRToC(ast.NodeVisitor):
 
         return node.id
 
+    def visit_NameConstant(self, node):
+        if node.value == True:
+            return "1"
+        elif node.value == False:
+            return "0"
+        elif node.value is None:
+            return "None"
+
     def visit_Attribute(self, node):
         #TODO decide whether to use . or ->
         return f'{self.visit(node.value)}.{node.attr}'
@@ -118,6 +150,16 @@ class XIRToC(ast.NodeVisitor):
             return (op, arg_types[0])
         else:
             raise NotImplementedError
+
+    def visit_BoolOp(self, node):
+        if isinstance(node.op, ast.And):
+            op = ' && '
+        elif isinstance(node.op, ast.Or):
+            op = ' || '
+        else:
+            raise NotImplementedError(node.op)
+
+        return op.join([f'({self.visit(v)})' for v in node.values])
 
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Mult):
@@ -223,6 +265,21 @@ class XIRToC(ast.NodeVisitor):
             opkey = (n, '*', '*')
             # returnin ASTs would make this so much nicer ...
             return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
+        elif n in xir.COMPARE_PTX:
+            if n not in set(['compare_equ', 'compare_neu',
+                             'compare_ltu', 'compare_leu',
+                             'compare_gtu', 'compare_geu',
+                             'compare_num', 'compare_nan']):
+                op, t1, t2 = self._get_op_type(n, node._xir_type)
+                if (n, t1, t2) in XIR_TO_C_OPS:
+                    opkey = (n, t1, t2)
+                else:
+                    opkey = (n, '*', '*')
+
+                assert opkey in XIR_TO_C_OPS, (n, t1, t2)
+
+                # returnin ASTs would make this so much nicer ...
+                return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
         elif n == 'POW':
             opkey = self._get_op_type(n, node._xir_type)
             assert opkey in XIR_TO_C_OPS, f"Missing {opkey}"
@@ -248,6 +305,14 @@ class XIRToC(ast.NodeVisitor):
         elif n == 'SATURATE':
             #TODO: actually implement saturate
             return self.visit(node.args[0])
+        elif n == 'subnormal':
+            #TODO: actually implement subnormal, which seems to be the same as FTZ?
+            return self.visit(node.args[0])
+        elif n == 'subnormal_check':
+            return f"fpclassify({self.visit(node.args[0])}) == FP_SUBNORMAL"
+        elif n == 'min':
+            #TODO: actually implement a min function, a macro will not cut it
+            return f"ptx_min({self.visit(node.args[0])}, {self.visit(node.args[1])})"
 
         args = [str(self.visit(a)) for a in node.args]
         return f"{n}({', '.join(args)})"
@@ -391,10 +456,12 @@ if __name__ == "__main__":
     translator = XIRToC()
     out = []
     out_defns = []
+    rp = xir.RewritePythonisms()
+
     for pi in args.ptxinsn:
         sem = semantics["execute_" + pi]
         if pi.startswith('setp_q'): continue
-
+        rp.visit(sem)
         ast.dump(sem)
         ty = xir.infer_types(sem)
         out.append(translator.translate(sem, ty))
@@ -416,6 +483,7 @@ if __name__ == "__main__":
             f.write("#include <stdint.h>\n\n")
             f.write("#include <math.h>\n\n")
             f.write("struct cc_register { int cf;};\n")
+            f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))") # TODO: actually implement a min
             f.write('\n')
             f.write("\n".join(out_defns))
     else:

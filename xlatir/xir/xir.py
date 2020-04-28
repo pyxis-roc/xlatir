@@ -35,10 +35,66 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM'])
-BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL'])
+BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR'])
 COMPARE_FNS = set(['GT', 'LT',
                    'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
+COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
+                   'compare_gt','compare_gtu','compare_hi','compare_hs','compare_le','compare_leu',
+                   'compare_lo','compare_ls','compare_lt','compare_ltu','compare_nan','compare_ne',
+                   'compare_neu','compare_num'])
+
+BOOLEAN_OP_PTX = set(['booleanOp_and', 'booleanOp_or', 'booleanOp_xor'])
+
+class RewritePythonisms(ast.NodeTransformer):
+    def _is_float_constant_constructor(self, n):
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'float':
+            if isinstance(n.args[0], ast.Str):
+                return n.args[0].s.lower() in ("nan",
+                                               "+nan",
+                                               "-nan",
+                                               "+nan",
+                                               "+inf",
+                                               "inf",
+                                               "-inf")
+        return False
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name):
+            if node.func.id == 'compare':
+                assert isinstance(node.args[2], ast.Str)
+                node.func.id = 'compare_' + node.args[2].s
+                node.args.pop() # remove the last
+            elif node.func.id == 'booleanOp':
+                assert isinstance(node.args[2], ast.Str)
+                if node.args[2].s == 'and':
+                    node = ast.BoolOp(op=ast.And(), values=[node.args[0], node.args[1]])
+                elif node.args[2].s == 'or':
+                    node = ast.BoolOp(op=ast.Or(), values=[node.args[0], node.args[1]])
+                elif node.args[2].s == 'xor':
+                    # ugly but this is boolean xor: a'b + ab'
+                    node = ast.BoolOp(op=ast.Or(),
+                                      values=[ast.BoolOp(op=ast.And(),
+                                                         values=[ast.UnaryOp(ast.Not(),
+                                                                             node.args[0]),
+                                                                 node.args[1]]),
+
+                                              ast.BoolOp(op=ast.And(),
+                                                         values=[node.args[0],
+                                                                 ast.UnaryOp(ast.Not(),
+                                                                             node.args[1])]),
+                                      ])
+
+                return node
+            elif node.func.id == 'EQ' or node.func.id == 'NOTEQ':
+                if self._is_float_constant_constructor(node.args[1]):
+                    return ast.Call(func=ast.Name(f"FLOAT_COMPARE_{node.func.id}", ast.Load()),
+                                    args=[node.args[0], node.args[1]],
+                                    keywords={})
+        else:
+            node = self.generic_visit(node)
+
+        return node
 
 class TypeEqnGenerator(ast.NodeVisitor):
     def __init__(self):
@@ -239,9 +295,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 tv = self.get_or_gen_ty_var(v)
                 self.equations.append(TyEqn(tv, TyConstant(fullty)))
                 return tv
-            elif fn == 'compare':
+            elif fn in COMPARE_PTX:
                 #TODO: support bool and pred
-                tv = self.get_or_gen_ty_var('compare')
+                tv = self.get_or_gen_ty_var(fn)
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                PolyTyDef(["gamma"],
                                                                          TyApp(TyConstant('bool'),
@@ -250,8 +306,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 node._xir_type = fnt
 
                 return ret
-            elif fn == 'booleanOp':
-                tv = self.get_or_gen_ty_var('booleanOp')
+            elif fn in BOOLEAN_OP_PTX:
+                tv = self.get_or_gen_ty_var(fn)
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                PolyTyDef([],
                                                                          TyApp(TyConstant('bool'),
@@ -317,6 +373,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(lhs, rhs))
         # no return because this is a statement
+
+    # TODO: Add While
 
 
 def find(n, reps):
