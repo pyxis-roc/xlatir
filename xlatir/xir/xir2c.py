@@ -245,6 +245,20 @@ class XIRToC(ast.NodeVisitor):
     def visit_Break(self, node):
         return "break\n"
 
+    def _get_float_val(self, node):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'float':
+            assert isinstance(node.args[0], ast.Str), "Don't support non-str-const uses of float"
+            x = node.args[0].s.lower()
+            s = ''
+            if x[0] == '-' or x[1] == '+':
+                s = x[0] if x[0] == '-' else ''
+                x = x[1:]
+
+            assert x in ('inf', 'nan'), "Unrecognized value {x}"
+            return True, s + x
+
+        return False, None
+
     def visit_Call(self, node):
         n = self.visit(node.func)
         if n == 'set_sign_bitWidth':
@@ -313,6 +327,30 @@ class XIRToC(ast.NodeVisitor):
         elif n == 'min':
             #TODO: actually implement a min function, a macro will not cut it
             return f"ptx_min({self.visit(node.args[0])}, {self.visit(node.args[1])})"
+        elif n == 'float':
+            _, v = self._get_float_val(node)
+            assert v is not None, node.args[0]
+
+            if v == 'inf':
+                return "INFINITY" # since C99
+            elif v == '-inf':
+                return "-INFINITY" # since C99
+            elif v == 'nan':
+                return "NAN" # since C99, but could also use nan()?
+            elif v == '-nan':
+                return "-NAN"
+            else:
+                raise NotImplementedError(f"Unknown float constant {v}")
+        elif n == 'FLOAT_COMPARE_EQ' or n == 'FLOAT_COMPARE_NOTEQ':
+            _, v = self._get_float_val(node.args[1])
+            assert v is not None, node.args[1]
+
+            if v == 'inf' or v == '-inf':
+                fn = "isfinite"
+            elif v == 'nan' or v == '-nan':
+                fn = "isnan"
+
+            return f"{'!' if n == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({self.visit(node.args[0])})"
 
         args = [str(self.visit(a)) for a in node.args]
         return f"{n}({', '.join(args)})"
@@ -396,6 +434,9 @@ if __name__ == "__main__":
                          'execute_bfind_s32',
                          'execute_bfind_u32',
                          'execute_bfind_u64',
+                         'execute_bfind_s64', # type error
+                         'execute_bfind_shiftamt_s32',
+                         'execute_bfind_shiftamt_s64',
                          'execute_bfe_u32', # bitwise, and type error, uses multiplication to get strings of length X
                          'execute_bfe_s32', # bitwise, and type error
                          'execute_bfe_s64', # bitwise, and type error
