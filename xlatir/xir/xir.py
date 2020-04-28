@@ -36,8 +36,7 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM'])
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR'])
-COMPARE_FNS = set(['GT', 'LT',
-                   'NOTEQ', 'GTE', 'EQ'])
+COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
 COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
                    'compare_gt','compare_gtu','compare_hi','compare_hs','compare_le','compare_leu',
@@ -234,6 +233,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
         #TODO: more nuanced?
         return self.get_or_gen_ty_var(node.n, literal=node.n)
 
+    def visit_NameConstant(self, node):
+        if node.value == True or node.value == False:
+            return TyConstant("bool")
+        else:
+            return None
+
     def visit_UnaryOp(self, node):
         self.generic_visit(node)
 
@@ -374,8 +379,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.equations.append(TyEqn(lhs, rhs))
         # no return because this is a statement
 
-    # TODO: Add While
+    def visit_While(self, node):
+        assert len(node.orelse) == 0 # not supported
 
+        test = self.visit(node.test)
+        for s in node.body:
+            self.visit(s)
+
+        self.equations.append(TyEqn(test, TyConstant('bool')))
 
 def find(n, reps):
     key = str(n)
