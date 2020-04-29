@@ -457,15 +457,14 @@ if __name__ == "__main__":
                          'execute_ld_param_f32',
                          'execute_ld_param_f64',
                          'execute_cvta_to_global_u64',
-                         'execute_st_global_u16',
-                         'execute_st_global_u32',
-                         'execute_st_global_u64',
+
                          'execute_mad_wide_u16',
                          'execute_mad_wide_s16',
                          'execute_mad_wide_s32',
                          'execute_mad_wide_u32',
                          'execute_mad_wide_s64',
                          'execute_mad_wide_u64',
+
                          'execute_bfind_b32', # while
                          'execute_bfind_s32',
                          'execute_bfind_u32',
@@ -495,22 +494,7 @@ if __name__ == "__main__":
                          'execute_dp2a_hi_s32_s32', # type errors, not using right sign [also array type]
                          'execute_dp2a_hi_u32_s32', # type errors, not using right sign [also array type]
                          'execute_dp2a_hi_s32_u32', # type errors, not using right sign [also array type]
-                         'execute_st_global_f32',
-                         'execute_st_global_f64',
-                         'execute_testp_finite_f32',
-                         'execute_testp_finite_f64',
                          'execute_mov_s32',
-                         'execute_shr_b16', # while
-                         'execute_shr_b32', # while
-                         'execute_shr_b64', # while
-
-                         'execute_shr_s16', # while
-                         'execute_shr_s32', # while
-                         'execute_shr_s64', # while
-
-                         'execute_shr_u16', # while
-                         'execute_shr_u32', # while
-                         'execute_shr_u64', # while
                          'execute_lop3_b32', # immLut type
                          'execute_prmt_f4e_b32', # array type
                          'execute_prmt_b4e_b32', # array type
@@ -518,11 +502,6 @@ if __name__ == "__main__":
                          'execute_prmt_ecl_b32', # array type
                          'execute_prmt_ecr_b32', # array type
                          'execute_prmt_rc16_b32', # array type
-                         'execute_setp_eq_s32',
-                         'execute_setp_eq_ftz_f32', # sign of bitWidth
-                         'execute_setp_eq_and_ftz_f32',
-                         'execute_setp_eq_and_ftz_invert_f32',
-                         'execute_setp_eq_or_ftz_f32',
                          'execute_setp_q.*' # multiple return values
 
     ]) # temporary
