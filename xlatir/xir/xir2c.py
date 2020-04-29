@@ -108,6 +108,9 @@ class XIRToC(ast.NodeVisitor):
             if t.name == 'TY:cc_reg':
                 return f'struct cc_register {declname}'
 
+            if isinstance(t, TyVarLiteral):
+                return f'literal_type'
+
             assert isinstance(t, TyConstant), f"Non-TyConstant type: {t}"
 
         if declname:
@@ -343,7 +346,7 @@ class XIRToC(ast.NodeVisitor):
             return self.visit(node.args[0])
         elif n == 'FTZ':
             #TODO: implement force to zero
-            return self.visit(node.args[0])
+            return f"FTZ({self.visit(node.args[0])})"
         elif n == 'SATURATE':
             #TODO: actually implement saturate
             return self.visit(node.args[0])
@@ -502,7 +505,9 @@ if __name__ == "__main__":
                          'execute_prmt_ecl_b32', # array type
                          'execute_prmt_ecr_b32', # array type
                          'execute_prmt_rc16_b32', # array type
-                         'execute_setp_q.*' # multiple return values
+                         'execute_setp_q.*', # multiple return values
+                         'execute_lg2_approx_f32', # no support for LOG
+                         'execute_lg2_approx_ftz_f32', # no support for LOG
 
     ]) # temporary
 
@@ -531,6 +536,7 @@ if __name__ == "__main__":
             f.write("#include <stdint.h>\n")
             f.write("#include <math.h>\n")
             f.write(f'#include "{header}"\n')
+            f.write(f'#include "ptxc_utils.h"\n')
             f.write("\n\n".join(out))
 
         print(f"Writing {header}")

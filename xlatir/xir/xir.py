@@ -26,6 +26,11 @@ Def_GenericBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
                                                        [TyVar("gamma_in"), TyVar("gamma_in")]))
 
+#TODO: remove the u32?
+Def_ShiftOps = PolyTyDef(["gamma_in", "gamma_shift"], TyApp(TyVar("gamma_in"),
+                                                          [TyVar("gamma_in"),
+                                                           TyVar("gamma_shift")]))
+
 Def_GenericUnaryOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"), [TyVar("gamma")]))
 
 Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
@@ -34,7 +39,8 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
                                            TyVar("if_gamma")]))
 
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM'])
+VARARGS_FNS = set(['min'])
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM']) #TODO: min can have more than 2
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
@@ -100,6 +106,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.type_variables = {}
         self.equations = []
         self.ret = 0
+        self.literal_index = 0
         self.fn = None
 
     def generate_type_variable(self, name, literal=None):
@@ -109,6 +116,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             ty = TyVar(f"TY:{name}")
         else:
             ty = TyVarLiteral(f"TY:{name}", literal)
+            self.literal_index += 1 # same-valued literals don't necessarily have the same type
 
         self.type_variables[name] = ty
         return ty
@@ -231,7 +239,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_Num(self, node):
         #TODO: more nuanced?
-        return self.get_or_gen_ty_var(node.n, literal=node.n)
+        return self.get_or_gen_ty_var(f"{node.n}_{self.literal_index}", literal=node.n)
 
     def visit_NameConstant(self, node):
         if node.value == True or node.value == False:
@@ -329,12 +337,28 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
             elif fn in ARITH_FNS or fn in BITWISE_FNS:
                 #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
-                if fn != 'MUL':
-                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                                   Def_GenericBinOp)
-                else:
+                if fn == 'MUL':
                     ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                    Def_MulOp)
+                elif fn == "SHR" or fn == "SHL":
+                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                                   Def_ShiftOps)
+                else:
+                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                                   Def_GenericBinOp)
+
+                node._xir_type = fnt
+
+                return ret
+            elif fn in VARARGS_FNS:
+                if fn == 'min':
+                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                                   PolyTyDef(["gamma"],
+                                                                             TyApp(TyVar("gamma"),
+                                                                                   [TyVar("gamma")]*len(node.args))))
+                else:
+                    raise NotImplementedError(f"Function {fn} not implemented")
+
                 node._xir_type = fnt
 
                 return ret
@@ -410,6 +434,10 @@ def union(s, t, reps):
         reps[str(t)] = reps[str(s)]
     elif isinstance(t, TyConstant):
         reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyVarLiteral): #TODO: introduced for shift?
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyVarLiteral): #TODO: introduce for shift?
+        reps[str(s)] = reps[str(t)]
     else:
         reps[str(s)] = reps[str(t)]
 
@@ -427,7 +455,13 @@ def unify(m, n, reps = None):
     if s is t: return True
 
     if isinstance(s, TyConstant) and isinstance(t, TyConstant):
-        if s == t: return True
+        if s == t:
+            return True
+
+        # uX = bX
+        if (s.value[0] == "u" and t.value[0] == "b") or (s.value[0] == "b" and t.value[0] == "u"):
+            if s.value[1:] == t.value[1:]:
+                return True
 
     if isinstance(s, TyApp) and isinstance(t, TyApp):
         if len(s.args) == len(t.args):
@@ -447,6 +481,7 @@ def unify(m, n, reps = None):
     if isinstance(s, TyVar) or isinstance(t, TyVar):
         union(s, t, reps)
         return True
+
 
     print("FAIL", s, t)
     return False
