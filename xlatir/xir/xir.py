@@ -40,7 +40,7 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 
 VARARGS_FNS = set(['min'])
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM']) #TODO: min can have more than 2
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX'])
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])

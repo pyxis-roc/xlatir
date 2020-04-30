@@ -28,6 +28,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'bool': 'unsigned int', #TODO
                   }
 
+#TODO: Rewrite this
 XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('SUB', '*', '*'): '-',
                 ('MUL', '*', '*'): '*',
@@ -42,6 +43,13 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('NOTEQ', '*', '*'): '!=',
                 ('GTE', '*', '*'): '>=',
                 ('EQ', '*', '*'): '==',
+
+                ('MIN', 'float', 'float'): 'fminf',
+                ('MAX', 'float', 'float'): 'fmaxf',
+
+                ('MIN', 'double', 'double'): 'fmin',
+                ('MAX', 'double', 'double'): 'fmax',
+                ('MAX', '*', '*'): 'MAX',
 
                 ('AND', '*', '*'): '&',
                 ('OR', '*', '*'): '|',
@@ -264,7 +272,7 @@ class XIRToC(ast.NodeVisitor):
                 s = x[0] if x[0] == '-' else ''
                 x = x[1:]
 
-            assert x in ('inf', 'nan'), "Unrecognized value {x}"
+            assert x in ('inf', 'nan', '0.0'), f"Unrecognized value {x}"
             return True, s + x
 
         return False, None
@@ -273,13 +281,18 @@ class XIRToC(ast.NodeVisitor):
         n = self.visit(node.func)
         if n == 'set_sign_bitWidth':
             return self.visit(node.args[0])
-        elif (n in xir.ARITH_FNS or n in xir.BITWISE_FNS) and n not in ('POW',): #binary only
+        elif (n in xir.ARITH_FNS or n in xir.BITWISE_FNS) and n not in ('POW', 'MIN', 'MAX'): #binary only
             # right now, since operators are not differentiated by type in C, this is okay
             # but we may need it for half, etc.
             op, t1, t2 = self._get_op_type(n, node._xir_type)
-            assert (n, '*', '*') in XIR_TO_C_OPS, (n, '*', '*')
 
-            opkey = (n, '*', '*')
+            if (op, t1, t2) in XIR_TO_C_OPS:
+                opkey = (op, t1, t2)
+            else:
+                opkey = (n, '*', '*')
+
+            assert opkey in XIR_TO_C_OPS, opkey
+
             # returnin ASTs would make this so much nicer ...
             return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
         elif n in xir.COMPARE_FNS:
@@ -326,9 +339,16 @@ class XIRToC(ast.NodeVisitor):
                 a2 = self.visit(node.args[1])
 
                 return f"isnan({a1}) || isnan({a2}) || (({a1}) {XIR_TO_C_OPS[opkey]} ({a2}))"
-        elif n == 'POW':
+        elif n in 'POW':
             opkey = self._get_op_type(n, node._xir_type)
             assert opkey in XIR_TO_C_OPS, f"Missing {opkey}"
+            return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])}, {self.visit(node.args[1])})"
+        elif n in ('MIN', 'MAX'):
+            opkey = self._get_op_type(n, node._xir_type)
+            if opkey not in XIR_TO_C_OPS:
+                assert (opkey[0], '*', '*') in XIR_TO_C_OPS, f"Missing {opkey}"
+                opkey = (opkey[0], '*', '*')
+
             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])}, {self.visit(node.args[1])})"
         elif n == 'ISNAN':
             return f"isnan({self.visit(node.args[0])})"
@@ -374,6 +394,8 @@ class XIRToC(ast.NodeVisitor):
                 return "NAN" # since C99, but could also use nan()?
             elif v == '-nan':
                 return "-NAN"
+            elif v == '-0.0' or v == '0.0':
+                return v
             else:
                 raise NotImplementedError(f"Unknown float constant {v}")
         elif n == 'FLOAT_COMPARE_EQ' or n == 'FLOAT_COMPARE_NOTEQ':
