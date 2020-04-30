@@ -50,10 +50,11 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('compare_eq', '*', '*'): '==',
                 ('compare_ne', '*', '*'): '!=',
 
+                # the unordered versions use the same as below
                 ('compare_lt', '*', '*'): '<', # for signed and unsigned (see set)
                 ('compare_le', '*', '*'): '<=', # for signed and unsigned (see set)
                 ('compare_gt', '*', '*'): '>', # for signed and unsigned (see set)
-                ('compare_ge', '*', '*'): '>', # for signed and unsigned (see set)
+                ('compare_ge', '*', '*'): '>=', # for signed and unsigned (see set)
 
                 ('compare_lo', 'uint32_t', 'uint32_t'): '<', # for unsigned (see set)
                 ('compare_ls', 'uint32_t', 'uint32_t'): '<=', # for unsigned (see set)
@@ -348,7 +349,10 @@ class XIRToC(ast.NodeVisitor):
             #TODO: implement force to zero
             return f"FTZ({self.visit(node.args[0])})"
         elif n == 'SATURATE':
-            #TODO: actually implement saturate
+            op, t1 = self._get_op_type(n, node._xir_type)
+            if t1 == 'float' or t1 == 'double':
+                return f"SAT({self.visit(node.args[0])})"
+            #TODO: saturate for s32 should be ADD_SAT
             return self.visit(node.args[0])
         elif n == 'subnormal':
             #TODO: actually implement subnormal, which seems to be the same as FTZ?
