@@ -161,6 +161,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         else:
             tyv = TyConstant('void')
 
+        #TODO: multiple return values need a product type
         self.equations.append(TyEqn(tyv, self.fn._xir_type.ret))
 
     def _generate_poly_call_eqns(self, fn, args, typedef):
@@ -269,8 +270,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_Call(self, node):
         def _get_ty_from_fn_call(vararg, signarg, tyarg, widtharg):
-            assert isinstance(vararg, ast.Name)
-            v = vararg.id
+            if isinstance(vararg, ast.Name):
+                v = vararg.id
+            elif isinstance(vararg, ast.Num): # allow some literals? e.g. brev?
+                v = self.visit(vararg)
+            else:
+                raise NotImplementedError(f"Non-literal and non-Name first arguments to set_sign_bitWidth not supported")
 
             assert isinstance(signarg, ast.NameConstant)
             sign = signarg.value
@@ -282,7 +287,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
             width = widtharg.n
 
             if ty == 'Integer':
-                assert width in (16, 32, 64), f"Invalid width {width} for Integer"
+                # 8 is for immLut
+                assert width in (8, 16, 32, 64), f"Invalid width {width} for Integer"
                 fullty = f"{'s' if sign else 'u'}{width}"
             elif ty == 'Float':
                 assert width == 32, f"Invalid width {width} for float"
@@ -294,8 +300,10 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 assert width in (16, 32, 64), f"Invalid width {width} for Binary"
                 fullty = f"b{width}"
             elif ty == 'Pred':
-                assert width ==1 , f"Invalid width {width} for Pred"
+                assert width == 1 , f"Invalid width {width} for Pred"
                 fullty = "bool"
+            elif ty == 'ConditionCodeRegister':
+                fullty = "cc_reg"
             else:
                 assert False, f"Unrecognized type: {ty}"
 
@@ -307,7 +315,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 v, fullty = _get_ty_from_fn_call(node.args[0], node.args[1],
                                                  node.args[2], node.args[3])
 
-                tv = self.get_or_gen_ty_var(v)
+                if not isinstance(v, TyTerm):
+                    tv = self.get_or_gen_ty_var(v)
+                else:
+                    tv = v
+
                 self.equations.append(TyEqn(tv, TyConstant(fullty)))
                 return tv
             elif fn == 'set_value':

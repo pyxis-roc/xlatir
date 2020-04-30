@@ -26,6 +26,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'intptr_t': 'intptr_t',
                   'void': 'void',
                   'bool': 'unsigned int', #TODO
+                  'cc_reg': 'struct cc_register',
                   }
 
 #TODO: Rewrite this
@@ -123,9 +124,6 @@ class XIRToC(ast.NodeVisitor):
             return f"struct retval_{declname} {{ {'; '.join(elt_names)};  }};"
 
         if not isinstance(t, TyConstant):
-            if t.name == 'TY:cc_reg':
-                return f'struct cc_register {declname}'
-
             if isinstance(t, TyVarLiteral):
                 return f'literal_type'
 
@@ -552,7 +550,15 @@ if __name__ == "__main__":
                          'execute_prmt_ecl_b32', # array type
                          'execute_prmt_ecr_b32', # array type
                          'execute_prmt_rc16_b32', # array type
-                         'execute_setp_q.*', # multiple return values
+
+                         'execute_rem_u16',
+                         'execute_rem_u32',
+                         'execute_rem_u64',
+
+                         'execute_rem_s16',
+                         'execute_rem_s32',
+                         'execute_rem_s64',
+
                          'execute_lg2_approx_f32', # no support for LOG
                          'execute_lg2_approx_ftz_f32', # no support for LOG
 
