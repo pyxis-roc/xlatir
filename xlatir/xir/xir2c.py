@@ -406,7 +406,7 @@ class XIRToC(ast.NodeVisitor):
             assert v is not None, node.args[1]
 
             if v == 'inf' or v == '-inf':
-                fn = "isfinite"
+                fn = "!isfinite"
             elif v == 'nan' or v == '-nan':
                 fn = "isnan"
 
