@@ -41,7 +41,7 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 VARARGS_FNS = set(['min'])
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX'])
-BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR'])
+BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
 COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
@@ -343,6 +343,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 elif fn == "SHR" or fn == "SHL":
                     ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                    Def_ShiftOps)
+                elif fn == "NOT":
+                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
+                                                                   Def_GenericUnaryOp)
                 else:
                     ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                    Def_GenericBinOp)

@@ -54,6 +54,7 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('AND', '*', '*'): '&',
                 ('OR', '*', '*'): '|',
                 ('XOR', '*', '*'): '^',
+                ('NOT', '*'): '~',
 
                 ('compare_eq', '*', '*'): '==',
                 ('compare_ne', '*', '*'): '!=',
@@ -281,9 +282,7 @@ class XIRToC(ast.NodeVisitor):
         n = self.visit(node.func)
         if n == 'set_sign_bitWidth':
             return self.visit(node.args[0])
-        elif (n in xir.ARITH_FNS or n in xir.BITWISE_FNS) and n not in ('POW', 'MIN', 'MAX'): #binary only
-            # right now, since operators are not differentiated by type in C, this is okay
-            # but we may need it for half, etc.
+        elif (n in xir.ARITH_FNS or n in xir.BITWISE_FNS) and n not in ('POW', 'MIN', 'MAX', 'NOT'): #binary only
             op, t1, t2 = self._get_op_type(n, node._xir_type)
 
             if (op, t1, t2) in XIR_TO_C_OPS:
@@ -362,6 +361,10 @@ class XIRToC(ast.NodeVisitor):
             #TODO: C is undefined for max neg int
             opkey = self._get_op_type(n, node._xir_type)
             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])})"
+        elif n == 'NOT':
+            op, _ = self._get_op_type(n, node._xir_type)
+
+            return f"{XIR_TO_C_OPS[(op, '*')]}({self.visit(node.args[0])})"
         elif n == 'ROUND':
             #TODO: use fesetenv before the operation!
             return self.visit(node.args[0])
