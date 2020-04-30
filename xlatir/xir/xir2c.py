@@ -499,7 +499,7 @@ if __name__ == "__main__":
     p.add_argument("-o", dest="output", help="Output instruction")
 
     args = p.parse_args()
-    semantics = extract_ex_semantics.load_execute_functions(args.semfile)
+    gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
 
     debug_exclude = set(['execute_ld_param_u64',
                          'execute_ld_param_u16',

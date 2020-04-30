@@ -388,7 +388,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == 'int':
                 return self.visit(node.args[0])
 
-        fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn}_{self.ret}')
+        fnt = self.get_or_gen_ty_var(f'unknown_fn_{self.ret}')
         self.ret += 1
         self.generic_visit(node)
 
@@ -526,7 +526,7 @@ if __name__ == "__main__":
     p.add_argument('ptxinsn', nargs="+", help="PTX instruction in underscore form (e.g. add_u16)")
 
     args = p.parse_args()
-    semantics = extract_ex_semantics.load_execute_functions(args.semfile)
+    gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
 
     if args.task == 'types':
         if len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all':
