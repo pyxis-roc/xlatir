@@ -152,6 +152,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.fn = None
         return x
 
+    def visit_Tuple(self, node):
+        return TyProduct([self.visit(e) for e in node.elts])
+
     def visit_Return(self, node):
         if node.value:
             tyv = self.visit(node.value)
@@ -385,7 +388,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == 'int':
                 return self.visit(node.args[0])
 
-        fnt = self.get_or_gen_ty_var(f'unknown_fn{self.ret}')
+        fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn}_{self.ret}')
         self.ret += 1
         self.generic_visit(node)
 
@@ -440,6 +443,10 @@ def union(s, t, reps):
     elif isinstance(s, TyVarLiteral): #TODO: introduced for shift?
         reps[str(t)] = reps[str(s)]
     elif isinstance(t, TyVarLiteral): #TODO: introduce for shift?
+        reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyProduct):
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyProduct):
         reps[str(s)] = reps[str(t)]
     else:
         reps[str(s)] = reps[str(t)]
@@ -514,7 +521,7 @@ def infer_types(insn_sem):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Run various bits of xir on a semantic")
-    p.add_argument('semfile', help="File containing executable semantics")
+    p.add_argument('semfile', help="File containing executable semantics for XIR")
     p.add_argument('task', help="Task to perform", choices=['types'])
     p.add_argument('ptxinsn', nargs="+", help="PTX instruction in underscore form (e.g. add_u16)")
 

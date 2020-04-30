@@ -114,6 +114,14 @@ class XIRToC(ast.NodeVisitor):
             assert declname is not None, "declname must be provided for fn ptrs"
             return f"{self._get_c_type(t.ret)} (*{declname})({', '.join(arg_types)})"
 
+        if isinstance(t, TyProduct):
+            #NOTE: this won't handle function pointers as return values
+            elt_types = [self._get_c_type(x) for x in t.args]
+            assert declname is not None, "declname must be provided for product types"
+            elt_names = [f"{ty} out{k}" for k, ty in enumerate(elt_types)]
+
+            return f"struct retval_{declname} {{ {'; '.join(elt_names)};  }};"
+
         if not isinstance(t, TyConstant):
             if t.name == 'TY:cc_reg':
                 return f'struct cc_register {declname}'
@@ -415,9 +423,16 @@ class XIRToC(ast.NodeVisitor):
         args = [str(self.visit(a)) for a in node.args]
         return f"{n}({', '.join(args)})"
 
+    def visit_Tuple(self, node):
+        # this assumes that this will always be structure initialization
+        return f"{{ {', '.join([self.visit(e) for e in node.elts])} }}"
+
     def visit_Return(self, node):
         if node.value:
-            return f"return {self.visit(node.value)}"
+            if isinstance(node.value, ast.Tuple):
+                return f"struct retval_{self.fn.name[len('execute_'):]} _retval = {self.visit(node.value)};\n\treturn _retval"
+            else:
+                return f"return {self.visit(node.value)}"
         else:
             return "return"
 
@@ -453,14 +468,17 @@ class XIRToC(ast.NodeVisitor):
         decls = "\n\t".join([f"{t} {v};" for v, t in self.fn._xir_decls.items() if t is not None])
 
 
-        retval = self._get_c_type(node._xir_type.ret)
-
         func = node.name
+        retval = self._get_c_type(node._xir_type.ret,
+                                  func[len('execute_'):] if isinstance(self._get_type(node._xir_type.ret), TyProduct) else None)
+        if retval.startswith("struct "):
+            self.defns.append(retval)
+            retval = retval[:retval.index("{")]
 
         self.defns.append(f"{retval} {func} ({', '.join(args)});")
 
         #TODO: return a C AST?
-        output = f"""\
+        output = f"""
 {retval} {func} ({', '.join(args)}) {{
         {decls}
         {body}
@@ -550,7 +568,7 @@ if __name__ == "__main__":
 
     for pi in args.ptxinsn:
         sem = semantics["execute_" + pi]
-        if pi.startswith('setp_q'): continue
+        #if pi.startswith('setp_q'): continue
         rp.visit(sem)
         ast.dump(sem)
         ty = xir.infer_types(sem)

@@ -80,6 +80,21 @@ class TyPtr(TyTerm):
 
         return TyPtr(pty_copy)
 
+class TyProduct(TyTerm):
+    def __init__(self, args):
+        self.args = args
+
+    def __str__(self):
+        return f"{' * '.join([str(x) for x in self.args])}"
+
+    __repr__ = __str__
+
+    def copy(self, subst = None):
+        arg_copies = [x.copy(subst) for x in self.args]
+
+        return TyProduct(arg_copies)
+
+# rewrite this in terms of TyProduct?
 class TyApp(TyTerm):
     def __init__(self, ret, args):
         self.ret = ret
