@@ -417,6 +417,8 @@ class XIRToC(ast.NodeVisitor):
                 fn = "isnan"
 
             return f"{'!' if n == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({self.visit(node.args[0])})"
+        elif n == "logical_op3":
+            return f"logical_op3({', '.join([self.visit(a) for a in node.args[:-1]])})"
 
         args = [str(self.visit(a)) for a in node.args]
         return f"{n}({', '.join(args)})"
@@ -543,7 +545,6 @@ if __name__ == "__main__":
                          'execute_dp2a_hi_u32_s32', # type errors, not using right sign [also array type]
                          'execute_dp2a_hi_s32_u32', # type errors, not using right sign [also array type]
                          'execute_mov_s32',
-                         'execute_lop3_b32', # immLut type
                          'execute_prmt_f4e_b32', # array type
                          'execute_prmt_b4e_b32', # array type
                          'execute_prmt_rc8_b32', # array type
@@ -589,7 +590,7 @@ if __name__ == "__main__":
             f.write("#include <stdint.h>\n")
             f.write("#include <math.h>\n")
             f.write(f'#include "{header}"\n')
-            f.write(f'#include "ptxc_utils.h"\n')
+            f.write('#include "ptxc_utils.h"\n')
             f.write("\n\n".join(out))
 
         print(f"Writing {header}")
@@ -597,6 +598,7 @@ if __name__ == "__main__":
             f.write("#include <stdlib.h>\n\n")
             f.write("#include <stdint.h>\n\n")
             f.write("#include <math.h>\n\n")
+            f.write('#include "lop3_lut.h"\n')
             f.write("struct cc_register { int cf;};\n")
             f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))") # TODO: actually implement a min
             f.write('\n')
