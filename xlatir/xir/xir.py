@@ -64,6 +64,8 @@ class RewritePythonisms(ast.NodeTransformer):
                                                "-inf")
         return False
 
+    # TODO: handle machine_specific
+
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
             if node.func.id == 'compare':
