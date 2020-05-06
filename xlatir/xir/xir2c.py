@@ -48,6 +48,9 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('MIN', 'float', 'float'): 'fminf',
                 ('MAX', 'float', 'float'): 'fmaxf',
 
+                ('FTZ', 'float'): 'FTZ',
+                ('FTZ', 'double'): 'FTZ',
+
                 ('MIN', 'double', 'double'): 'fmin',
                 ('MAX', 'double', 'double'): 'fmax',
                 ('MAX', '*', '*'): 'MAX',
@@ -95,6 +98,212 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('ABSOLUTE', 'int16_t'): 'abs',
                 ('ABSOLUTE', 'float'): 'fabsf',
                 ('ABSOLUTE', 'double'): 'fabs'}
+
+class Clib(object):
+    def _do_fnop(self, n, fnty, args, node):
+
+        arglen = len(fnty) - 1
+
+        if fnty not in XIR_TO_C_OPS:
+            opkey = tuple([n] + ['*'] * arglen) # contains arity info
+        else:
+            opkey = fnty
+
+        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        return f"{XIR_TO_C_OPS[opkey]}({', '.join([a for a in args[:arglen]])})"
+
+    POW = _do_fnop
+    MIN = _do_fnop
+    MAX = _do_fnop
+    set_memory = _do_fnop
+    FTZ = _do_fnop
+
+    def _do_compare_unordered(self, n, fnty, args, node):
+        assert n[-1] == 'u' # unordered
+        n = n[:-1]
+
+        if fnty in XIR_TO_C_OPS:
+            opkey = fnty
+        else:
+            opkey = (n, '*', '*')
+
+        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        a1 = args[0]
+        a2 = args[1]
+
+        return f"isnan({a1}) || isnan({a2}) || (({a1}) {XIR_TO_C_OPS[opkey]} ({a2}))"
+
+    compare_equ = _do_compare_unordered
+    compare_neu = _do_compare_unordered
+    compare_ltu = _do_compare_unordered
+    compare_leu = _do_compare_unordered
+    compare_gtu = _do_compare_unordered
+    compare_geu = _do_compare_unordered
+
+    def _do_compare(self, n, fnty, args, node):
+        if fnty not in XIR_TO_C_OPS:
+            fnty = (fnty[0], '*', '*')
+
+        assert fnty in XIR_TO_C_OPS, f"Missing operator translation {fnty}"
+
+        return f"({args[0]} {XIR_TO_C_OPS[fnty]} {args[1]})"
+
+    compare_eq = _do_compare
+    compare_ne = _do_compare
+    compare_lt = _do_compare
+    compare_le = _do_compare
+    compare_gt = _do_compare
+    compare_ge = _do_compare
+    compare_lo = _do_compare
+    compare_ls = _do_compare
+    compare_hi = _do_compare
+    compare_hs = _do_compare
+    
+    def compare_nan(self, n, fnty, args, node):
+        assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
+        return f"(isnan({args[0]}) || isnan({args[1]}))"
+
+    def compare_num(self, n, fnty, args, node):
+        assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
+        return f"!(isnan({args[0]}) || isnan({args[1]}))"
+
+class CXlator(object):
+    def __init__(self, x2x):
+        self.x2x = x2x # parent ast.NodeVisitor
+        self.lib = Clib()
+
+    def _get_c_type(self, node, declname = None):
+        if isinstance(node, ast.AST):
+            ty = node._xir_type
+        else:
+            ty = node
+
+        t = xir.find(ty, self.x2x.types)
+
+        if isinstance(t, TyPtr):
+            pt = self._get_c_type(t.pty)
+            return f"{pt} *"
+
+        if isinstance(t, TyApp):
+            arg_types = [self._get_c_type(x) for x in t.args]
+            assert declname is not None, "declname must be provided for fn ptrs"
+            return f"{self._get_c_type(t.ret)} (*{declname})({', '.join(arg_types)})"
+
+        if isinstance(t, TyProduct):
+            #NOTE: this won't handle function pointers as return values
+            elt_types = [self._get_c_type(x) for x in t.args]
+            assert declname is not None, "declname must be provided for product types"
+            elt_names = [f"{ty} out{k}" for k, ty in enumerate(elt_types)]
+
+            return f"struct retval_{declname} {{ {'; '.join(elt_names)};  }}"
+
+        if not isinstance(t, TyConstant):
+            if isinstance(t, TyVarLiteral):
+                return f'literal_type'
+
+            assert isinstance(t, TyConstant), f"Non-TyConstant type: {t}"
+
+        if declname:
+            return f"{XIR_TO_C_TYPES[t.value]} {declname}"
+        else:
+            return XIR_TO_C_TYPES[t.value]
+
+    def get_declaration(self, node, declname = None):
+        return self._get_c_type(node, declname)
+
+    def get_native_type(self, xirty, declname = None):
+        return self._get_c_type(xirty, declname)
+
+    def xlat_Name(self, name: str, node):
+        return name
+
+    def xlat_NameConstant(self, value, node):
+        if node.value == True:
+            return "1"
+        elif node.value == False:
+            return "0"
+        elif node.value is None:
+            return "None"
+
+        raise NotImplementedError(f"NameConstant for value {value} not supported")
+
+    def xlat_Attribute(self, value, attr: str, node):
+        raise NotImplementedError
+
+    def xlat_Str(self, s, node):
+        return s
+
+    def xlat_Num(self, n, node):
+        return f'{node.n}'
+
+    def xlat_BoolOp(self, op, opty, values, node):
+        return f" {op} ".join(values)
+
+    def xlat_BinOp(self, op, opty, left, right, node):
+        raise NotImplementedError
+
+    def xlat_Compare(self, op, opty, left, right, node):
+        raise NotImplementedError
+
+    def xlat_UnaryOp(self, op, opty, value, node):
+        return f'({op}{value})'
+
+    def xlat_IfExp(self, test, body, orelse, node):
+        return f"{test} ? {body} : {orelse}"
+
+    def xlat_If(self, test, body, orelse, node):
+        raise NotImplementedError
+
+    def xlat_Break(self, node):
+        raise NotImplementedError
+
+    def xlat_float_val(self, v):
+        raise NotImplementedError
+
+    def xlat_float_compare(self, comparefn, constval, compareto):
+        raise NotImplementedError
+
+    def xlat_struct_init(self, elts, node):
+        raise NotImplementedError
+
+    def xlat_Call(self, fn, fnty, args, node):
+        return f"{fn}({', '.join(args)})"
+
+    def xlat_Return(self, v, vty, node):
+        if isinstance(v, list):
+            vty = vty[:vty.index("{")]
+            v = f"{vty} _retval = {{ {', '.join(v)} }};\n\treturn _retval"
+            return v
+        else:
+            return f"return {v}"
+
+    def xlat_Assign(self, lhs, rhs, node):
+        return f"{lhs} = {rhs}"
+
+    def xlat_While(self, test, body, node):
+        raise NotImplementedError
+
+    def xlat_FunctionDef(self, name, params, retval, decls, body, node):
+        body = "\n\t".join([s + ";" for s in body])
+        decls = "\n\t".join([f"{t} {v};" for (v, t) in decls])
+
+        if retval.startswith("struct "):
+            self.x2x.defns.append(retval + ";")
+            retval = retval[:retval.index("{")]
+
+        self._retval_ty = retval
+        self.x2x.defns.append(f"{retval} {name} ({', '.join(params)});")
+
+        output = f"""
+{retval} {name} ({', '.join(params)}) {{
+        {decls}
+
+        {body}
+}}"""
+
+        return output
 
 # For now, use strings instead of returning an AST?
 class XIRToC(ast.NodeVisitor):

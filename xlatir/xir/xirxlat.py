@@ -5,24 +5,26 @@
 # Utilities for helping with translating XIR to other languages
 
 import xir
+import ast
+import extract_ex_semantics
+import xir2c
+from xirtyping import *
 
 # The passing of actual arguments instead of just node in the xlat_*
 # functions is meant to make things convenient. In case this doesn't
 # work, a class where only the node is passed and the arguments are
 # passed as lambdas returning a dictionary might be useful?
 
-NIE = NotImplementedError
-
 class Xlator(object):
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
 
-    def get_declaration(self, node):
+    def get_declaration(self, node, declname = None):
         # must return a declaration
         raise NotImplementedError
 
-    def get_native_ty(self, xirty):
-        raise NIE
+    def get_native_type(self, xirty, declname = None):
+        raise NotImplementedError
 
     def xlat_Name(self, name: str, node):
         raise NotImplementedError
@@ -34,55 +36,55 @@ class Xlator(object):
         raise NotImplementedError
 
     def xlat_Str(self, s, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_Num(self, n, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_BoolOp(self, op, opty, values, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_BinOp(self, op, opty, left, right, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_Compare(self, op, opty, left, right, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_UnaryOp(self, op, opty, value, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_IfExp(self, test, body, orelse, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_If(self, test, body, orelse, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_Break(self, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_float_val(self, v):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_float_compare(self, comparefn, constval, compareto):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_struct_init(self, elts, node):
-        raise NIE
+        raise NotImplementedError
 
-    def xlat_Function(self, fn, fnty, args, node):
-        raise NIE
+    def xlat_Call(self, fn, fnty, args, node):
+        raise NotImplementedError
 
-    def xlat_Return(self, v):
-        raise NIE
+    def xlat_Return(self, v, vty, node):
+        raise NotImplementedError
 
     def xlat_Assign(self, lhs, rhs):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_While(self, test, body, node):
-        raise NIE
+        raise NotImplementedError
 
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
-        raise NIE
+        raise NotImplementedError
 
 class XIRToX(ast.NodeVisitor):
     X = None # structured like a node visitor, except with xlat_X instead of visit_X
@@ -198,7 +200,7 @@ class XIRToX(ast.NodeVisitor):
 
         opty = self._get_op_type(op, node._xir_type)
 
-        return self.X.xlat_UnaryOp(op, opty, self.visit(node.operand))
+        return self.X.xlat_UnaryOp(op, opty, self.visit(node.operand), node)
 
     def visit_Expr(self, node):
         return self.visit(node.value)
@@ -219,6 +221,7 @@ class XIRToX(ast.NodeVisitor):
 
     def visit_Call(self, node):
         n = self.visit(node.func)
+
         if n == 'set_sign_bitWidth':
             return self.visit(node.args[0])
         elif n == 'int':
@@ -241,14 +244,14 @@ class XIRToX(ast.NodeVisitor):
 
             return self.X.xlat_float_compare(n, v, self.visit(node.args[0]))
 
-        fnty = self._get_op_type(fn, node._xir_type)
+        fnty = self._get_op_type(n, node._xir_type)
 
         if hasattr(self.X, 'lib'):
-            if hasttr(self.X.lib, fn):
-                fnxlat = getattr(self.X.lib, fn)
-                return fnxlat(fn, fnty, node)
+            if hasattr(self.X.lib, n):
+                fnxlat = getattr(self.X.lib, n)
+                return fnxlat(n, fnty, [self.visit(a) for a in node.args], node)
 
-        return self.X.xlat_Function(fn, fnty, [self.visit(a) for a in node.args], node)
+        return self.X.xlat_Call(n, fnty, [self.visit(a) for a in node.args], node)
 
     def visit_Tuple(self, node):
         # this assumes that this will always be structure initialization
@@ -260,13 +263,14 @@ class XIRToX(ast.NodeVisitor):
         else:
             v = None
 
-        return self.X.xlat_Return(v)
+        #TODO: embed struct name?
+        return self.X.xlat_Return(v, self._retval_ty, node)
 
     def visit_Assign(self, node):
         assert len(node.targets) == 1, "Not supported"
 
         #TODO: types?
-        return self.xlat_Assign(self.visit(node.targets[0]), self.visit(node.value), node)
+        return self.X.xlat_Assign(self.visit(node.targets[0]), self.visit(node.value), node)
 
     def visit_While(self, node):
         assert len(node.orelse) == 0
@@ -275,7 +279,7 @@ class XIRToX(ast.NodeVisitor):
         test = self.visit(node.test)
         body = [self.visit(x) for x in node.body]
 
-        return self.xlat_While(test, body, node)
+        return self.X.xlat_While(test, body, node)
 
     def visit_FunctionDef(self, node):
         # perhaps make this per block?
@@ -288,11 +292,16 @@ class XIRToX(ast.NodeVisitor):
             node._xir_decls[a.arg] = None
             args.append(t)
 
-        out = [s for s in node.body]
-        decls = [(t, v) for (t, v) in self.fn._xir_decls.items() if t is not None]
+
         func = node.name
-        retval = self.X.get_native_ty(node._xir_type.ret,
-                                      func[len('execute_'):] if isinstance(self._get_type(node._xir_type.ret), TyProduct) else None)
+        retval = self.X.get_native_type(node._xir_type.ret,
+                                        func[len('execute_'):] if isinstance(self._get_type(node._xir_type.ret), TyProduct) else None)
+
+        self._retval_ty = retval
+
+        # order is important!
+        body = [self.visit(s) for s in node.body]
+        decls = [(v, t) for (v, t) in self.fn._xir_decls.items() if t is not None]
 
         self.fn = None
 
@@ -303,3 +312,40 @@ class XIRToX(ast.NodeVisitor):
         #TODO: handle this?
         self.defns = []
         return self.visit(sem)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    p = argparse.ArgumentParser(description="Translate XIR")
+    p.add_argument("semfile", help="XIR semantics")
+    p.add_argument("language", choices=["c"])
+
+    args = p.parse_args()
+
+    gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
+    rp = xir.RewritePythonisms()
+
+    translator = XIRToX()
+    translator.X = xir2c.CXlator(translator)
+
+    out = []
+    defns = []
+    for pi in semantics.keys():
+        sem = semantics[pi]
+        rp.visit(sem)
+        #ast.dump(sem)
+        ty = xir.infer_types(sem)
+        out.append(translator.translate(sem, ty))
+        defns.extend(translator.defns)
+
+    #header = 'ptxc.h'
+    with open("test.c", "w") as f:
+        f.write("#include <stdlib.h>\n")
+        f.write("#include <stdint.h>\n")
+        f.write("#include <math.h>\n")
+        #f.write(f'#include "{header}"\n')
+        f.write('#include "ptxc_utils.h"\n')
+
+        print("\n".join(defns), file=f)
+        print("\n".join(out), file=f)
