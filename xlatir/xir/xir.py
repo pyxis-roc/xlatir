@@ -245,7 +245,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_Num(self, node):
         #TODO: more nuanced?
-        return self.get_or_gen_ty_var(f"{node.n}_{self.literal_index}", literal=node.n)
+        ty =  self.get_or_gen_ty_var(f"{node.n}_{self.literal_index}", literal=node.n)
+        node._xir_type = ty
+        return ty
 
     def visit_NameConstant(self, node):
         if node.value == True or node.value == False:
