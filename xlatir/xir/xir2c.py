@@ -54,6 +54,7 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('MIN', 'double', 'double'): 'fmin',
                 ('MAX', 'double', 'double'): 'fmax',
                 ('MAX', '*', '*'): 'MAX',
+                ('min', '*', '*'): 'ptx_min', # this is varargs, but restrict it to 2?
 
                 ('AND', '*', '*'): '&',
                 ('OR', '*', '*'): '|',
@@ -93,11 +94,18 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('POW', 'float', 'float'): 'powf',
                 ('POW', 'double', 'double'): 'pow',
 
+                ('set_memory', '*', '*'): 'set_memory',
+                ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
+
                 ('ABSOLUTE', 'int32_t'): 'abs',
                 ('ABSOLUTE', 'int64_t'): 'labs', # depends on 64-bit model
                 ('ABSOLUTE', 'int16_t'): 'abs',
                 ('ABSOLUTE', 'float'): 'fabsf',
-                ('ABSOLUTE', 'double'): 'fabs'}
+                ('ABSOLUTE', 'double'): 'fabs',
+                ('ROUND', '*'): '', # TODO
+                ('SATURATE', 'int32_t'): '', #TODO
+                ('SATURATE', '*'): 'SATURATE', # not for int!
+}
 
 class Clib(object):
     def _do_fnop(self, n, fnty, args, node):
@@ -118,6 +126,46 @@ class Clib(object):
     MAX = _do_fnop
     set_memory = _do_fnop
     FTZ = _do_fnop
+    logical_op3 = _do_fnop
+    min = _do_fnop
+    ABSOLUTE = _do_fnop
+    ROUND = _do_fnop
+    SATURATE = _do_fnop
+    NOT = _do_fnop # because not is a prefix op
+
+    def subnormal_check(self, n, fnty, args, node):
+        return f"fpclassify({args[0]}) == FP_SUBNORMAL"
+
+    def _do_infix_op(self, n, fnty, args, node):
+        arglen = len(fnty) - 1
+        assert arglen == 2, f"Not supported {n}/{fnty} for infix op"
+
+        if fnty not in XIR_TO_C_OPS:
+            opkey = tuple([n] + ['*'] * arglen) # contains arity info
+        else:
+            opkey = fnty
+
+        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        return f"({args[0]} {XIR_TO_C_OPS[opkey]} {args[1]})"
+
+    GTE = _do_infix_op
+    GT = _do_infix_op
+    LT = _do_infix_op
+    LTE = _do_infix_op
+    EQ = _do_infix_op
+    NOTEQ = _do_infix_op
+
+    OR = _do_infix_op
+    AND = _do_infix_op
+    XOR = _do_infix_op
+    SHR = _do_infix_op
+    SHL = _do_infix_op
+
+    ADD = _do_infix_op
+    SUB = _do_infix_op
+    MUL = _do_infix_op
+    DIV = _do_infix_op
 
     def _do_compare_unordered(self, n, fnty, args, node):
         assert n[-1] == 'u' # unordered
@@ -160,7 +208,7 @@ class Clib(object):
     compare_ls = _do_compare
     compare_hi = _do_compare
     compare_hs = _do_compare
-    
+
     def compare_nan(self, n, fnty, args, node):
         assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
         return f"(isnan({args[0]}) || isnan({args[1]}))"
@@ -229,8 +277,9 @@ class CXlator(object):
 
         raise NotImplementedError(f"NameConstant for value {value} not supported")
 
+    #TODO: types?
     def xlat_Attribute(self, value, attr: str, node):
-        raise NotImplementedError
+        return f'{value}.{attr}'
 
     def xlat_Str(self, s, node):
         return s
@@ -242,10 +291,10 @@ class CXlator(object):
         return f" {op} ".join(values)
 
     def xlat_BinOp(self, op, opty, left, right, node):
-        raise NotImplementedError
+        return f'({left} {op} {right})'
 
     def xlat_Compare(self, op, opty, left, right, node):
-        raise NotImplementedError
+        return f'({left} {op} {right})'
 
     def xlat_UnaryOp(self, op, opty, value, node):
         return f'({op}{value})'
@@ -254,36 +303,67 @@ class CXlator(object):
         return f"{test} ? {body} : {orelse}"
 
     def xlat_If(self, test, body, orelse, node):
-        raise NotImplementedError
+        body = ["\t\t" + x + ";" for x in body]
+        if orelse:
+            orelse = ["\t\t" + x + ";" for x in orelse]
+        else:
+            orelse = None
+
+        out = [f'if ({test}) {{']
+        out.extend(body)
+        if orelse:
+            out.append('\t} else {')
+            out.extend(orelse)
+        out.append('\t}')
+
+        return '\n'.join(out)
 
     def xlat_Break(self, node):
-        raise NotImplementedError
+        return "break\n"
 
     def xlat_float_val(self, v):
-        raise NotImplementedError
+        if v == 'inf':
+            return "INFINITY" # since C99
+        elif v == '-inf':
+            return "-INFINITY" # since C99
+        elif v == 'nan':
+            return "NAN" # since C99, but could also use nan()?
+        elif v == '-nan':
+            return "-NAN"
+        elif v == '-0.0' or v == '0.0':
+            return v
+        else:
+            raise NotImplementedError(f"Unknown float constant {v}")
 
     def xlat_float_compare(self, comparefn, constval, compareto):
-        raise NotImplementedError
+        if constval == 'inf' or constval == '-inf':
+            fn = "!isfinite"
+        elif constval == 'nan' or constval == '-nan':
+            fn = "isnan"
 
-    def xlat_struct_init(self, elts, node):
-        raise NotImplementedError
+        return f"{'!' if comparefn == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({compareto})"
 
     def xlat_Call(self, fn, fnty, args, node):
-        return f"{fn}({', '.join(args)})"
+        arglen = len(fnty) - 1
+        return f"{fn}({', '.join(args[:arglen])})"
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
             vty = vty[:vty.index("{")]
             v = f"{vty} _retval = {{ {', '.join(v)} }};\n\treturn _retval"
             return v
-        else:
+        elif v is not None:
             return f"return {v}"
+        else:
+            return f"return"
 
     def xlat_Assign(self, lhs, rhs, node):
         return f"{lhs} = {rhs}"
 
     def xlat_While(self, test, body, node):
-        raise NotImplementedError
+        body = ["\t\t" + x + ";" for x in body]
+
+        return f"while({test}) {{" + "\n" + "\n".join(body) + "\n}"
 
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         body = "\n\t".join([s + ";" for s in body])
@@ -701,6 +781,70 @@ class XIRToC(ast.NodeVisitor):
         self.defns = []
         return self.visit(sem)
 
+debug_exclude = set(['execute_ld_param_u64',
+                     'execute_ld_param_u16',
+                     'execute_ld_param_u32',
+                     'execute_ld_param_f32',
+                     'execute_ld_param_f64',
+                     'execute_cvta_to_global_u64',
+
+                     'execute_mad_wide_u16',
+                     'execute_mad_wide_s16',
+                     'execute_mad_wide_s32',
+                     'execute_mad_wide_u32',
+                     'execute_mad_wide_s64',
+                     'execute_mad_wide_u64',
+
+                     'execute_bfind_b32', # while
+                     'execute_bfind_s32',
+                     'execute_bfind_u32',
+                     'execute_bfind_u64',
+                     'execute_bfind_s64', # type error
+                     'execute_bfind_shiftamt_s32',
+                     'execute_bfind_shiftamt_s64',
+                     'execute_bfe_u32', # bitwise, and type error, uses multiplication to get strings of length X
+                     'execute_bfe_s32', # bitwise, and type error
+                     'execute_bfe_s64', # bitwise, and type error
+                     'execute_bfe_u64',
+                     'execute_fns_unsigned_s32',
+                     'execute_fns_unsigned_b32',
+                     'execute_fns_signed_s32',
+                     'execute_fns_signed_s32',
+                     'execute_bfi_b32', # type errors, binary strings?
+                     'execute_bfi_b64', # type errors, binary strings?
+                     'execute_dp4a_u32_u32', # type errors, not using right sign
+                     'execute_dp4a_u32_s32', # type errors, not using right sign
+                     'execute_dp4a_s32_u32', # type errors, not using right sign [also array type]
+                     'execute_dp4a_s32_s32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_lo_u32_u32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_lo_s32_s32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_lo_u32_s32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_lo_s32_u32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_hi_u32_u32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_hi_s32_s32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_hi_u32_s32', # type errors, not using right sign [also array type]
+                     'execute_dp2a_hi_s32_u32', # type errors, not using right sign [also array type]
+                     'execute_mov_s32',
+                     'execute_prmt_f4e_b32', # array type
+                     'execute_prmt_b4e_b32', # array type
+                     'execute_prmt_rc8_b32', # array type
+                     'execute_prmt_ecl_b32', # array type
+                     'execute_prmt_ecr_b32', # array type
+                     'execute_prmt_rc16_b32', # array type
+
+                     'execute_rem_u16',
+                     'execute_rem_u32',
+                     'execute_rem_u64',
+
+                     'execute_rem_s16',
+                     'execute_rem_s32',
+                     'execute_rem_s64',
+
+                     'execute_lg2_approx_f32', # no support for LOG
+                     'execute_lg2_approx_ftz_f32', # no support for LOG
+
+]) # temporary
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert XIR semantics to C")
     p.add_argument('semfile', help="File containing executable semantics")
@@ -710,69 +854,6 @@ if __name__ == "__main__":
     args = p.parse_args()
     gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
 
-    debug_exclude = set(['execute_ld_param_u64',
-                         'execute_ld_param_u16',
-                         'execute_ld_param_u32',
-                         'execute_ld_param_f32',
-                         'execute_ld_param_f64',
-                         'execute_cvta_to_global_u64',
-
-                         'execute_mad_wide_u16',
-                         'execute_mad_wide_s16',
-                         'execute_mad_wide_s32',
-                         'execute_mad_wide_u32',
-                         'execute_mad_wide_s64',
-                         'execute_mad_wide_u64',
-
-                         'execute_bfind_b32', # while
-                         'execute_bfind_s32',
-                         'execute_bfind_u32',
-                         'execute_bfind_u64',
-                         'execute_bfind_s64', # type error
-                         'execute_bfind_shiftamt_s32',
-                         'execute_bfind_shiftamt_s64',
-                         'execute_bfe_u32', # bitwise, and type error, uses multiplication to get strings of length X
-                         'execute_bfe_s32', # bitwise, and type error
-                         'execute_bfe_s64', # bitwise, and type error
-                         'execute_bfe_u64',
-                         'execute_fns_unsigned_s32',
-                         'execute_fns_unsigned_b32',
-                         'execute_fns_signed_s32',
-                         'execute_fns_signed_s32',
-                         'execute_bfi_b32', # type errors, binary strings?
-                         'execute_bfi_b64', # type errors, binary strings?
-                         'execute_dp4a_u32_u32', # type errors, not using right sign
-                         'execute_dp4a_u32_s32', # type errors, not using right sign
-                         'execute_dp4a_s32_u32', # type errors, not using right sign [also array type]
-                         'execute_dp4a_s32_s32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_lo_u32_u32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_lo_s32_s32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_lo_u32_s32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_lo_s32_u32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_hi_u32_u32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_hi_s32_s32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_hi_u32_s32', # type errors, not using right sign [also array type]
-                         'execute_dp2a_hi_s32_u32', # type errors, not using right sign [also array type]
-                         'execute_mov_s32',
-                         'execute_prmt_f4e_b32', # array type
-                         'execute_prmt_b4e_b32', # array type
-                         'execute_prmt_rc8_b32', # array type
-                         'execute_prmt_ecl_b32', # array type
-                         'execute_prmt_ecr_b32', # array type
-                         'execute_prmt_rc16_b32', # array type
-
-                         'execute_rem_u16',
-                         'execute_rem_u32',
-                         'execute_rem_u64',
-
-                         'execute_rem_s16',
-                         'execute_rem_s32',
-                         'execute_rem_s64',
-
-                         'execute_lg2_approx_f32', # no support for LOG
-                         'execute_lg2_approx_ftz_f32', # no support for LOG
-
-    ]) # temporary
 
     if len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all':
         args.ptxinsn = [k[len("execute_"):] for k in semantics if k not in debug_exclude]

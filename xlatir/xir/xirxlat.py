@@ -68,9 +68,6 @@ class Xlator(object):
     def xlat_float_compare(self, comparefn, constval, compareto):
         raise NotImplementedError
 
-    def xlat_struct_init(self, elts, node):
-        raise NotImplementedError
-
     def xlat_Call(self, fn, fnty, args, node):
         raise NotImplementedError
 
@@ -101,8 +98,14 @@ class XIRToX(ast.NodeVisitor):
             return (op, arg_types[0], arg_types[1])
         elif len(arg_types) == 1:
             return (op, arg_types[0])
-        else:
-            raise NotImplementedError(f"Arguments of length {len(arg_types)} not currently handled")
+        elif len(arg_types) > 2: # TODO: break this up?
+            if op == '||' or op == '&&':
+                return tuple([op] + arg_types)
+            elif op == 'logical_op3' and len(arg_types) == 4:
+                print("for lop3", arg_types)
+                return tuple([op] + arg_types)
+
+        raise NotImplementedError(f"Arguments of length {len(arg_types)} for {op}/{opty} not currently handled")
 
     def _get_float_val(self, node):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'float':
@@ -132,7 +135,7 @@ class XIRToX(ast.NodeVisitor):
     def visit_Attribute(self, node):
         #TODO decide whether to use . or ->
         # TODO: use visit
-        return self.X.xlat_Attribute(self.visit(node.value), self.visit(node.attr), node)
+        return self.X.xlat_Attribute(self.visit(node.value), node.attr, node)
 
     def visit_Str(self, node):
         return self.X.xlat_Str(node.s, node)
@@ -214,7 +217,8 @@ class XIRToX(ast.NodeVisitor):
     def visit_If(self, node):
         return self.X.xlat_If(self.visit(node.test),
                               [self.visit(x) for x in node.body],
-                              [self.visit(x) for x in node.orelse])
+                              [self.visit(x) for x in node.orelse],
+                              node)
 
     def visit_Break(self, node):
         return self.X.xlat_Break(node)
@@ -273,7 +277,7 @@ class XIRToX(ast.NodeVisitor):
         return self.X.xlat_Assign(self.visit(node.targets[0]), self.visit(node.value), node)
 
     def visit_While(self, node):
-        assert len(node.orelse) == 0
+        assert len(node.orelse) == 0, f"orelse for While node not supported"
 
         #TODO: type checking?
         test = self.visit(node.test)
@@ -331,11 +335,22 @@ if __name__ == "__main__":
 
     out = []
     defns = []
+
+    tyerrors = []
+
     for pi in semantics.keys():
+        if pi in xir2c.debug_exclude: continue
+        #if pi != 'execute_sqrt_approx_ftz_f32': continue
+
         sem = semantics[pi]
         rp.visit(sem)
         #ast.dump(sem)
-        ty = xir.infer_types(sem)
+        try:
+            ty = xir.infer_types(sem)
+        except AssertionError as e:
+            tyerrors.append((pi, e))
+            continue
+
         out.append(translator.translate(sem, ty))
         defns.extend(translator.defns)
 
@@ -345,7 +360,13 @@ if __name__ == "__main__":
         f.write("#include <stdint.h>\n")
         f.write("#include <math.h>\n")
         #f.write(f'#include "{header}"\n')
+        f.write('#include "lop3_lut.h"\n')
         f.write('#include "ptxc_utils.h"\n')
+        f.write("struct cc_register { int cf;};\n")
+        f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))\n") # TODO: actually implement a min
 
         print("\n".join(defns), file=f)
         print("\n".join(out), file=f)
+
+    for x, e in tyerrors:
+        print(x, e)

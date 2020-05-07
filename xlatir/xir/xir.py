@@ -250,6 +250,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
     def visit_NameConstant(self, node):
         if node.value == True or node.value == False:
             return TyConstant("bool")
+        elif node.value is None:
+            return TyConstant("None")
         else:
             return None
 
@@ -311,101 +313,128 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
             return v, fullty
 
-        if isinstance(node.func, ast.Name):
-            fn = node.func.id
-            if fn == 'set_sign_bitWidth':
-                v, fullty = _get_ty_from_fn_call(node.args[0], node.args[1],
-                                                 node.args[2], node.args[3])
+        fn = node.func.id if isinstance(node.func, ast.Name) else None
 
-                if not isinstance(v, TyTerm):
-                    tv = self.get_or_gen_ty_var(v)
-                else:
-                    tv = v
+        if fn == 'set_sign_bitWidth':
+            v, fullty = _get_ty_from_fn_call(node.args[0], node.args[1],
+                                             node.args[2], node.args[3])
 
-                self.equations.append(TyEqn(tv, TyConstant(fullty)))
-                return tv
-            elif fn == 'set_value':
-                v, fullty = _get_ty_from_fn_call(node.args[2], node.args[0],
-                                                 node.args[3], node.args[1])
+            if not isinstance(v, TyTerm):
                 tv = self.get_or_gen_ty_var(v)
-                self.equations.append(TyEqn(tv, TyConstant(fullty)))
-                return tv
-            elif fn in COMPARE_PTX:
-                #TODO: support bool and pred
-                tv = self.get_or_gen_ty_var(fn)
+            else:
+                tv = v
+
+            self.equations.append(TyEqn(tv, TyConstant(fullty)))
+            return tv
+        elif fn == 'set_value':
+            v, fullty = _get_ty_from_fn_call(node.args[2], node.args[0],
+                                             node.args[3], node.args[1])
+            tv = self.get_or_gen_ty_var(v)
+            self.equations.append(TyEqn(tv, TyConstant(fullty)))
+            return tv
+        elif fn in COMPARE_PTX:
+            #TODO: support bool and pred
+            tv = self.get_or_gen_ty_var(fn)
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                           PolyTyDef(["gamma"],
+                                                                     TyApp(TyConstant('bool'),
+                                                                           [TyVar("gamma"),
+                                                                            TyVar("gamma")])))
+            node._xir_type = fnt
+
+            return ret
+        elif fn in BOOLEAN_OP_PTX:
+            tv = self.get_or_gen_ty_var(fn)
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                           PolyTyDef([],
+                                                                     TyApp(TyConstant('bool'),
+                                                                           [TyConstant("bool"),
+                                                                            TyConstant("bool")])))
+            node._xir_type = fnt
+
+            return ret
+
+        elif fn in ARITH_FNS or fn in BITWISE_FNS:
+            #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
+            if fn == 'MUL':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                               PolyTyDef(["gamma"],
-                                                                         TyApp(TyConstant('bool'),
-                                                                               [TyVar("gamma"),
-                                                                                TyVar("gamma")])))
-                node._xir_type = fnt
-
-                return ret
-            elif fn in BOOLEAN_OP_PTX:
-                tv = self.get_or_gen_ty_var(fn)
+                                                               Def_MulOp)
+            elif fn == "SHR" or fn == "SHL":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                               PolyTyDef([],
-                                                                         TyApp(TyConstant('bool'),
-                                                                               [TyConstant("bool"),
-                                                                                TyConstant("bool")])))
-                node._xir_type = fnt
+                                                               Def_ShiftOps)
+            elif fn == "NOT":
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
+                                                               Def_GenericUnaryOp)
+            else:
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               Def_GenericBinOp)
 
-                return ret
+            node._xir_type = fnt
 
-            elif fn in ARITH_FNS or fn in BITWISE_FNS:
-                #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
-                if fn == 'MUL':
-                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                                   Def_MulOp)
-                elif fn == "SHR" or fn == "SHL":
-                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                                   Def_ShiftOps)
-                elif fn == "NOT":
-                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
-                                                                   Def_GenericUnaryOp)
-                else:
-                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                                   Def_GenericBinOp)
-
-                node._xir_type = fnt
-
-                return ret
-            elif fn in VARARGS_FNS:
-                if fn == 'min':
-                    ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
-                                                                   PolyTyDef(["gamma"],
-                                                                             TyApp(TyVar("gamma"),
-                                                                                   [TyVar("gamma")]*len(node.args))))
-                else:
-                    raise NotImplementedError(f"Function {fn} not implemented")
-
-                node._xir_type = fnt
-
-                return ret
-            elif fn in COMPARE_FNS:
+            return ret
+        elif fn in VARARGS_FNS:
+            if fn == 'min':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
-                                                               Def_GenericCompare)
+                                                               PolyTyDef(["gamma"],
+                                                                         TyApp(TyVar("gamma"),
+                                                                               [TyVar("gamma")]*len(node.args))))
+            else:
+                raise NotImplementedError(f"Function {fn} not implemented")
 
-                node._xir_type = fnt
-            elif fn in FLOAT_FNS:
-                # note: saturate also carries a type, but not a width ...
-                argty = self.visit(node.args[0])
-                #TODO: add equations?
-                node._xir_type = TyApp(argty, [argty])
-                return argty
-            elif fn == 'set_memory':
-                sm_var = self.get_or_gen_ty_var(fn)
-                addrty = self.visit(node.args[0])
-                sm_ty = TyApp(TyConstant('void'), [TyConstant('intptr_t'), self.visit(node.args[1])])
-                self.equations.append(TyEqn(sm_var, sm_ty))
-                self.equations.append(TyEqn(addrty, TyConstant('intptr_t')))
-            elif fn == 'int':
-                return self.visit(node.args[0])
+            node._xir_type = fnt
 
-        fnt = self.get_or_gen_ty_var(f'unknown_fn_{self.ret}')
+            return ret
+        elif fn in COMPARE_FNS:
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           Def_GenericCompare)
+
+            node._xir_type = fnt
+
+            return ret
+        elif fn in FLOAT_FNS:
+            # note: saturate also carries a type, but not a width ...
+            argty = self.visit(node.args[0])
+            #TODO: add equations?
+            node._xir_type = TyApp(argty, [argty])
+            return argty
+        elif fn == 'set_memory':
+            # don't use _generate_poly_call, since this is a variable...
+            sm_var = self.get_or_gen_ty_var(fn)
+            addrty = self.visit(node.args[0])
+            sm_ty = TyApp(TyConstant('void'), [TyConstant('intptr_t'), self.visit(node.args[1])])
+
+            self.equations.append(TyEqn(sm_var, sm_ty))
+            self.equations.append(TyEqn(addrty, TyConstant('intptr_t')))
+
+            node._xir_type = sm_ty
+            return sm_ty
+        elif fn == 'logical_op3':
+            res, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:4],
+                                                           PolyTyDef([],
+                                                                     TyApp(TyConstant('b32'),
+                                                                           [TyConstant('b32'),
+                                                                            TyConstant('b32'),
+                                                                            TyConstant('b32'),
+                                                                            TyConstant('u8')])))
+            node._xir_type = fnt
+            return res
+        elif fn == 'subnormal_check':
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyConstant('bool'),
+                                                                           [TyVar('gamma')]))
+                                                           )
+
+            node._xir_type = fnt
+            return ret
+        elif fn == 'int':
+            # int is not treated as a cast
+            return self.visit(node.args[0])
+
+        fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
         self.ret += 1
         self.generic_visit(node)
-
+        #node._xir_type = fnt
         return fnt
 
     def visit_IfExp(self, node):
