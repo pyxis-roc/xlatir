@@ -7,7 +7,6 @@
 import xir
 import ast
 import extract_ex_semantics
-import xir2c
 from xirtyping import *
 
 # The passing of actual arguments instead of just node in the xlat_*
@@ -74,13 +73,16 @@ class Xlator(object):
     def xlat_Return(self, v, vty, node):
         raise NotImplementedError
 
-    def xlat_Assign(self, lhs, rhs):
+    def xlat_Assign(self, lhs, rhs, node): #TODO types?
         raise NotImplementedError
 
     def xlat_While(self, test, body, node):
         raise NotImplementedError
 
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
+        raise NotImplementedError
+
+    def write_output(self, output, translations, defns):
         raise NotImplementedError
 
 class XIRToX(ast.NodeVisitor):
@@ -316,57 +318,3 @@ class XIRToX(ast.NodeVisitor):
         #TODO: handle this?
         self.defns = []
         return self.visit(sem)
-
-
-if __name__ == "__main__":
-    import argparse
-
-    p = argparse.ArgumentParser(description="Translate XIR")
-    p.add_argument("semfile", help="XIR semantics")
-    p.add_argument("language", choices=["c"])
-
-    args = p.parse_args()
-
-    gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
-    rp = xir.RewritePythonisms()
-
-    translator = XIRToX()
-    translator.X = xir2c.CXlator(translator)
-
-    out = []
-    defns = []
-
-    tyerrors = []
-
-    for pi in semantics.keys():
-        if pi in xir2c.debug_exclude: continue
-        #if pi != 'execute_sqrt_approx_ftz_f32': continue
-
-        sem = semantics[pi]
-        rp.visit(sem)
-        #ast.dump(sem)
-        try:
-            ty = xir.infer_types(sem)
-        except AssertionError as e:
-            tyerrors.append((pi, e))
-            continue
-
-        out.append(translator.translate(sem, ty))
-        defns.extend(translator.defns)
-
-    #header = 'ptxc.h'
-    with open("test.c", "w") as f:
-        f.write("#include <stdlib.h>\n")
-        f.write("#include <stdint.h>\n")
-        f.write("#include <math.h>\n")
-        #f.write(f'#include "{header}"\n')
-        f.write('#include "lop3_lut.h"\n')
-        f.write('#include "ptxc_utils.h"\n')
-        f.write("struct cc_register { int cf;};\n")
-        f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))\n") # TODO: actually implement a min
-
-        print("\n".join(defns), file=f)
-        print("\n".join(out), file=f)
-
-    for x, e in tyerrors:
-        print(x, e)

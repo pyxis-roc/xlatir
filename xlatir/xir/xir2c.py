@@ -6,6 +6,7 @@ import ast
 import extract_ex_semantics
 from xirtyping import *
 import os
+import xirxlat
 
 XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'b16': 'uint16_t',
@@ -134,7 +135,7 @@ class Clib(object):
     NOT = _do_fnop # because not is a prefix op
 
     def subnormal_check(self, n, fnty, args, node):
-        return f"fpclassify({args[0]}) == FP_SUBNORMAL"
+        return f"(fpclassify({args[0]}) == FP_SUBNORMAL)"
 
     def _do_infix_op(self, n, fnty, args, node):
         arglen = len(fnty) - 1
@@ -217,7 +218,7 @@ class Clib(object):
         assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
         return f"!(isnan({args[0]}) || isnan({args[1]}))"
 
-class CXlator(object):
+class CXlator(xirxlat.Xlator):
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = Clib()
@@ -288,7 +289,7 @@ class CXlator(object):
         return f'{node.n}'
 
     def xlat_BoolOp(self, op, opty, values, node):
-        return f" {op} ".join(values)
+        return "(" + f" {op} ".join(values) + ")"
 
     def xlat_BinOp(self, op, opty, left, right, node):
         return f'({left} {op} {right})'
@@ -300,7 +301,7 @@ class CXlator(object):
         return f'({op}{value})'
 
     def xlat_IfExp(self, test, body, orelse, node):
-        return f"{test} ? {body} : {orelse}"
+        return f"({test} ? {body} : {orelse})"
 
     def xlat_If(self, test, body, orelse, node):
         body = ["\t\t" + x + ";" for x in body]
@@ -384,6 +385,10 @@ class CXlator(object):
 }}"""
 
         return output
+
+    def write_output(self, output, translations, defns):
+        write_output(output, translations, defns)
+
 
 # For now, use strings instead of returning an AST?
 class XIRToC(ast.NodeVisitor):
@@ -845,6 +850,29 @@ debug_exclude = set(['execute_ld_param_u64',
 
 ]) # temporary
 
+def write_output(outfile, translations, defns):
+    header = os.path.basename(outfile)[:-2] + ".h"
+    print(f"Writing {outfile}")
+    with open(outfile, "w") as f:
+        f.write("#include <stdlib.h>\n")
+        f.write("#include <stdint.h>\n")
+        f.write("#include <math.h>\n")
+        f.write(f'#include "{header}"\n')
+        f.write('#include "ptxc_utils.h"\n')
+        f.write("\n\n".join(translations))
+
+    print(f"Writing {header}")
+    with open(os.path.join(os.path.dirname(outfile), header), "w") as f:
+        f.write("#include <stdlib.h>\n\n")
+        f.write("#include <stdint.h>\n\n")
+        f.write("#include <math.h>\n\n")
+        f.write('#include "lop3_lut.h"\n')
+        f.write("struct cc_register { int cf;};\n")
+        f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))") # TODO: actually implement a min
+        f.write('\n')
+        f.write("\n".join(defns))
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert XIR semantics to C")
     p.add_argument('semfile', help="File containing executable semantics")
@@ -873,25 +901,6 @@ if __name__ == "__main__":
         out_defns.extend(translator.defns)
 
     if args.output:
-        header = os.path.basename(args.output)[:-2] + ".h"
-        print(f"Writing {args.output}")
-        with open(args.output, "w") as f:
-            f.write("#include <stdlib.h>\n")
-            f.write("#include <stdint.h>\n")
-            f.write("#include <math.h>\n")
-            f.write(f'#include "{header}"\n')
-            f.write('#include "ptxc_utils.h"\n')
-            f.write("\n\n".join(out))
-
-        print(f"Writing {header}")
-        with open(os.path.join(os.path.dirname(args.output), header), "w") as f:
-            f.write("#include <stdlib.h>\n\n")
-            f.write("#include <stdint.h>\n\n")
-            f.write("#include <math.h>\n\n")
-            f.write('#include "lop3_lut.h"\n')
-            f.write("struct cc_register { int cf;};\n")
-            f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))") # TODO: actually implement a min
-            f.write('\n')
-            f.write("\n".join(out_defns))
+        write_output(args.output, out, out_defns)
     else:
         print("\n\n".join(out))
