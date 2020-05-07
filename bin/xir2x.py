@@ -13,17 +13,19 @@ import ast
 import extract_ex_semantics
 from xirtyping import *
 import os
-import xir2c
 import xirxlat
+import xir2c
+import xir2smt2
 
 if __name__ == "__main__":
     import argparse
 
     p = argparse.ArgumentParser(description="Translate XIR")
     p.add_argument("semfile", help="XIR semantics")
-    p.add_argument("language", choices=["c"])
+    p.add_argument("language", choices=["c", "smt2"])
     p.add_argument("output", help="Output file for main output (headers may be produced)" )
     p.add_argument('ptxinsn', nargs="*", help="PTX instruction in underscore form (e.g. add_u16)")
+    p.add_argument('-i', dest="interactive", action="store_true", help="Interactive, fail immediately")
 
     args = p.parse_args()
 
@@ -32,7 +34,8 @@ if __name__ == "__main__":
 
     if args.language == "c":
         translator.X = xir2c.CXlator(translator)
-        debug_exclude = xir2c.debug_exclude # TODO: remove this?
+    elif args.language == "smt2":
+        translator.X = xir2smt2.SMT2Xlator(translator)
     else:
         assert False, f"Unrecognized language {args.language}"
 
@@ -52,15 +55,22 @@ if __name__ == "__main__":
         try:
             ty = xir.infer_types(sem)
         except AssertionError as e:
-            tyerrors.append((pi, e))
-            continue
+            if not args.interactive:
+                tyerrors.append((pi, e))
+                continue
+            else:
+                raise
+
 
         try:
             xlation = translator.translate(sem, ty)
             out.append(xlation)
         except Exception as e:
-            xlaterrors.append((pi, e))
-            continue
+            if not args.interactive:
+                xlaterrors.append((pi, e))
+                continue
+            else:
+                raise
 
         defns.extend(translator.defns)
 

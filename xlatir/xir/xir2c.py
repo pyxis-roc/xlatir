@@ -285,8 +285,8 @@ class CXlator(xirxlat.Xlator):
     def xlat_Str(self, s, node):
         return s
 
-    def xlat_Num(self, n, node):
-        return f'{node.n}'
+    def xlat_Num(self, n, nty, node):
+        return str(n)
 
     def xlat_BoolOp(self, op, opty, values, node):
         return "(" + f" {op} ".join(values) + ")"

@@ -37,7 +37,7 @@ class Xlator(object):
     def xlat_Str(self, s, node):
         raise NotImplementedError
 
-    def xlat_Num(self, n, node):
+    def xlat_Num(self, n, nty, node):
         raise NotImplementedError
 
     def xlat_BoolOp(self, op, opty, values, node):
@@ -143,7 +143,9 @@ class XIRToX(ast.NodeVisitor):
         return self.X.xlat_Str(node.s, node)
 
     def visit_Num(self, node):
-        return self.X.xlat_Num(node.n, node)
+        ty = self.X.get_native_type(self._get_type(node._xir_type))
+
+        return self.X.xlat_Num(node.n, ty, node)
 
     def visit_BoolOp(self, node):
         if isinstance(node.op, ast.And):
@@ -226,7 +228,9 @@ class XIRToX(ast.NodeVisitor):
         return self.X.xlat_Break(node)
 
     def visit_Call(self, node):
-        n = self.visit(node.func)
+        #TODO: this str is needed because the return values are from xlat_
+
+        n = str(self.visit(node.func))
 
         if n == 'set_sign_bitWidth':
             return self.visit(node.args[0])
@@ -249,6 +253,9 @@ class XIRToX(ast.NodeVisitor):
                 fn = "isnan"
 
             return self.X.xlat_float_compare(n, v, self.visit(node.args[0]))
+
+        #TODO: add the name of the function
+        assert hasattr(node, '_xir_type'), f"Function {n} does not have _xir_type on node"
 
         fnty = self._get_op_type(n, node._xir_type)
 
