@@ -6,6 +6,8 @@
 #
 # Author: Sreepathi Pai
 
+import re
+
 class SExpr(object):
     pass
 
@@ -140,3 +142,90 @@ def smt2_literal(v, ty):
         return SExprList(Symbol("fp"), *reversed(out))
     else:
         raise NotImplementedError(f"Don't yet handle literals of type {ty}/{v}")
+
+class SMT2Parser(object):
+    @staticmethod
+    def tokenize(smt2str):
+        # based on the example in the re docs
+        tokens = [('COMMENT', r';.*$'),
+                  ('DECIMAL', r'\d\d+'), # order important
+                  ('NUMERAL', r'\d'),
+                  ('HEX', r'#x[A-Fa-f0-9]+'),
+                  ('BINARY', r'#b[01]+'),
+                  ('QUOTE', r'"'),
+                  ('LPAREN', r'\('),
+                  ('RPAREN', r'\)'),
+                  ('SIMPLE_SYMBOL', r'[-~!@$%^&*_+=<>.?A-Za-z/][-~!@$%^&*_+=<>.?\w/]*'), # \w includes digits, this means first character can't be non-ascii letter
+                  ('QUOTED_SYMBOL', r'\|[^\\\|]\|'),
+                  ('WHITESPACE', r'\s+'),
+                  ('KEYWORD', r':[^\d][-~!@$%^&*_+=<>.?\w/]+'),
+                  ('MISMATCH', r'.'),
+        ]
+
+        tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in tokens)
+
+        for m in re.finditer(tok_regex, smt2str, flags=re.M):
+            token = m.lastgroup
+            match = m.group()
+
+            if token == 'MISMATCH':
+                raise ValueError(f"Mismatch {match}")
+            elif token == 'QUOTE':
+                raise NotImplementedError("Can't tokenize strings for now") # but we could parse?
+            elif token == 'WHITESPACE':
+                pass
+            else:
+                yield (token, match)
+
+    @staticmethod
+    def parse(smt2str):
+        token_stream = SMT2Parser.tokenize(smt2str)
+
+        out = []
+        try:
+            while True:
+                tkn, match = next(token_stream)
+                if tkn == "COMMENT":
+                    continue
+                elif tkn == "LPAREN":
+                    out.append(SMT2Parser.parse_sexpr(token_stream))
+        except StopIteration:
+            pass
+
+        return out
+
+    @staticmethod
+    def parse_sexpr(token_stream):
+        out = []
+        try:
+            while True:
+                tkn, match = next(token_stream)
+                if tkn == "RPAREN":
+                    return SExprList(*out)
+                elif tkn == "LPAREN":
+                    out.append(SMT2Parser.parse_sexpr(token_stream))
+                elif tkn == "DECIMAL":
+                    out.append(Decimal(int(match)))
+                elif tkn == "NUMERAL":
+                    out.append(Numeral(int(match)))
+                elif tkn == "HEX":
+                    out.append(Hexadecimal(int(match[2:], base=16), width=len(match)-2))
+                elif tkn == "BINARY":
+                    out.append(Binary(int(match[2:], base=2), width=len(match)-2))
+                elif tkn == "SIMPLE_SYMBOL":
+                    out.append(Symbol(match))
+                elif tkn == "QUOTED_SYMBOL":
+                    out.append(QuotedSymbol(match))
+                elif tkn == "KEYWORD":
+                    out.append(Keyword(match[1:]))
+                else:
+                    raise NotImplementedError(f"Unknown token {tkn} '{match}'")
+        except StopIteration:
+            raise ValueError("Ran out of input when parsing SExpr")
+
+
+if __name__ == "__main__":
+    import sys
+    with open(sys.argv[1], "r") as f:
+        p = SMT2Parser.parse(f.read())
+        print(p)
