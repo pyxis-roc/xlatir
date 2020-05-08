@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+#
+# xir2smt.py
+#
+# Translate XIR to SMT2
+#
+# Author: Sreepathi Pai
 
 import ast
 import xir
@@ -6,6 +12,7 @@ import xirxlat
 from xirtyping import *
 import textwrap
 import os
+import struct
 
 class SExpr(object):
     pass
@@ -464,11 +471,7 @@ class SMT2Xlator(xirxlat.Xlator):
         return String(s)
 
     def _smt2_literal(self, v, ty):
-        if ty.v == 'pred':
-            assert v == 1 or v == 0, f"Wrong value for pred: {v}"
-            return Binary(v, 1)
-        else:
-            raise NotImplementedError(f"Don't yet handle literals of type {ty}/{v}")
+        return smt2_literal(v, ty.v)
 
     def xlat_Num(self, n, nty, node):
         return self._smt2_literal(n, nty)
@@ -587,3 +590,45 @@ class SMT2Xlator(xirxlat.Xlator):
 
             print("\n\n".join(translations), file=f)
 
+
+def smt2_literal(v, ty):
+    if ty == 'pred':
+        assert v == 1 or v == 0, f"Wrong value for pred: {v}"
+        return Binary(v, 1)
+    elif ty in ('u8', 'u16', 'u32', 'u64',
+                's16', 's32', 's64',
+                'b16', 'b32', 'b64'):
+        signed = ty[0] == 's'
+        width = int(ty[1:])
+
+        if not signed:
+            assert v >= 0, f"Unsigned types {ty} can't have negative values {v}"
+        else:
+            while v < 0:
+                v += 2**width
+
+        return Hexadecimal("{v:0{width//4}x}")
+    elif ty in ('f32', 'f64'):
+        xlat = {'f32': (1, 8, 23),
+                'f64': (1, 11, 52)}
+
+        # TODO: handle f16
+        int_fmt_str = "I" if ty == 'f32' else 'Q'
+        flt_fmt_str = "f" if ty == 'f32' else 'd'
+        bit_fmt = xlat[ty]
+
+        b = struct.unpack(f'{int_fmt_str}', struct.pack(f'{flt_fmt_str}', v))[0]
+
+        s = 0
+        out = []
+        for w in reversed(bit_fmt):
+            if w % 4 == 0:
+                out.append(Hexadecimal((b & 2**w - 1), width = w//4))
+            else:
+                out.append(Binary(b & 2**w - 1, width = w))
+
+            b >>= w
+
+        return SExprList(Symbol("fp"), *reversed(out))
+    else:
+        raise NotImplementedError(f"Don't yet handle literals of type {ty}/{v}")
