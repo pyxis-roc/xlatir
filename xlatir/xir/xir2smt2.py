@@ -559,8 +559,6 @@ class SMT2Xlator(xirxlat.Xlator):
                            Symbol(retval),
                            expr)
 
-        output = str(output)
-
         return output
 
     def write_output(self, output, translations, defns):
@@ -568,6 +566,7 @@ class SMT2Xlator(xirxlat.Xlator):
             print("(set-logic QF_FPBV)", file=f) # need to support arrays too
 
             print(textwrap.dedent("""\
+            ; :begin global
             (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
             (define-sort u8 () (_ BitVec 8))
             (define-sort pred () (_ BitVec 1))
@@ -584,11 +583,21 @@ class SMT2Xlator(xirxlat.Xlator):
             for sz in [32, 64]:
                 print(f"(define-sort f{sz} () Float{sz})", file=f)
 
+            print("; :end global", file=f)
 
             with open(os.path.join(os.path.dirname(__file__), "ptx_utils.smt2"), "r") as incl:
                 print(incl.read(), file=f)
 
-            print("\n\n".join(translations), file=f)
+            for t in translations:
+                if is_call(t, "define-fun"):
+                    print(f"; :begin {t.v[1]}", file=f)
+
+                print(str(t), file=f)
+
+                if is_call(t, "define-fun"):
+                    print(f"; :end {t.v[1]}", file=f)
+
+                print("\n", file=f)
 
 
 def smt2_literal(v, ty):
