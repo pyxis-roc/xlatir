@@ -52,8 +52,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
                    ('booleanOp_xor', 'pred', 'pred'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
 
                    ('compare_eq', '*', '*'): lambda x, y: SExprList(Symbol('='), x, y),
+                   ('compare_eq', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.eq'), x, y),
                    ('compare_ne', '*', '*'): lambda x, y: SExprList(Symbol("not"),
                                                                     SExprList(Symbol('='), x, y)),
+                   ('compare_ne', 'float', 'float'): lambda x, y: SExprList(Symbol("not"),
+                                                                    SExprList(Symbol('fp.eq'), x, y)),
 
                    # the unordered versions use the same as below
                    ('compare_lt', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvult'), x, y),
@@ -490,10 +493,11 @@ class SMT2Xlator(xirxlat.Xlator):
             for sz in [32, 64]:
                 print(f"(define-sort f{sz} () Float{sz})", file=f)
 
-            print("; :end global", file=f)
-
             with open(os.path.join(os.path.dirname(__file__), "ptx_utils.smt2"), "r") as incl:
                 print(incl.read(), file=f)
+
+            print("; :end global", file=f)
+
 
             for t in translations:
                 if is_call(t, "define-fun"):
