@@ -115,7 +115,7 @@ def smt2_literal(v, ty):
             while v < 0:
                 v += 2**width
 
-        return Hexadecimal("{v:0{width//4}x}")
+        return Hexadecimal(v, width=width//4)
     elif ty in ('f32', 'f64'):
         xlat = {'f32': (1, 8, 23),
                 'f64': (1, 11, 52)}
