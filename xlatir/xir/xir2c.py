@@ -219,6 +219,8 @@ class Clib(object):
         return f"!(isnan({args[0]}) || isnan({args[1]}))"
 
 class CXlator(xirxlat.Xlator):
+    desugar_boolean_xor = True
+
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = Clib()

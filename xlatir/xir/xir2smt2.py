@@ -132,6 +132,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
                    ('XOR', '*', '*'): '^',
                    ('NOT', '*'): '~',
 
+                   ('booleanOp_xor', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
+                   ('booleanOp_xor', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
+
+                   ('booleanOp_xor', 'pred', 'pred'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
+
                    ('compare_eq', '*', '*'): lambda x, y: SExprList(Symbol('='), x, y),
                    ('compare_ne', '*', '*'): lambda x, y: SExprList(Symbol("not"),
                                                                     SExprList(Symbol('='), x, y)),
@@ -235,6 +240,7 @@ class SMT2lib(object):
     ROUND = _nie
     SATURATE = _nie
     NOT = _nie
+    booleanOp_xor = _do_fnop_builtin
 
     def subnormal_check(self, n, fnty, args, node):
         return f"(bool_to_pred (fp.is_Subnormal args))"
@@ -348,6 +354,8 @@ def create_dag(statements):
     return reconstitute(retval)
 
 class SMT2Xlator(xirxlat.Xlator):
+    desugar_boolean_xor = False
+
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = SMT2lib()

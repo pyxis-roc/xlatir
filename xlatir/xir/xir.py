@@ -52,6 +52,7 @@ COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
 BOOLEAN_OP_PTX = set(['booleanOp_and', 'booleanOp_or', 'booleanOp_xor'])
 
 class RewritePythonisms(ast.NodeTransformer):
+    desugar_boolean_xor = True
     def _is_float_constant_constructor(self, n):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'float':
             if isinstance(n.args[0], ast.Str):
@@ -79,18 +80,22 @@ class RewritePythonisms(ast.NodeTransformer):
                 elif node.args[2].s == 'or':
                     node = ast.BoolOp(op=ast.Or(), values=[node.args[0], node.args[1]])
                 elif node.args[2].s == 'xor':
-                    # ugly but this is boolean xor: a'b + ab'
-                    node = ast.BoolOp(op=ast.Or(),
-                                      values=[ast.BoolOp(op=ast.And(),
-                                                         values=[ast.UnaryOp(ast.Not(),
-                                                                             node.args[0]),
-                                                                 node.args[1]]),
+                    if self.desugar_boolean_xor:
+                        # ugly but this is boolean xor: a'b + ab'
+                        node = ast.BoolOp(op=ast.Or(),
+                                          values=[ast.BoolOp(op=ast.And(),
+                                                             values=[ast.UnaryOp(ast.Not(),
+                                                                                 node.args[0]),
+                                                                     node.args[1]]),
 
-                                              ast.BoolOp(op=ast.And(),
-                                                         values=[node.args[0],
-                                                                 ast.UnaryOp(ast.Not(),
-                                                                             node.args[1])]),
-                                      ])
+                                                  ast.BoolOp(op=ast.And(),
+                                                             values=[node.args[0],
+                                                                     ast.UnaryOp(ast.Not(),
+                                                                                 node.args[1])]),
+                                          ])
+                    else:
+                        node.func.id = 'booleanOp_' + node.args[2].s
+                        node.args.pop()
 
                 return node
             elif node.func.id == 'EQ' or node.func.id == 'NOTEQ':

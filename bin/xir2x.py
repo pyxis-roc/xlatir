@@ -48,6 +48,7 @@ if __name__ == "__main__":
     xlaterrors = []
 
     rp = xir.RewritePythonisms()
+    rp.desugar_boolean_xor = translator.X.desugar_boolean_xor
     for pi in args.ptxinsn:
         sem = semantics["execute_" + pi]
         rp.visit(sem)
