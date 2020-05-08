@@ -171,19 +171,19 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
                    ('compare_hi', 'uint64_t', 'uint64_t'): '>', # for unsigned (see set)
                    ('compare_hs', 'uint64_t', 'uint64_t'): '>=', # for unsigned (see set)
 
-                ('compare_num', 'float', 'float'): '()', # for type checking only
-                   ('compare_num', 'double', 'double'): '()',  # for type checking only
+                   ('compare_num', 'f32', 'f32'): '()', # for type checking only
+                   ('compare_num', 'f64', 'f64'): '()',  # for type checking only
 
-                ('compare_nan', 'float', 'float'): '()', # for type checking only
-                   ('compare_nan', 'double', 'double'): '()',  # for type checking only
+                   ('compare_nan', 'f32', 'f32'): '()', # for type checking only
+                   ('compare_nan', 'f64', 'f64'): '()',  # for type checking only
 
-                ('POW', 'float', 'float'): 'powf',
+                   ('POW', 'float', 'float'): 'powf',
                    ('POW', 'double', 'double'): 'pow',
 
-                ('set_memory', '*', '*'): 'set_memory',
+                   ('set_memory', '*', '*'): 'set_memory',
                    ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
 
-                ('ABSOLUTE', 'int32_t'): 'abs',
+                   ('ABSOLUTE', 'int32_t'): 'abs',
                    ('ABSOLUTE', 'int64_t'): 'labs', # depends on 64-bit model
                    ('ABSOLUTE', 'int16_t'): 'abs',
                    ('ABSOLUTE', 'float'): 'fabsf',
@@ -267,12 +267,20 @@ class SMT2lib(object):
         assert n[-1] == 'u' # unordered
         n = n[:-1]
 
-        assert opkey in XIR_TO_SMT2_OPS, f"Missing operator {fnty}"
+        fnty2 = (n, fnty[1], fnty[2])
+        x = getattr(self, n)(n, fnty2, args, node)
+
+        if is_call(x, "bool_to_pred"):
+            x = x.v[1]
 
         a1 = args[0]
         a2 = args[1]
 
-        return f"(bool_to_pred (or (fp.isNaN {a1}) (fp.isNaN {a2}) ({XIR_TO_SMT2_OPS[opkey]} {a1} {a2})))"
+        return SExprList(Symbol("bool_to_pred"),
+                         SExprList(Symbol("or"),
+                                   SExprList(Symbol("fp.isNaN"), a1),
+                                   SExprList(Symbol("fp.isNaN"), a2),
+                                   x))
 
     compare_equ = _do_compare_unordered
     compare_neu = _do_compare_unordered
@@ -286,24 +294,54 @@ class SMT2lib(object):
 
         return SExprList(Symbol("bool_to_pred"), op(args[0], args[1]))
 
+    def _do_compare_2(self, n, fnty, args, node):
+        fnty2 = tuple([fnty[0]] + [self._normalize_types(ty) for ty in fnty[1:]])
+
+        op = n[-2:]
+        if op in ('lt', 'le', 'gt', 'ge'):
+            assert fnty[1].v == fnty[2].v, f"Incorrect type signature for compare {fnty}"
+            if fnty2[1] == "unsigned":
+                op = "bvu" + op
+            elif fnty2[1] == "signed":
+                op = "bvs" + op
+            elif fnty2[1] == "float":
+                op = "fp." + op
+                if op[-1] == "e": op += "q" # le -> leq, ge -> geq
+        elif op in ('lo', 'ls', 'hi', 'hs'):
+            xlat = {'lo': 'lt', 'ls': 'le', 'hi': 'gt', 'hs': 'ge'}
+            op = "bvu" + xlat[op]
+        else:
+            raise NotImplementedError(f"Unknown comparison operator {op}")
+
+        return SExprList(Symbol("bool_to_pred"), SExprList(Symbol(op), args[0], args[1]))
+
     compare_eq = _do_compare
     compare_ne = _do_compare
-    compare_lt = _do_compare
-    compare_le = _do_compare
-    compare_gt = _do_compare
-    compare_ge = _do_compare
-    compare_lo = _do_compare
-    compare_ls = _do_compare
-    compare_hi = _do_compare
-    compare_hs = _do_compare
+    compare_lt = _do_compare_2
+    compare_le = _do_compare_2
+    compare_gt = _do_compare_2
+    compare_ge = _do_compare_2
+    compare_lo = _do_compare_2
+    compare_ls = _do_compare_2
+    compare_hi = _do_compare_2
+    compare_hs = _do_compare_2
 
     def compare_nan(self, n, fnty, args, node):
-        assert fnty in XIR_TO_SMT2_OPS, f"Incorrect type for {n}"
-        return f"(bool_to_pred (or (fp.isNaN {args[0]}) (fp.isNaN {args[1]})))"
+        assert (n, fnty[1].v, fnty[2].v) in XIR_TO_SMT2_OPS, f"Incorrect type for {n} {fnty}"
+
+        return SExprList(Symbol("bool_to_pred"),
+                         SExprList(Symbol("or"),
+                                   SExprList(Symbol("fp.isNaN"), args[0]),
+                                   SExprList(Symbol("fp.isNaN"), args[1])))
 
     def compare_num(self, n, fnty, args, node):
-        assert fnty in XIR_TO_SMT2_OPS, f"Incorrect type for {n}"
-        return f"(bool_to_pred (not (or (fp.isNaN {args[0]}) (fp.isNaN {args[1]}))))"
+        assert (n, fnty[1].v, fnty[2].v) in XIR_TO_SMT2_OPS, f"Incorrect type for {n} {fnty}"
+
+        return SExprList(Symbol("bool_to_pred"),
+                         SExprList(Symbol("not"),
+                                   SExprList(Symbol("or"),
+                                             SExprList(Symbol("fp.isNaN"), args[0]),
+                                             SExprList(Symbol("fp.isNaN"), args[1]))))
 
 def is_call(sexpr, func):
     return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
@@ -382,8 +420,8 @@ class SMT2Xlator(xirxlat.Xlator):
             elt_types = [self._get_smt2_type(x) for x in t.args]
             assert declname is not None, "declname must be provided for product types"
             elt_names = [f"(out{k} {ty})" for k, ty in enumerate(elt_types)]
-
-            return f"struct retval_{declname} {{ {'; '.join(elt_names)};  }}"
+            assert elt_types[0].v == "pred" and elt_types[1].v == "pred"
+            return Symbol("predpair")
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
@@ -495,7 +533,10 @@ class SMT2Xlator(xirxlat.Xlator):
         return SExprList(fn, *args[:arglen])
 
     def xlat_Return(self, v, vty, node):
-        return v
+        if isinstance(v, list):
+            return SExprList(Symbol("mk-pair"), *v)
+        else:
+            return v
 
     def xlat_Assign(self, lhs, rhs, node):
         return SExprList(Symbol("="), lhs, rhs)
@@ -524,12 +565,13 @@ class SMT2Xlator(xirxlat.Xlator):
             print("(set-logic QF_FPBV)", file=f) # need to support arrays too
 
             print(textwrap.dedent("""\
+            (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
             (define-sort u8 () (_ BitVec 8))
             (define-sort pred () (_ BitVec 1))
 
             (define-fun bool_to_pred ((x Bool)) pred (ite x #b1 #b0))
             (define-fun pred_to_bool ((x pred)) Bool (= x #b1))
-
+            (define-sort predpair () (Pair pred pred))
             """), file=f)
 
             for sz in [16, 32, 64]:
