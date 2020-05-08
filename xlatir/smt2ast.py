@@ -6,7 +6,8 @@
 #
 # Author: Sreepathi Pai
 
-import re
+import struct # for smt2_literal
+import re # for parser
 
 class SExpr(object):
     pass
