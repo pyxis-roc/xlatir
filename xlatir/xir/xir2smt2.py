@@ -110,6 +110,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
                    ('SATURATE', '*'): 'SATURATE', # not for int!
 }
 
+def bool_to_pred(x):
+    return SExprList(Symbol("bool_to_pred"), x)
+
 class SMT2lib(object):
     def _normalize_types(self, ty, builtin = True):
         if builtin:
@@ -160,7 +163,7 @@ class SMT2lib(object):
     booleanOp_xor = _do_fnop_builtin
 
     def subnormal_check(self, n, fnty, args, node):
-        return f"(bool_to_pred (fp.is_Subnormal args))"
+        return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
 
     GTE = _nie
     GT = _nie
@@ -180,6 +183,11 @@ class SMT2lib(object):
     MUL = _nie
     DIV = _nie
 
+
+    def ISNAN(self, n, fnty, args, mode):
+        #TODO: check types
+        return bool_to_pred(SExprList(Symbol("fp.isNaN"), *args))
+
     def _do_compare_unordered(self, n, fnty, args, node):
         assert n[-1] == 'u' # unordered
         n = n[:-1]
@@ -193,11 +201,10 @@ class SMT2lib(object):
         a1 = args[0]
         a2 = args[1]
 
-        return SExprList(Symbol("bool_to_pred"),
-                         SExprList(Symbol("or"),
-                                   SExprList(Symbol("fp.isNaN"), a1),
-                                   SExprList(Symbol("fp.isNaN"), a2),
-                                   x))
+        return bool_to_pred(SExprList(Symbol("or"),
+                                      SExprList(Symbol("fp.isNaN"), a1),
+                                      SExprList(Symbol("fp.isNaN"), a2),
+                                      x))
 
     compare_equ = _do_compare_unordered
     compare_neu = _do_compare_unordered
@@ -209,7 +216,7 @@ class SMT2lib(object):
     def _do_compare(self, n, fnty, args, node):
         op = self._get_op(fnty, generic=True)
 
-        return SExprList(Symbol("bool_to_pred"), op(args[0], args[1]))
+        return bool_to_pred(op(args[0], args[1]))
 
     def _do_compare_2(self, n, fnty, args, node):
         fnty2 = tuple([fnty[0]] + [self._normalize_types(ty) for ty in fnty[1:]])
@@ -230,7 +237,7 @@ class SMT2lib(object):
         else:
             raise NotImplementedError(f"Unknown comparison operator {op}")
 
-        return SExprList(Symbol("bool_to_pred"), SExprList(Symbol(op), args[0], args[1]))
+        return bool_to_pred(SExprList(Symbol(op), args[0], args[1]))
 
     compare_eq = _do_compare
     compare_ne = _do_compare
@@ -246,19 +253,17 @@ class SMT2lib(object):
     def compare_nan(self, n, fnty, args, node):
         assert (n, fnty[1].v, fnty[2].v) in XIR_TO_SMT2_OPS, f"Incorrect type for {n} {fnty}"
 
-        return SExprList(Symbol("bool_to_pred"),
-                         SExprList(Symbol("or"),
-                                   SExprList(Symbol("fp.isNaN"), args[0]),
-                                   SExprList(Symbol("fp.isNaN"), args[1])))
+        return bool_to_pred(SExprList(Symbol("or"),
+                                      SExprList(Symbol("fp.isNaN"), args[0]),
+                                      SExprList(Symbol("fp.isNaN"), args[1])))
 
     def compare_num(self, n, fnty, args, node):
         assert (n, fnty[1].v, fnty[2].v) in XIR_TO_SMT2_OPS, f"Incorrect type for {n} {fnty}"
 
-        return SExprList(Symbol("bool_to_pred"),
-                         SExprList(Symbol("not"),
-                                   SExprList(Symbol("or"),
-                                             SExprList(Symbol("fp.isNaN"), args[0]),
-                                             SExprList(Symbol("fp.isNaN"), args[1]))))
+        return bool_to_pred(SExprList(Symbol("not"),
+                                      SExprList(Symbol("or"),
+                                                SExprList(Symbol("fp.isNaN"), args[0]),
+                                                SExprList(Symbol("fp.isNaN"), args[1]))))
 
 def is_call(sexpr, func):
     return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
@@ -363,11 +368,11 @@ class SMT2Xlator(xirxlat.Xlator):
     def xlat_Name(self, name: str, node):
         return Symbol(name)
 
-    def xlat_NameConstant(self, value, node):
+    def xlat_NameConstant(self, value, vty, node):
         if node.value == True:
-            return Numeral(1)
+            return smt2_literal(1, vty.v)
         elif node.value == False:
-            return Numeral(0)
+            return smt2_literal(0, vty.v)
         elif node.value is None:
             return Symbol("None")
 
@@ -438,11 +443,14 @@ class SMT2Xlator(xirxlat.Xlator):
 
     def xlat_float_compare(self, comparefn, constval, compareto):
         if constval == 'inf' or constval == '-inf':
-            fn = "!isfinite"
+            fn = SExprList(Symbol("fp.isInfinite"), compareto)
         elif constval == 'nan' or constval == '-nan':
-            fn = "isnan"
+            fn = SExprList(Symbol("fp.isNaN"), compareto)
 
-        return f"{'!' if comparefn == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({compareto})"
+        if comparefn == 'FLOAT_COMPARE_NOTEQ':
+            fn = SExprList(Symbol("not"), fn)
+
+        return bool_to_pred(fn)
 
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1

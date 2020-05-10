@@ -28,7 +28,7 @@ class Xlator(object):
     def xlat_Name(self, name: str, node):
         raise NotImplementedError
 
-    def xlat_NameConstant(self, value, node):
+    def xlat_NameConstant(self, value, vty, node):
         raise NotImplementedError
 
     def xlat_Attribute(self, value, attr: str, node):
@@ -137,7 +137,8 @@ class XIRToX(ast.NodeVisitor):
         return self.X.xlat_Name(node.id, node)
 
     def visit_NameConstant(self, node):
-        return self.X.xlat_NameConstant(node.value, node)
+        ty = self.X.get_native_type(self._get_type(node._xir_type))
+        return self.X.xlat_NameConstant(node.value, ty, node)
 
     def visit_Attribute(self, node):
         #TODO decide whether to use . or ->

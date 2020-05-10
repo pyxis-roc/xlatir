@@ -256,11 +256,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_NameConstant(self, node):
         if node.value == True or node.value == False:
-            return TyConstant("bool")
+            ty = TyConstant("bool")
         elif node.value is None:
-            return TyConstant("None")
+            ty = TyConstant("None")
         else:
             return None
+
+        node._xir_type = ty
+        return ty
 
     def visit_UnaryOp(self, node):
         self.generic_visit(node)
@@ -401,9 +404,13 @@ class TypeEqnGenerator(ast.NodeVisitor):
         elif fn in FLOAT_FNS:
             # note: saturate also carries a type, but not a width ...
             argty = self.visit(node.args[0])
-            #TODO: add equations?
-            node._xir_type = TyApp(argty, [argty])
-            return argty
+            if fn != "ISNAN":
+                retty = argty
+            else:
+                retty = TyConstant("bool")
+
+            node._xir_type = TyApp(retty, [argty])
+            return retty
         elif fn == 'set_memory':
             # don't use _generate_poly_call, since this is a variable...
             sm_var = self.get_or_gen_ty_var(fn)

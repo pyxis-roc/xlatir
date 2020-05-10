@@ -270,7 +270,7 @@ class CXlator(xirxlat.Xlator):
     def xlat_Name(self, name: str, node):
         return name
 
-    def xlat_NameConstant(self, value, node):
+    def xlat_NameConstant(self, value, vty, node):
         if node.value == True:
             return "1"
         elif node.value == False:
