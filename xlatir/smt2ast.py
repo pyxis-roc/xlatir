@@ -144,6 +144,62 @@ def smt2_literal(v, ty):
     else:
         raise NotImplementedError(f"Don't yet handle literals of type {ty}/{v}")
 
+def from_smt2_literal(value, ty):
+    if not isinstance(value, SExprList):
+        if ty[0] == "s":
+            #TODO: does not seem possible to get this from smt2
+            w = int(ty[1:])
+            t = 2 ** (w - 1) - 1
+            if value.v > t:
+                value.v = -(2**w - value.v)
+
+            return value.v
+        else:
+            return value.v # this is the value
+
+    if isinstance(value.v[0], Symbol) and value.v[0].v == "mk-pair":
+        return (value.v[1].v, value.v[2].v)
+
+    if isinstance(value.v[0], Symbol) and value.v[0].v == "_":
+        if value.v[1].v == "-oo":
+            return float("-inf")
+        elif value.v[1].v == "+oo":
+            return float("+inf")
+        elif value.v[1].v == "+zero":
+            return 0.0
+        elif value.v[1].v == "-zero":
+            return -0.0
+        elif value.v[1].v == "NaN": # unfortunately smtlib doesn't handle negative NaN?
+            return float("nan")
+        else:
+            raise NotImplementedError(f"Can't handle _ [{value}]")
+
+    if isinstance(value.v[0], Symbol) and value.v[0].v == "fp":
+        sign = value.v[1]
+        exp = value.v[2]
+        significand = value.v[3]
+
+        sw = significand.width if isinstance(significand, Binary) else significand.width * 4
+        expw = exp.width if isinstance(exp, Binary) else exp.width * 4
+        total = sw + expw + 1
+
+        intv = (sign.v << (expw + sw)) + (exp.v << (sw)) + significand.v
+
+        if total == 32:
+            int_fmt_str = "I"
+            flt_fmt_str = "f"
+        elif total == 64:
+            int_fmt_str = "Q"
+            flt_fmt_str = "d"
+        else:
+            raise NotImplementedError(f"Can't handle {total}-bit float literals (exp: {expw} significand: {sw})")
+
+        floatv = struct.unpack(flt_fmt_str, struct.pack(int_fmt_str, intv))[0]
+        print(intv, value, floatv, floatv.hex())
+        return floatv
+
+    raise NotImplementedError(f"from_smt2_literal: Can't handle sexpr {value}")
+
 class SMT2Parser(object):
     @staticmethod
     def tokenize(smt2str):
