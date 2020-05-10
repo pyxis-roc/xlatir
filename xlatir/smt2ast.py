@@ -95,7 +95,7 @@ class Keyword(SExpr): # not exactly an atom
 
 class SExprList(SExpr):
     def __init__(self, *args):
-        self.v = args
+        self.v = list(args)
 
     def __str__(self):
         return f'({" ".join([str(e) for e in self.v])})'
