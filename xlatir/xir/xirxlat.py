@@ -326,12 +326,15 @@ class XIRToX(ast.NodeVisitor):
         self._retval_ty = retval
 
         # order is important!
-        body = [self.visit(s) for s in node.body]
+        body = [self.visit(s) for s in node.body if not isinstance(s, ast.Assert)]
         decls = [(v, t) for (v, t) in self.fn._xir_decls.items() if t is not None]
 
         self.fn = None
 
         return self.X.xlat_FunctionDef(func, args, retval, decls, body, node)
+
+    def visit_Assert(self, node):
+        return None
 
     def translate(self, sem, types):
         self.types = types

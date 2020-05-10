@@ -15,7 +15,11 @@ import os
 import struct
 from smt2ast import *
 
-XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
+XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
+                   ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
+                                                                     Symbol("roundNearestTiesToEven"), # TODO
+                                                                     x, y),
+
                    ('SUB', '*', '*'): '-',
                    ('MUL', '*', '*'): '*',
                    ('DIV', '*', '*'): '/', # signed division
@@ -24,7 +28,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
                    ('SHR', '*', '*'): '>>', # signed shr
                    ('SHL', '*', '*'): '<<', #
 
-                   ('GT', '*', '*'): '>',
+                   ('GT', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvgt'), x, y),
+                   ('GT', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsgt'), x, y),
+                   ('GT', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.gt'), x, y),
                    ('LT', '*', '*'): '<',
                    ('NOTEQ', '*', '*'): '!=',
                    ('GTE', '*', '*'): '>=',
@@ -105,9 +111,10 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): '+',
                    ('ABSOLUTE', 'int16_t'): 'abs',
                    ('ABSOLUTE', 'float'): 'fabsf',
                    ('ABSOLUTE', 'double'): 'fabs',
-                   ('ROUND', '*'): '', # TODO
-                   ('SATURATE', 'int32_t'): '', #TODO
-                   ('SATURATE', '*'): 'SATURATE', # not for int!
+                   ('ROUND', '*'): lambda x: x, # TODO
+                   ('SATURATE', 's32'): lambda x: x,
+                   ('SATURATE', 'f32'): lambda x: SExprList(Symbol('SATURATE_f32'), x),
+                   ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x)
 }
 
 def bool_to_pred(x):
@@ -137,14 +144,17 @@ class SMT2lib(object):
         return XIR_TO_SMT2_OPS[fnty2]
 
     def _nie(self, *args, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError(args[0])
 
     def _do_fnop_builtin(self, n, fnty, args, node):
+        """For functions that are built-in to a logic [i.e. they are generic]"""
         arglen = len(fnty) - 1
-        op = self._get_op(fnty)
+        op = self._get_op(fnty, generic = True)
         return op(*args[:arglen])
 
     def _do_fnop(self, n, fnty, args, node):
+        """For functions that are user-defined and don't have generic capabilities"""
+
         arglen = len(fnty) - 1
         op = self._get_op(fnty, builtin = False)
         return op(*args[:arglen])
@@ -157,8 +167,8 @@ class SMT2lib(object):
     #logical_op3 = _nie
     min = _nie
     ABSOLUTE = _nie
-    ROUND = _nie
-    SATURATE = _nie
+    ROUND = _do_fnop_builtin # should be _do_fnop after implementation
+    SATURATE = _do_fnop
     NOT = _nie
     booleanOp_xor = _do_fnop_builtin
 
@@ -166,7 +176,7 @@ class SMT2lib(object):
         return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
 
     GTE = _nie
-    GT = _nie
+    GT = _do_fnop_builtin
     LT = _nie
     LTE = _nie
     EQ = _nie
@@ -178,7 +188,7 @@ class SMT2lib(object):
     SHR = _nie
     SHL = _nie
 
-    ADD = _nie
+    ADD = _do_fnop_builtin
     SUB = _nie
     MUL = _nie
     DIV = _nie

@@ -474,6 +474,10 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.equations.append(TyEqn(lhs, rhs))
         # no return because this is a statement
 
+    def visit_Assert(self, node):
+        # assert nodes are not type checked
+        pass
+    
     def visit_While(self, node):
         assert len(node.orelse) == 0 # not supported
 
