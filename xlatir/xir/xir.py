@@ -448,6 +448,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
         ret, fnt, depty, _ = self._generate_poly_call_eqns("if_exp",
                                                            [node.test, node.body, node.orelse],
                                                            Def_IfExp)
+
+        node._xir_type = fnt
+
         return ret
 
     def visit_Name(self, node):

@@ -52,7 +52,7 @@ class Xlator(object):
     def xlat_UnaryOp(self, op, opty, value, node):
         raise NotImplementedError
 
-    def xlat_IfExp(self, test, body, orelse, node):
+    def xlat_IfExp(self, test, body, orelse, opty, node):
         raise NotImplementedError
 
     def xlat_If(self, test, body, orelse, node):
@@ -89,7 +89,13 @@ class XIRToX(ast.NodeVisitor):
     X = None # structured like a node visitor, except with xlat_X instead of visit_X
 
     def _get_type(self, tyterm):
-        return xir.find(tyterm, self.types)
+        ty = xir.find(tyterm, self.types)
+        if isinstance(ty, TyApp):
+            ty = TyApp(self._get_type(ty.ret), [self._get_type(a) for a in ty.args])
+
+        # TODO: other types
+        assert isinstance(ty, TyTerm)
+        return ty
 
     def _get_op_type(self, op, opty):
         opty = xir.find(opty, self.types)
@@ -213,9 +219,17 @@ class XIRToX(ast.NodeVisitor):
         return self.visit(node.value)
 
     def visit_IfExp(self, node):
+        opty = self._get_type(node._xir_type)
+
+        opty = ('?:', self.X.get_native_type(opty.ret),
+                self.X.get_native_type(opty.args[0]),
+                self.X.get_native_type(opty.args[1]),
+                self.X.get_native_type(opty.args[2]))
+
         return self.X.xlat_IfExp(self.visit(node.test),
                                  self.visit(node.body),
                                  self.visit(node.orelse),
+                                 opty,
                                  node)
 
     def visit_If(self, node):

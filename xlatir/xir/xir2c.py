@@ -302,7 +302,7 @@ class CXlator(xirxlat.Xlator):
     def xlat_UnaryOp(self, op, opty, value, node):
         return f'({op}{value})'
 
-    def xlat_IfExp(self, test, body, orelse, node):
+    def xlat_IfExp(self, test, body, orelse, opty, node):
         return f"({test} ? {body} : {orelse})"
 
     def xlat_If(self, test, body, orelse, node):

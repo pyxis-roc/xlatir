@@ -407,9 +407,12 @@ class SMT2Xlator(xirxlat.Xlator):
         assert opty[1].v == 'pred', opty
         return SExprList(Symbol('bvnot'), value)
 
-    def xlat_IfExp(self, test, body, orelse, node):
+    def xlat_IfExp(self, test, body, orelse, opty, node):
         if is_call(test, "bool_to_pred"):
             test = test.v[1]
+        else:
+            if isinstance(opty[2], Symbol) and opty[2].v == "pred":
+                test = SExprList(Symbol("pred_to_bool"), test)
 
         return SExprList(Symbol("ite"), test, body, orelse)
 
