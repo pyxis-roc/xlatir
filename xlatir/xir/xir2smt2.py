@@ -19,8 +19,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
                                                                      x, y),
+                   ('SUB', '*', '*'): lambda x, y: SExprList(Symbol("bvsub"), x, y),
+                   ('SUB', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.sub"),
+                                                                     Symbol("roundNearestTiesToEven"), # TODO
+                                                                     x, y),
 
-                   ('SUB', '*', '*'): '-',
                    ('MUL', '*', '*'): '*',
                    ('DIV', '*', '*'): '/', # signed division
                    ('REM', '*', '*'): '%',
@@ -31,7 +34,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('GT', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvgt'), x, y),
                    ('GT', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsgt'), x, y),
                    ('GT', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.gt'), x, y),
-                   ('LT', '*', '*'): '<',
+
+                   ('LT', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvlt'), x, y),
+                   ('LT', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvslt'), x, y),
+                   ('LT', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.lt'), x, y),
+
                    ('NOTEQ', '*', '*'): '!=',
                    ('GTE', '*', '*'): '>=',
                    ('EQ', '*', '*'): '==',
@@ -49,7 +56,7 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    ('AND', '*', '*'): '&',
                    ('OR', '*', '*'): '|',
-                   ('XOR', '*', '*'): '^',
+                   ('XOR', '*', '*'): lambda x, y: SExprList(Symbol('bvxor'), x, y),
                    ('NOT', '*'): '~',
 
                    ('booleanOp_xor', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
@@ -106,11 +113,13 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('set_memory', '*', '*'): 'set_memory',
                    ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
 
-                   ('ABSOLUTE', 'int32_t'): 'abs',
-                   ('ABSOLUTE', 'int64_t'): 'labs', # depends on 64-bit model
-                   ('ABSOLUTE', 'int16_t'): 'abs',
-                   ('ABSOLUTE', 'float'): 'fabsf',
-                   ('ABSOLUTE', 'double'): 'fabs',
+                   ('ABSOLUTE', 's32'): lambda x: SExprList(Symbol('abs_s32'), x),
+                   ('ABSOLUTE', 's64'): lambda x: SExprList(Symbol('abs_s64'), x),
+                   ('ABSOLUTE', 's16'): lambda x: SExprList(Symbol('abs_s16'), x),
+
+                   ('ABSOLUTE', 'f32'): lambda x: SExprList(Symbol("fp.abs"), x),
+                   ('ABSOLUTE', 'f64'): lambda x: SExprList(Symbol("fp.abs"), x),
+
                    ('ROUND', '*'): lambda x: x, # TODO
                    ('SATURATE', 's32'): lambda x: x,
                    ('SATURATE', 'f32'): lambda x: SExprList(Symbol('SATURATE_f32'), x),
@@ -166,7 +175,7 @@ class SMT2lib(object):
     FTZ = _do_fnop
     #logical_op3 = _nie
     min = _nie
-    ABSOLUTE = _nie
+    ABSOLUTE = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
     NOT = _nie
@@ -177,19 +186,19 @@ class SMT2lib(object):
 
     GTE = _nie
     GT = _do_fnop_builtin
-    LT = _nie
+    LT = _do_fnop_builtin
     LTE = _nie
     EQ = _nie
     NOTEQ = _nie
 
     OR = _nie
     AND = _nie
-    XOR = _nie
+    XOR = _do_fnop_builtin
     SHR = _nie
     SHL = _nie
 
     ADD = _do_fnop_builtin
-    SUB = _nie
+    SUB = _do_fnop_builtin
     MUL = _nie
     DIV = _nie
 
