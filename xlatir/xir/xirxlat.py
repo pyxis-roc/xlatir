@@ -110,7 +110,6 @@ class XIRToX(ast.NodeVisitor):
             if op == '||' or op == '&&':
                 return tuple([op] + arg_types)
             elif op == 'logical_op3' and len(arg_types) == 4:
-                print("for lop3", arg_types)
                 return tuple([op] + arg_types)
 
         raise NotImplementedError(f"Arguments of length {len(arg_types)} for {op}/{opty} not currently handled")
@@ -150,7 +149,6 @@ class XIRToX(ast.NodeVisitor):
 
     def visit_Num(self, node):
         ty = self.X.get_native_type(self._get_type(node._xir_type))
-
         return self.X.xlat_Num(node.n, ty, node)
 
     def visit_BoolOp(self, node):
@@ -276,9 +274,9 @@ class XIRToX(ast.NodeVisitor):
         if hasattr(self.X, 'lib'):
             if hasattr(self.X.lib, n):
                 fnxlat = getattr(self.X.lib, n)
-                return fnxlat(n, fnty, [self.visit(a) for a in node.args], node)
+                return fnxlat(n, fnty, [self.visit(a) for a in node.args[:len(fnty)-1]], node)
 
-        return self.X.xlat_Call(n, fnty, [self.visit(a) for a in node.args], node)
+        return self.X.xlat_Call(n, fnty, [self.visit(a) for a in node.args[:len(fnty)-1]], node)
 
     def visit_Tuple(self, node):
         # this assumes that this will always be structure initialization

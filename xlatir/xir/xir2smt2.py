@@ -151,7 +151,7 @@ class SMT2lib(object):
     MAX = _nie
     set_memory = _nie
     FTZ = _do_fnop
-    logical_op3 = _nie
+    #logical_op3 = _nie
     min = _nie
     ABSOLUTE = _nie
     ROUND = _nie
@@ -446,7 +446,7 @@ class SMT2Xlator(xirxlat.Xlator):
 
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1
-        return SExprList(fn, *args[:arglen])
+        return SExprList(Symbol(fn), *args[:arglen])
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
@@ -475,6 +475,12 @@ class SMT2Xlator(xirxlat.Xlator):
         return output
 
     def write_output(self, output, translations, defns):
+        def include_file(inc, outf):
+            with open(os.path.join(os.path.dirname(__file__), inc), "r") as incl:
+                print(f"; begin-include {inc}", file=outf)
+                print(incl.read(), file=outf)
+                print(f"; end-include {inc}", file=outf)
+
         with open(output, "w") as f:
             print("(set-logic QF_FPBV)", file=f) # need to support arrays too
 
@@ -496,8 +502,8 @@ class SMT2Xlator(xirxlat.Xlator):
             for sz in [32, 64]:
                 print(f"(define-sort f{sz} () Float{sz})", file=f)
 
-            with open(os.path.join(os.path.dirname(__file__), "ptx_utils.smt2"), "r") as incl:
-                print(incl.read(), file=f)
+            include_file("ptx_utils.smt2", f)
+            include_file("lop3_lut.smt2", f)
 
             print("; :end global", file=f)
 
