@@ -32,7 +32,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                      Symbol("roundNearestTiesToEven"),
                                                                      x, y),
 
-                   ('DIV', '*', '*'): '/', # signed division
+                   ('DIV', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvudiv"), x, y),
+                   ('DIV', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsdiv"), x, y),
+                   ('DIV', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.div"),
+                                                                     Symbol("roundNearestTiesToEven"),
+                                                                     x, y),
                    ('REM', '*', '*'): '%',
 
                    ('SHR', '*', '*'): '>>', # signed shr
@@ -204,7 +208,7 @@ class SMT2lib(object):
     ADD = _do_fnop_builtin
     SUB = _do_fnop_builtin
     MUL = _do_fnop_builtin
-    DIV = _nie
+    DIV = _do_fnop_builtin
 
 
     def ISNAN(self, n, fnty, args, mode):
