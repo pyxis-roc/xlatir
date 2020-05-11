@@ -51,8 +51,12 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('LT', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.lt'), x, y),
 
                    ('NOTEQ', '*', '*'): '!=',
-                   ('GTE', '*', '*'): '>=',
-                   ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)), #TODO
+
+                   ('GTE', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvuge'), x, y),
+                   ('GTE', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsge'), x, y),
+                   ('GTE', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.geq'), x, y),
+
+                   ('EQ', '*', '*'): lambda x, y: SExprList(Symbol("="), x, y),
 
                    ('MIN', 'float', 'float'): 'fminf',
                    ('MAX', 'float', 'float'): 'fmaxf',
@@ -192,7 +196,7 @@ class SMT2lib(object):
     def subnormal_check(self, n, fnty, args, node):
         return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
 
-    GTE = _nie
+    GTE = _do_fnop_builtin
     GT = _do_fnop_builtin
     LT = _do_fnop_builtin
     LTE = _nie
@@ -463,7 +467,12 @@ class SMT2Xlator(xirxlat.Xlator):
         if is_call(test, "bool_to_pred"):
             test = test.v[1]
         else:
-            if isinstance(opty[2], Symbol) and opty[2].v == "pred":
+            # TODO: handle this correctly, these are functions
+            # operating on bitvectors but returning bool, as opposed to
+            # bvor/bvand, etc.
+
+            bool_returning_functions = set(['=', 'bvuge', 'bvsge'])
+            if isinstance(opty[2], Symbol) and opty[2].v == "pred" and test.v[0].v not in bool_returning_functions:
                 test = SExprList(Symbol("pred_to_bool"), test)
 
         return SExprList(Symbol("ite"), test, body, orelse)
