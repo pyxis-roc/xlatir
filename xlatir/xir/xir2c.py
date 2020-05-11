@@ -134,6 +134,10 @@ class Clib(object):
     SATURATE = _do_fnop
     NOT = _do_fnop # because not is a prefix op
 
+    def ISNAN(self, n, fnty, args, mode):
+        #TODO: check types
+        return f"isnan({args[0]})"
+
     def subnormal_check(self, n, fnty, args, node):
         return f"(fpclassify({args[0]}) == FP_SUBNORMAL)"
 
