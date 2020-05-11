@@ -39,24 +39,31 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                      x, y),
                    ('REM', '*', '*'): '%',
 
-                   ('SHR', '*', '*'): '>>', # signed shr
-                   ('SHL', '*', '*'): '<<', #
+                   ('SHR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
+                   ('SHR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
 
-                   ('GT', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvgt'), x, y),
-                   ('GT', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsgt'), x, y),
-                   ('GT', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.gt'), x, y),
+                   ('SHL', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
+                   ('SHL', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
 
-                   ('LT', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvlt'), x, y),
-                   ('LT', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvslt'), x, y),
-                   ('LT', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.lt'), x, y),
 
-                   ('NOTEQ', '*', '*'): '!=',
+                   ('GT', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvugt'), x, y)),
+                   ('GT', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsgt'), x, y)),
+                   ('GT', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.gt'), x, y)),
 
-                   ('GTE', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvuge'), x, y),
-                   ('GTE', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsge'), x, y),
-                   ('GTE', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.geq'), x, y),
+                   ('LT', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvult'), x, y)),
+                   ('LT', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvslt'), x, y)),
+                   ('LT', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.lt'), x, y)),
 
-                   ('EQ', '*', '*'): lambda x, y: SExprList(Symbol("="), x, y),
+                   ('NOTEQ', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList("=", x, y))),
+                   ('NOTEQ', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList("=", x, y))),
+                   ('NOTEQ', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList("fp.eq", x, y))),
+
+
+                   ('GTE', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvuge'), x, y)),
+                   ('GTE', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsge'), x, y)),
+                   ('GTE', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.geq'), x, y)),
+
+                   ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)),
 
                    ('MIN', 'float', 'float'): 'fminf',
                    ('MAX', 'float', 'float'): 'fmaxf',
@@ -64,10 +71,19 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('FTZ', 'f32'): lambda x: SExprList(Symbol('FTZ_f32'), x),
                    ('FTZ', 'f64'): lambda x: SExprList(Symbol('FTZ_f64'), x),
 
-                   ('MIN', 'double', 'double'): 'fmin',
-                   ('MAX', 'double', 'double'): 'fmax',
+                   ('MIN', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
+                                                                           SExprList(Symbol("bvult"), x, y), x, y),
+                   ('MIN', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
+                                                                           SExprList(Symbol("bvslt"), x, y), x, y),
+                   #('MIN', 'double', 'double'): 'fmin',
+                   #('MAX', 'double', 'double'): 'fmax',
                    ('MAX', '*', '*'): 'MAX',
-                   ('min', '*', '*'): 'ptx_min', # this is varargs, but restrict it to 2?
+
+                   ('min', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
+                                                                           SExprList(Symbol("bvult"), x, y), x, y),
+                   ('min', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
+                                                                           SExprList(Symbol("bvslt"), x, y), x, y),
+
 
                    ('AND', '*', '*'): lambda x, y: SExprList(Symbol('bvand'), x, y),
                    ('OR', '*', '*'): lambda x, y: SExprList(Symbol('bvor'), x, y),
@@ -181,12 +197,12 @@ class SMT2lib(object):
         return op(*args[:arglen])
 
     POW = _nie
-    MIN = _nie
+    MIN = _do_fnop_builtin
     MAX = _nie
     set_memory = _nie
     FTZ = _do_fnop
     #logical_op3 = _nie
-    min = _nie
+    min = _do_fnop_builtin
     ABSOLUTE = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
@@ -201,13 +217,13 @@ class SMT2lib(object):
     LT = _do_fnop_builtin
     LTE = _nie
     EQ = _do_fnop_builtin
-    NOTEQ = _nie
+    NOTEQ = _do_fnop_builtin
 
     OR = _do_fnop_builtin
     AND = _do_fnop_builtin
     XOR = _do_fnop_builtin
-    SHR = _nie
-    SHL = _nie
+    SHR = _do_fnop_builtin
+    SHL = _do_fnop_builtin
 
     ADD = _do_fnop_builtin
     SUB = _do_fnop_builtin
@@ -362,6 +378,13 @@ class SMT2Xlator(xirxlat.Xlator):
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = SMT2lib()
+        self._if_exp_recognizer = IfExpRecognizer()
+        self._if_to_if_exp = IfToIfExp()
+
+    def pre_xlat_transform(self, s):
+        self._if_exp_recognizer.visit(s)
+        s = self._if_to_if_exp.visit(s)
+        return s
 
     def _get_smt2_type(self, node, declname = None):
         if isinstance(node, ast.AST):
@@ -390,7 +413,7 @@ class SMT2Xlator(xirxlat.Xlator):
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
-                return f'literal_type'
+                return Symbol('literal_type')
 
             assert isinstance(t, TyConstant), f"Non-TyConstant type: {t}"
 
@@ -470,9 +493,9 @@ class SMT2Xlator(xirxlat.Xlator):
             # TODO: handle this correctly, these are functions
             # operating on bitvectors but returning bool, as opposed to
             # bvor/bvand, etc.
+# and test.v[0].v not in bool_returning_functions            bool_returning_functions = set(['=', 'bvuge', 'bvsge'])
 
-            bool_returning_functions = set(['=', 'bvuge', 'bvsge'])
-            if isinstance(opty[2], Symbol) and opty[2].v == "pred" and test.v[0].v not in bool_returning_functions:
+            if isinstance(opty[2], Symbol) and opty[2].v == "pred":
                 test = SExprList(Symbol("pred_to_bool"), test)
 
         return SExprList(Symbol("ite"), test, body, orelse)
@@ -582,3 +605,106 @@ class SMT2Xlator(xirxlat.Xlator):
                     print(f"; :end {t.v[1]}", file=f)
 
                 print("\n", file=f)
+
+class IfExpRecognizer(ast.NodeVisitor):
+    def visit_If(self, node):
+        for s in [node.body, node.orelse]:
+            if s is not None and len(s) == 1:
+                if isinstance(s[0], ast.Assign):
+                    # add to leaves
+                    self._leaves.append(s[0])
+                elif isinstance(s[0], ast.If):
+                    return self.visit(s[0])
+                # possibly handle pass as well
+                else:
+                    return False
+            else:
+                return False
+
+        return True
+
+    def _check_assigns(self, l):
+        out = set()
+        for a in l:
+            if len(a.targets) == 1:
+                if isinstance(a.targets[0], ast.Name):
+                    out.add(a.targets[0].id)
+
+        return len(out) == 1, out
+
+    def visit_FunctionDef(self, node):
+        for s in node.body:
+            # support only top-level Ifs
+            if isinstance(s, ast.If):
+                self._leaves = []
+                if self.visit(s):
+                    assign_ok, assignment_to = self._check_assigns(self._leaves)
+                    s._if_exp = (self.visit(s) and assign_ok, assignment_to.pop())
+
+class IfToIfExp(ast.NodeTransformer):
+    _in_if_exp = False
+
+    def visit_Assign(self, node):
+        if self._in_if_exp:
+            return node.value
+
+        return node
+
+    def visit_If(self, node):
+        toplevel = None
+        if hasattr(node, '_if_exp') and node._if_exp[0]:
+            toplevel = node._if_exp[1]
+            self._in_if_exp = True
+
+        if self._in_if_exp:
+            test = node.test
+            body = self.visit(node.body[0])
+            orelse = self.visit(node.orelse[0])
+            #print(ast.dump(test), "\n", ast.dump(body), "\n", ast.dump(orelse))
+            node = ast.IfExp(test, body, orelse)
+        else:
+            node = self.generic_visit(node)
+
+        if toplevel is not None:
+            self._in_if_exp = False
+            node = ast.Assign([ast.Name(id=toplevel, ctx=ast.Store())], node)
+
+        return node
+
+def test_IfToIfExp():
+    import astunparse
+
+    code1 = """
+def x():
+    if ISNAN(src1):
+        tmp_dst = src2
+    elif ISNAN(src2):
+        tmp_dst = src1
+    else:
+        tmp_dst = (src1 if GT(src1, src2) else src2)
+    """
+
+    code2 = """
+def x():
+    if ISNAN(src1):
+        tmp_dst = src2
+    """
+
+    code3 = """
+def x():
+    if ISNAN(src1):
+        tmp_dst = src2
+    else:
+        tmp_dst = src1
+    """
+
+    for c in [code1, code2, code3]:
+        mod = ast.parse(c)
+        v = IfExpRecognizer()
+        v.visit(mod)
+
+        t = IfToIfExp()
+        mod2 = t.visit(mod)
+
+        print(astunparse.unparse(mod2))
+

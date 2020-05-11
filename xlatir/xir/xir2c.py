@@ -225,6 +225,9 @@ class CXlator(xirxlat.Xlator):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = Clib()
 
+    def pre_xlat_transform(self, s):
+        return s
+
     def _get_c_type(self, node, declname = None):
         if isinstance(node, ast.AST):
             ty = node._xir_type
