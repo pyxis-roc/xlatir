@@ -288,7 +288,6 @@ def is_call(sexpr, func):
     return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
 
 def create_dag(statements):
-
     # value numbering
     expr = {}
     values = {}
@@ -319,7 +318,18 @@ def create_dag(statements):
             # treat assignment specially
             k = get_key(s.v[2])
             expr[str(s.v[1])] = k
-            values[k] = s.v[1]
+            if k in values:
+                if not isinstance(values[k], Symbol):
+                    assert values[k].v == s.v[2].v, f"Two different constants have the same key {values[k]} and {s.v[2]}"
+                else:
+                    # values[k] is a Symbol, but RHS is not, so set it to a constant
+                    if not isinstance(s.v[2], Symbol):
+                        values[k] = s.v[2].v
+                    else:
+                        # both symbols, don't record
+                        pass
+            else:
+                values[k] = s.v[1]
         else:
             k = get_key(s)
 
@@ -330,7 +340,9 @@ def create_dag(statements):
 
     #print(expr)
     #print(values)
-    return reconstitute(retval)
+    r = reconstitute(retval)
+    #print(r)
+    return r
 
 class SMT2Xlator(xirxlat.Xlator):
     desugar_boolean_xor = False
