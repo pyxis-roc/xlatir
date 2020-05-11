@@ -15,6 +15,9 @@ import os
 import struct
 from smt2ast import *
 
+def bool_to_pred(x):
+    return SExprList(Symbol("bool_to_pred"), x)
+
 XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
@@ -24,7 +27,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                      Symbol("roundNearestTiesToEven"), # TODO
                                                                      x, y),
 
-                   ('MUL', '*', '*'): '*',
+                   ('MUL', '*', '*'): lambda x, y: SExprList(Symbol("bvmul"), x, y),
+                   ('MUL', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.mul"),
+                                                                     Symbol("roundNearestTiesToEven"),
+                                                                     x, y),
+
                    ('DIV', '*', '*'): '/', # signed division
                    ('REM', '*', '*'): '%',
 
@@ -41,7 +48,7 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    ('NOTEQ', '*', '*'): '!=',
                    ('GTE', '*', '*'): '>=',
-                   ('EQ', '*', '*'): '==',
+                   ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)), #TODO
 
                    ('MIN', 'float', 'float'): 'fminf',
                    ('MAX', 'float', 'float'): 'fmaxf',
@@ -54,10 +61,10 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('MAX', '*', '*'): 'MAX',
                    ('min', '*', '*'): 'ptx_min', # this is varargs, but restrict it to 2?
 
-                   ('AND', '*', '*'): '&',
-                   ('OR', '*', '*'): '|',
+                   ('AND', '*', '*'): lambda x, y: SExprList(Symbol('bvand'), x, y),
+                   ('OR', '*', '*'): lambda x, y: SExprList(Symbol('bvor'), x, y),
                    ('XOR', '*', '*'): lambda x, y: SExprList(Symbol('bvxor'), x, y),
-                   ('NOT', '*'): '~',
+                   ('NOT', '*'): lambda x: SExprList(Symbol('bvnot'), x),
 
                    ('booleanOp_xor', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
                    ('booleanOp_xor', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
@@ -126,9 +133,6 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x)
 }
 
-def bool_to_pred(x):
-    return SExprList(Symbol("bool_to_pred"), x)
-
 class SMT2lib(object):
     def _normalize_types(self, ty, builtin = True):
         if builtin:
@@ -178,7 +182,7 @@ class SMT2lib(object):
     ABSOLUTE = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
-    NOT = _nie
+    NOT = _do_fnop_builtin
     booleanOp_xor = _do_fnop_builtin
 
     def subnormal_check(self, n, fnty, args, node):
@@ -188,18 +192,18 @@ class SMT2lib(object):
     GT = _do_fnop_builtin
     LT = _do_fnop_builtin
     LTE = _nie
-    EQ = _nie
+    EQ = _do_fnop_builtin
     NOTEQ = _nie
 
-    OR = _nie
-    AND = _nie
+    OR = _do_fnop_builtin
+    AND = _do_fnop_builtin
     XOR = _do_fnop_builtin
     SHR = _nie
     SHL = _nie
 
     ADD = _do_fnop_builtin
     SUB = _do_fnop_builtin
-    MUL = _nie
+    MUL = _do_fnop_builtin
     DIV = _nie
 
 
@@ -440,8 +444,16 @@ class SMT2Xlator(xirxlat.Xlator):
         return f'({left} {op} {right})'
 
     def xlat_UnaryOp(self, op, opty, value, node):
-        assert opty[1].v == 'pred', opty
-        return SExprList(Symbol('bvnot'), value)
+        if op == '!':
+            assert opty[1].v == 'pred', opty
+            return SExprList(Symbol('bvnot'), value)
+        elif op == '-':
+            if opty[1].v in ('f32', 'f64'):
+                return SExprList(Symbol('fp.neg'), value)
+            else:
+                return SExprList(Symbol('bvneg'), value)
+        else:
+            raise NotImplementedError(f"Unknown op {op}/{opty}")
 
     def xlat_IfExp(self, test, body, orelse, opty, node):
         if is_call(test, "bool_to_pred"):
