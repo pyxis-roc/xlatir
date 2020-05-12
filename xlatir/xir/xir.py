@@ -26,6 +26,9 @@ Def_GenericBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
                                                        [TyVar("gamma_in"), TyVar("gamma_in")]))
 
+Def_FMAOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
+                                       [TyVar("gamma"), TyVar("gamma"), TyVar("gamma")]))
+
 #TODO: remove the u32?
 Def_ShiftOps = PolyTyDef(["gamma_in", "gamma_shift"], TyApp(TyVar("gamma_in"),
                                                           [TyVar("gamma_in"),
@@ -40,7 +43,7 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 
 VARARGS_FNS = set(['min'])
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX'])
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2'])
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
@@ -366,9 +369,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         elif fn in ARITH_FNS or fn in BITWISE_FNS:
             #note: call is: add(a, b, 'Integer', 16), so there is type information we're not using?
-            if fn == 'MUL':
+            if fn == 'MULWIDE':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_MulOp)
+            elif fn == 'FMA':
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
+                                                               Def_FMAOp)
             elif fn == "SHR" or fn == "SHL":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_ShiftOps)

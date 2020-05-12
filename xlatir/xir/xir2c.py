@@ -52,10 +52,14 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('FTZ', 'float'): 'FTZ',
                 ('FTZ', 'double'): 'FTZ',
 
+                ('FMA', 'float', 'float', 'float'): 'FMA',
+                ('FMA', 'double', 'double', 'double'): 'FMA',
+
                 ('MIN', 'double', 'double'): 'fmin',
                 ('MAX', 'double', 'double'): 'fmax',
                 ('MAX', '*', '*'): 'MAX',
-                ('min', '*', '*'): 'ptx_min', # this is varargs, but restrict it to 2?
+                ('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
+                ('MIN', '*', '*'): 'MIN',
 
                 ('AND', '*', '*'): '&',
                 ('OR', '*', '*'): '|',

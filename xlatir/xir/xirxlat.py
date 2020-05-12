@@ -111,6 +111,8 @@ class XIRToX(ast.NodeVisitor):
                 return tuple([op] + arg_types)
             elif op == 'logical_op3' and len(arg_types) == 4:
                 return tuple([op] + arg_types)
+            elif op == 'FMA' and len(arg_types) == 3:
+                return tuple([op] + arg_types)
 
         raise NotImplementedError(f"Arguments of length {len(arg_types)} for {op}/{opty} not currently handled")
 
