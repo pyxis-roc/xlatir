@@ -16,6 +16,7 @@ import argparse
 from collections import namedtuple
 import astunparse
 from xirtyping import *
+import itertools
 
 Def_GenericCompare = PolyTyDef(["gamma"], TyApp(TyConstant('bool'),
                                                 [TyVar("gamma"), TyVar("gamma")]))
@@ -23,11 +24,22 @@ Def_GenericCompare = PolyTyDef(["gamma"], TyApp(TyConstant('bool'),
 Def_GenericBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
                                               [TyVar("gamma"), TyVar("gamma")]))
 
+Def_GenericRoundUnaryOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
+                                                     [TyVar("gamma"), TyConstant('str')]))
+
+Def_GenericRoundBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
+                                                   [TyVar("gamma"), TyVar("gamma"),
+                                                    TyConstant('str')]))
+
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
                                                        [TyVar("gamma_in"), TyVar("gamma_in")]))
 
 Def_FMAOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
                                        [TyVar("gamma"), TyVar("gamma"), TyVar("gamma")]))
+
+Def_FMARoundOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
+                                            [TyVar("gamma"), TyVar("gamma"), TyVar("gamma"), TyConstant("str")]))
+
 
 #TODO: remove the u32?
 Def_ShiftOps = PolyTyDef(["gamma_in", "gamma_shift"], TyApp(TyVar("gamma_in"),
@@ -43,10 +55,16 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 
 VARARGS_FNS = set(['min'])
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2'])
+
+ROUND_SAT_ARITH_FNS = set(['ADD_ROUND', 'SUB_ROUND', 'MUL_ROUND', 'DIV_ROUND', 'FMA_ROUND', 'SQRT_ROUND', 'RCP_ROUND',  'ADD_ROUND_SATURATE',  'SUB_ROUND_SATURATE', 'MUL_ROUND_SATURATE'])
+
+SAT_ARITH_FNS = set(['ADD_SATURATE', 'SUB_SATURATE', 'MUL_SATURATE', 'DIV_SATURATE'])
+
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP']) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS
+
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
-FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN'])
+FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN', 'SQRT', 'RCP']) #also unary
 COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
                    'compare_gt','compare_gtu','compare_hi','compare_hs','compare_le','compare_leu',
                    'compare_lo','compare_ls','compare_lt','compare_ltu','compare_nan','compare_ne',
@@ -70,12 +88,29 @@ class RewritePythonisms(ast.NodeTransformer):
 
     # TODO: handle machine_specific
 
+    def _add_rounding(self, n):
+        if isinstance(n.func, ast.Name) and "_ROUND" in n.func.id: #TODO: make a full list?
+            assert isinstance(n.args[-1], ast.Str), f"Expecting last argument of ROUND function to be a string"
+            roundModifier = n.args.pop().s
+            n.func.id = n.func.id.replace('_ROUND', '_ROUND_' + roundModifier)
+
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
             if node.func.id == 'compare':
                 assert isinstance(node.args[2], ast.Str)
                 node.func.id = 'compare_' + node.args[2].s
                 node.args.pop() # remove the last
+            elif node.func.id in ROUND_SAT_ARITH_FNS:
+                if node.func.id == 'FMA_ROUND':
+                    node.args.insert(3, node.args[-1])
+                    node.args.pop()
+                elif node.func.id in ('RCP_ROUND', 'SQRT_ROUND'):
+                    node.args.insert(1, node.args[-1])
+                    node.args.pop()
+                else:
+                    node.args.insert(2, node.args[-1])
+                    node.args.pop()
+
             elif node.func.id == 'booleanOp':
                 assert isinstance(node.args[2], ast.Str)
                 if node.args[2].s == 'and':
@@ -251,6 +286,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         return ret
 
+    def visit_Str(self, node):
+        ty =  self.get_or_gen_ty_var(f"{node.s}_{self.literal_index}", literal=node.s)
+        node._xir_type = ty
+        return ty
+
     def visit_Num(self, node):
         #TODO: more nuanced?
         ty =  self.get_or_gen_ty_var(f"{node.n}_{self.literal_index}", literal=node.n)
@@ -375,12 +415,21 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == 'FMA':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
                                                                Def_FMAOp)
+            elif fn == 'FMA_ROUND':
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:4],
+                                                               Def_FMARoundOp)
+            elif fn == 'RCP_ROUND' or fn == 'SQRT_ROUND':
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               Def_GenericRoundUnaryOp)
             elif fn == "SHR" or fn == "SHL":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_ShiftOps)
-            elif fn == "NOT":
+            elif fn == "NOT" or fn == "RCP":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
                                                                Def_GenericUnaryOp)
+            elif fn in ROUND_SAT_ARITH_FNS:
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
+                                                               Def_GenericRoundBinOp)
             else:
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericBinOp)
