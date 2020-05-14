@@ -15,8 +15,23 @@ import os
 import struct
 from smt2ast import *
 
+ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
+                    'rm': 'RTN', # negative inf
+                    'rz': 'RTZ', # zero
+                    'rn': 'RNE'} # nearest even, no support in PTX for RNA
+
+
 def bool_to_pred(x):
     return SExprList(Symbol("bool_to_pred"), x)
+
+def generic_round(fn, nargs):
+    if nargs == 2:
+        return lambda x, y, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x, y)
+    elif nargs == 3:
+        return lambda x, y, z, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x, y, z)
+    else:
+        raise NotImplementedError(f"nargs={nargs} not implemented")
+
 
 XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
@@ -152,9 +167,19 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('ABSOLUTE', 'f64'): lambda x: SExprList(Symbol("fp.abs"), x),
 
                    ('ROUND', '*'): lambda x: x, # TODO
-                   ('SATURATE', 's32'): lambda x: x,
+                   ('ADD_SATURATE', 's32', 's32'): lambda x, y: SExprList(Symbol('ADD_SATURATE_s32'),
+                                                                          x, y),
+                   ('SUB_SATURATE', 's32', 's32'): lambda x, y: SExprList(Symbol('SUB_SATURATE_s32'),
+                                                                          x, y),
+
                    ('SATURATE', 'f32'): lambda x: SExprList(Symbol('SATURATE_f32'), x),
-                   ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x)
+                   ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x),
+
+                   ('ADD_ROUND', '*', '*', '*'): generic_round('fp.add', 2),
+                   ('SUB_ROUND', '*', '*', '*'): generic_round('fp.sub', 2),
+                   ('MUL_ROUND', '*', '*', '*'): generic_round('fp.mul', 2),
+                   ('DIV_ROUND', '*', '*', '*'): generic_round('fp.div', 2),
+                   ('FMA_ROUND', '*', '*', '*', '*'): generic_round('fp.fma', 3)
 }
 
 class SMT2lib(object):
@@ -208,6 +233,38 @@ class SMT2lib(object):
     SATURATE = _do_fnop
     NOT = _do_fnop_builtin
     booleanOp_xor = _do_fnop_builtin
+
+    ADD_ROUND = _do_fnop_builtin
+    SUB_ROUND = _do_fnop_builtin
+    MUL_ROUND = _do_fnop_builtin
+    DIV_ROUND = _do_fnop_builtin
+    FMA_ROUND = _do_fnop_builtin
+    RCP_ROUND = _nie
+    RCP = _nie
+
+    def _do_fnop_sat(self, n, fnty, args, node):
+        if fnty[1].v == 's32':
+            return self._do_fnop(n, fnty, args, node)
+        else:
+            wosat = n[:-len("_SATURATE")]
+            assert hasattr(self, wosat), f"Unable to find non-saturating {wosat} version of {n}"
+            wosat_fnty = tuple([wosat] + list(fnty[1:]))
+            wosatcode = getattr(self, wosat)(wosat, wosat_fnty, args, node)
+
+            sat_fnty = ('SATURATE', fnty[1])
+
+            # pass none since we don't really have a saturate node (but maybe we should?)
+            return self.SATURATE('SATURATE', sat_fnty, [wosatcode], None)
+
+    ADD_ROUND_SATURATE = _do_fnop_sat
+    SUB_ROUND_SATURATE = _do_fnop_sat
+    MUL_ROUND_SATURATE = _do_fnop_sat
+    DIV_ROUND_SATURATE = _do_fnop_sat
+
+    ADD_SATURATE = _do_fnop_sat
+    SUB_SATURATE = _do_fnop_sat
+    MUL_SATURATE = _do_fnop_sat
+    DIV_SATURATE = _do_fnop_sat
 
     def subnormal_check(self, n, fnty, args, node):
         return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
