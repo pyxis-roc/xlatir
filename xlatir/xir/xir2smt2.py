@@ -32,6 +32,23 @@ def generic_round(fn, nargs):
     else:
         raise NotImplementedError(f"nargs={nargs} not implemented")
 
+def RCP(ty, x, rm = Symbol('rn')):
+    if ty == 'f32':
+        exp = 8
+        signi = 24
+    elif ty == 'f64':
+        exp = 11
+        signi = 53
+    else:
+        raise NotImplementedError(f"Unknown type for rcp {ty}")
+
+    return SExprList(Symbol("fp.div"),
+                     Symbol(ROUND_MODES_SMT2[rm.v]),
+                     SExprList(SExprList(Symbol("_"), Symbol("to_fp"), Decimal(exp), Decimal(signi)),
+                               Symbol(ROUND_MODES_SMT2['rn']),
+                               Hexadecimal(1, width=(exp+signi)//4)),
+                     x)
+
 
 XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
@@ -52,6 +69,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('DIV', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.div"),
                                                                      Symbol("roundNearestTiesToEven"),
                                                                      x, y),
+                   ('RCP_ROUND', 'f32', 'str'): lambda x, m: RCP('f32', x, m),
+                   ('RCP_ROUND', 'f64', 'str'): lambda x, m: RCP('f64', x, m),
+
                    ('REM', '*', '*'): '%',
 
                    ('SHR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
@@ -239,8 +259,7 @@ class SMT2lib(object):
     MUL_ROUND = _do_fnop_builtin
     DIV_ROUND = _do_fnop_builtin
     FMA_ROUND = _do_fnop_builtin
-    RCP_ROUND = _nie
-    RCP = _nie
+    RCP_ROUND = _do_fnop
 
     def _do_fnop_sat(self, n, fnty, args, node):
         if fnty[1].v == 's32':
