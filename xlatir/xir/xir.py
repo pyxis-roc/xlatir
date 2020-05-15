@@ -60,7 +60,7 @@ ROUND_SAT_ARITH_FNS = set(['ADD_ROUND', 'SUB_ROUND', 'MUL_ROUND', 'DIV_ROUND', '
 
 SAT_ARITH_FNS = set(['ADD_SATURATE', 'SUB_SATURATE', 'MUL_SATURATE', 'DIV_SATURATE'])
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP']) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
@@ -93,6 +93,39 @@ class RewritePythonisms(ast.NodeTransformer):
             assert isinstance(n.args[-1], ast.Str), f"Expecting last argument of ROUND function to be a string"
             roundModifier = n.args.pop().s
             n.func.id = n.func.id.replace('_ROUND', '_ROUND_' + roundModifier)
+
+    def cvt_machine_specific(self, node):
+        def get_keys(msn, keys=None):
+            if isinstance(msn, ast.Subscript):
+                if isinstance(msn.value, ast.Name) and msn.value.id == 'machine_specific':
+                    assert isinstance(msn.slice.value, ast.Str), f"Don't support {msn.slice}"
+                    v = msn.slice.value.s
+                    keys.append(v)
+                    return True
+                elif isinstance(msn.value, ast.Subscript):
+                    if get_keys(msn.value, keys):
+                        assert isinstance(msn.slice.value, ast.Str), f"Don't support {msn.slice}"
+                        v = msn.slice.value.s
+                        keys.append(v)
+                        return True
+                    else:
+                        return False
+                else:
+                    return False
+            else:
+                return False
+
+        k = []
+        if get_keys(node, k):
+            return ast.Name("MACHINE_SPECIFIC_" + "_".join(k), node.ctx)
+        else:
+            return node
+
+    def visit_Subscript(self, node):
+        if isinstance(node.value, ast.Subscript):
+            return self.cvt_machine_specific(node)
+
+        return self.generic_visit(node)
 
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
@@ -424,7 +457,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == "SHR" or fn == "SHL":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_ShiftOps)
-            elif fn == "NOT" or fn == "RCP":
+            elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
                                                                Def_GenericUnaryOp)
             elif fn in ROUND_SAT_ARITH_FNS:

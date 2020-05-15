@@ -50,6 +50,9 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
 
                 ('MIN', 'float', 'float'): 'fminf',
                 ('MAX', 'float', 'float'): 'fmaxf',
+                ('LOG2', 'float'): 'log2f',
+                ('LOG2', 'double'): 'log2',
+                ('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
 
                 ('FTZ', 'float'): 'FTZ',
                 ('FTZ', 'double'): 'FTZ',
@@ -150,6 +153,9 @@ class Clib(object):
     POW = _do_fnop
     MIN = _do_fnop
     MAX = _do_fnop
+    LOG2 = _do_fnop
+    MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop
+
     set_memory = _do_fnop
     FTZ = _do_fnop
     logical_op3 = _do_fnop
@@ -235,7 +241,8 @@ class Clib(object):
     SUB = _do_infix_op
     MUL = _do_infix_op
     DIV = _do_infix_op
-
+    REM = _do_infix_op
+    
     def _do_compare_unordered(self, n, fnty, args, node):
         assert n[-1] == 'u' # unordered
         n = n[:-1]
@@ -339,6 +346,16 @@ class CXlator(xirxlat.Xlator):
         return self._get_c_type(xirty, declname)
 
     def xlat_Name(self, name: str, node):
+        if name.startswith("MACHINE_SPECIFIC_"):
+            if name == "MACHINE_SPECIFIC_execute_lg2_negative_number":
+                return "NAN"
+            elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_signed":
+                return "-1"
+            elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
+                return "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" # lambda x: x
+            else:
+                raise NotImplementedError(f"Not implemented: Machine-specific value {name}")
+
         return name
 
     def xlat_NameConstant(self, value, vty, node):
@@ -461,403 +478,6 @@ class CXlator(xirxlat.Xlator):
 
     def write_output(self, output, translations, defns):
         write_output(output, translations, defns)
-
-
-# # For now, use strings instead of returning an AST?
-# class XIRToC(ast.NodeVisitor):
-#     def _get_c_type(self, node, declname = None):
-#         if isinstance(node, ast.AST):
-#             ty = node._xir_type
-#         else:
-#             ty = node
-
-#         t = xir.find(ty, self.types)
-
-#         if isinstance(t, TyPtr):
-#             pt = self._get_c_type(t.pty)
-#             return f"{pt} *"
-
-#         if isinstance(t, TyApp):
-#             arg_types = [self._get_c_type(x) for x in t.args]
-#             assert declname is not None, "declname must be provided for fn ptrs"
-#             return f"{self._get_c_type(t.ret)} (*{declname})({', '.join(arg_types)})"
-
-#         if isinstance(t, TyProduct):
-#             #NOTE: this won't handle function pointers as return values
-#             elt_types = [self._get_c_type(x) for x in t.args]
-#             assert declname is not None, "declname must be provided for product types"
-#             elt_names = [f"{ty} out{k}" for k, ty in enumerate(elt_types)]
-
-#             return f"struct retval_{declname} {{ {'; '.join(elt_names)};  }};"
-
-#         if not isinstance(t, TyConstant):
-#             if isinstance(t, TyVarLiteral):
-#                 return f'literal_type'
-
-#             assert isinstance(t, TyConstant), f"Non-TyConstant type: {t}"
-
-#         if declname:
-#             return f"{XIR_TO_C_TYPES[t.value]} {declname}"
-#         else:
-#             return XIR_TO_C_TYPES[t.value]
-
-#     def _get_type(self, tyterm):
-#         return xir.find(tyterm, self.types)
-
-#     def visit_Name(self, node):
-#         if hasattr(self, 'fn') and self.fn:
-#             if isinstance(node.ctx, ast.Store):
-#                 if node.id not in self.fn._xir_decls:
-#                     self.fn._xir_decls[node.id] = self._get_c_type(node)
-
-#         return node.id
-
-#     def visit_NameConstant(self, node):
-#         if node.value == True:
-#             return "1"
-#         elif node.value == False:
-#             return "0"
-#         elif node.value is None:
-#             return "None"
-
-#     def visit_Attribute(self, node):
-#         #TODO decide whether to use . or ->
-#         return f'{self.visit(node.value)}.{node.attr}'
-
-#     def visit_Str(self, node):
-#         return f'"{node.s}"'
-
-#     def visit_Num(self, node):
-#         return f'{node.n}'
-
-#     def _get_op_type(self, op, opty):
-#         print(op, opty)
-#         opty = xir.find(opty, self.types)
-#         assert isinstance(opty, TyApp)
-#         arg_types = [self._get_c_type(self._get_type(a)) for a in opty.args]
-
-#         if len(arg_types) == 2:
-#             return (op, arg_types[0], arg_types[1])
-#         elif len(arg_types) == 1:
-#             return (op, arg_types[0])
-#         else:
-#             raise NotImplementedError
-
-#     def visit_BoolOp(self, node):
-#         if isinstance(node.op, ast.And):
-#             op = ' && '
-#         elif isinstance(node.op, ast.Or):
-#             op = ' || '
-#         else:
-#             raise NotImplementedError(node.op)
-
-#         return op.join([f'({self.visit(v)})' for v in node.values])
-
-#     def visit_BinOp(self, node):
-#         if isinstance(node.op, ast.Mult):
-#             op = '*'
-#         elif isinstance(node.op, ast.BitAnd):
-#             op = '&'
-#         elif isinstance(node.op, ast.Add):
-#             # TODO: ptx integer wrapping semantics?
-#             op = '+'
-#         elif isinstance(node.op, ast.Sub):
-#             # TODO: ptx integer wrapping semantics?
-#             op = '-'
-#         elif isinstance(node.op, ast.Pow):
-#             # TODO: ptx integer wrapping semantics?
-#             if isinstance(node.left, ast.Num) and node.left.n == 2:
-#                 return f"(1 << {self.visit(node.right)})"
-#             else:
-#                 op = '**'
-#         elif isinstance(node.op, ast.Mod):
-#             # TODO: ptx integer wrapping semantics?
-#             op = '%'
-#         else:
-#             raise NotImplementedError(node.op)
-
-#         opty = self._get_op_type(op, node._xir_type)
-
-#         return f'({self.visit(node.left)} {op} {self.visit(node.right)})'
-
-#     def visit_Compare(self, node):
-#         assert len(node.ops) == 1, f"Not supported, more than op: {node.ops}"
-#         assert len(node.comparators) == 1, f"Not supported, more than one comparator: {node.ops}"
-
-#         if isinstance(node.ops[0], ast.Lt):
-#             op = '<'
-#         elif isinstance(node.ops[0], ast.Gt):
-#             op = '>'
-#         else:
-#             raise NotImplementedError(node.ops[0])
-
-#         opty = self._get_op_type(op, node._xir_type)
-
-#         return f'({self.visit(node.left)} {op} {self.visit(node.comparators[0])})'
-
-#     def visit_UnaryOp(self, node):
-#         if isinstance(node.op, ast.USub):
-#             op = '-'
-#         elif isinstance(node.op, ast.Not):
-#             op = '!' # logical not
-#         elif isinstance(node.op, ast.Invert):
-#             op = '~'
-#         else:
-#             raise NotImplementedError(node.op)
-
-#         opty = self._get_op_type(op, node._xir_type)
-
-#         return f'({op}{self.visit(node.operand)})'
-
-#     def visit_Expr(self, node):
-#         return self.visit(node.value)
-
-#     def visit_IfExp(self, node):
-#         return f"{self.visit(node.test)} ? {self.visit(node.body)} : {self.visit(node.orelse)}"
-
-#     def visit_If(self, node):
-#         test = self.visit(node.test)
-#         body = ["\t\t" + self.visit(x) + ";" for x in node.body]
-#         if node.orelse:
-#             orelse = ["\t\t" + self.visit(x) + ";" for x in node.orelse]
-#         else:
-#             orelse = None
-
-#         out = [f'if({test}) {{']
-#         out.extend(body)
-#         #out.append("\t}")
-#         if orelse:
-#             out.append('\t} else {')
-#             out.extend(orelse)
-
-#         out.append('\t}')
-
-#         return '\n'.join(out)
-
-#     def visit_Break(self, node):
-#         return "break\n"
-
-#     def _get_float_val(self, node):
-#         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'float':
-#             assert isinstance(node.args[0], ast.Str), "Don't support non-str-const uses of float"
-#             x = node.args[0].s.lower()
-#             s = ''
-#             if x[0] == '-' or x[1] == '+':
-#                 s = x[0] if x[0] == '-' else ''
-#                 x = x[1:]
-
-#             assert x in ('inf', 'nan', '0.0'), f"Unrecognized value {x}"
-#             return True, s + x
-
-#         return False, None
-
-#     def visit_Call(self, node):
-#         n = self.visit(node.func)
-#         if n == 'set_sign_bitWidth':
-#             return self.visit(node.args[0])
-#         elif (n in xir.ARITH_FNS or n in xir.BITWISE_FNS) and n not in ('POW', 'MIN', 'MAX', 'NOT'): #binary only
-#             op, t1, t2 = self._get_op_type(n, node._xir_type)
-
-#             if (op, t1, t2) in XIR_TO_C_OPS:
-#                 opkey = (op, t1, t2)
-#             else:
-#                 opkey = (n, '*', '*')
-
-#             assert opkey in XIR_TO_C_OPS, opkey
-
-#             # returnin ASTs would make this so much nicer ...
-#             return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
-#         elif n in xir.COMPARE_FNS:
-#             op, t1, t2 = self._get_op_type(n, node._xir_type)
-#             assert (n, '*', '*') in XIR_TO_C_OPS
-
-#             opkey = (n, '*', '*')
-#             # returnin ASTs would make this so much nicer ...
-#             return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
-#         elif n in xir.COMPARE_PTX:
-#             if n not in set(['compare_equ', 'compare_neu',
-#                              'compare_ltu', 'compare_leu',
-#                              'compare_gtu', 'compare_geu',
-#                              'compare_num', 'compare_nan']):
-#                 op, t1, t2 = self._get_op_type(n, node._xir_type)
-#                 if (n, t1, t2) in XIR_TO_C_OPS:
-#                     opkey = (n, t1, t2)
-#                 else:
-#                     opkey = (n, '*', '*')
-
-#                 assert opkey in XIR_TO_C_OPS, (n, t1, t2)
-
-#                 # returnin ASTs would make this so much nicer ...
-#                 return f"({self.visit(node.args[0])} {XIR_TO_C_OPS[opkey]} {self.visit(node.args[1])})"
-#             elif n in ('compare_num', 'compare_nan'):
-#                 op, t1, t2 = self._get_op_type(n, node._xir_type)
-#                 assert (op, t1, t2) in XIR_TO_C_OPS, f"Incorrect type for {n}"
-
-#                 if n == 'compare_nan':
-#                     return f"isnan({self.visit(node.args[0])}) || isnan({self.visit(node.args[1])})"
-#                 elif n == 'compare_num':
-#                     return f"!(isnan({self.visit(node.args[0])}) || isnan({self.visit(node.args[1])}))"
-#             else:
-#                 assert n[-1] == 'u' # unordered
-#                 n = n[:-1]
-#                 op, t1, t2 = self._get_op_type(n, node._xir_type)
-#                 if (n, t1, t2) in XIR_TO_C_OPS:
-#                     opkey = (n, t1, t2)
-#                 else:
-#                     opkey = (n, '*', '*')
-
-#                 assert opkey in XIR_TO_C_OPS, (n, t1, t2)
-#                 a1 = self.visit(node.args[0])
-#                 a2 = self.visit(node.args[1])
-
-#                 return f"isnan({a1}) || isnan({a2}) || (({a1}) {XIR_TO_C_OPS[opkey]} ({a2}))"
-#         elif n in 'POW':
-#             opkey = self._get_op_type(n, node._xir_type)
-#             assert opkey in XIR_TO_C_OPS, f"Missing {opkey}"
-#             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])}, {self.visit(node.args[1])})"
-#         elif n in ('MIN', 'MAX'):
-#             opkey = self._get_op_type(n, node._xir_type)
-#             if opkey not in XIR_TO_C_OPS:
-#                 assert (opkey[0], '*', '*') in XIR_TO_C_OPS, f"Missing {opkey}"
-#                 opkey = (opkey[0], '*', '*')
-
-#             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])}, {self.visit(node.args[1])})"
-#         elif n == 'ISNAN':
-#             return f"isnan({self.visit(node.args[0])})"
-#         elif n == 'set_memory':
-#             return f"set_memory({self.visit(node.args[0])}, {self.visit(node.args[1])})"
-#         elif n == 'int':
-#             return self.visit(node.args[0])
-#         elif n == 'set_value':
-#             return self.visit(node.args[2])
-#         elif n == 'ABSOLUTE':
-#             #TODO: C is undefined for max neg int
-#             opkey = self._get_op_type(n, node._xir_type)
-#             return f"{XIR_TO_C_OPS[opkey]}({self.visit(node.args[0])})"
-#         elif n == 'NOT':
-#             op, _ = self._get_op_type(n, node._xir_type)
-
-#             return f"{XIR_TO_C_OPS[(op, '*')]}({self.visit(node.args[0])})"
-#         elif n == 'ROUND':
-#             #TODO: use fesetenv before the operation!
-#             return self.visit(node.args[0])
-#         elif n == 'FTZ':
-#             #TODO: implement force to zero
-#             return f"FTZ({self.visit(node.args[0])})"
-#         elif n == 'SATURATE':
-#             op, t1 = self._get_op_type(n, node._xir_type)
-#             if t1 == 'float' or t1 == 'double':
-#                 return f"SAT({self.visit(node.args[0])})"
-#             #TODO: saturate for s32 should be ADD_SAT
-#             return self.visit(node.args[0])
-#         elif n == 'subnormal':
-#             #TODO: actually implement subnormal, which seems to be the same as FTZ?
-#             return self.visit(node.args[0])
-#         elif n == 'subnormal_check':
-#             return f"fpclassify({self.visit(node.args[0])}) == FP_SUBNORMAL"
-#         elif n == 'min':
-#             #TODO: actually implement a min function, a macro will not cut it
-#             return f"ptx_min({self.visit(node.args[0])}, {self.visit(node.args[1])})"
-#         elif n == 'float':
-#             _, v = self._get_float_val(node)
-#             assert v is not None, node.args[0]
-
-#             if v == 'inf':
-#                 return "INFINITY" # since C99
-#             elif v == '-inf':
-#                 return "-INFINITY" # since C99
-#             elif v == 'nan':
-#                 return "NAN" # since C99, but could also use nan()?
-#             elif v == '-nan':
-#                 return "-NAN"
-#             elif v == '-0.0' or v == '0.0':
-#                 return v
-#             else:
-#                 raise NotImplementedError(f"Unknown float constant {v}")
-#         elif n == 'FLOAT_COMPARE_EQ' or n == 'FLOAT_COMPARE_NOTEQ':
-#             _, v = self._get_float_val(node.args[1])
-#             assert v is not None, node.args[1]
-
-#             if v == 'inf' or v == '-inf':
-#                 fn = "!isfinite"
-#             elif v == 'nan' or v == '-nan':
-#                 fn = "isnan"
-
-#             return f"{'!' if n == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({self.visit(node.args[0])})"
-#         elif n == "logical_op3":
-#             return f"logical_op3({', '.join([self.visit(a) for a in node.args[:-1]])})"
-
-#         args = [str(self.visit(a)) for a in node.args]
-#         return f"{n}({', '.join(args)})"
-
-#     def visit_Tuple(self, node):
-#         # this assumes that this will always be structure initialization
-#         return f"{{ {', '.join([self.visit(e) for e in node.elts])} }}"
-
-#     def visit_Return(self, node):
-#         if node.value:
-#             if isinstance(node.value, ast.Tuple):
-#                 return f"struct retval_{self.fn.name[len('execute_'):]} _retval = {self.visit(node.value)};\n\treturn _retval"
-#             else:
-#                 return f"return {self.visit(node.value)}"
-#         else:
-#             return "return"
-
-#     def visit_Assign(self, node):
-#         assert len(node.targets) == 1, "Not supported"
-
-#         return f"{self.visit(node.targets[0])} = {self.visit(node.value)}"
-
-#     def visit_While(self, node):
-#         assert len(node.orelse) == 0
-
-#         test = self.visit(node.test)
-#         body = ["\t\t" + self.visit(x) + ";" for x in node.body]
-
-#         return f"while({test}) {{" + "\n" + "\n".join(body) + "\n}"
-
-#     def visit_FunctionDef(self, node):
-#         # perhaps make this per block?
-#         self.fn = node
-
-#         node._xir_decls = {}
-#         args = []
-#         for a in node.args.args:
-#             t = self._get_c_type(a, declname=a.arg)
-#             node._xir_decls[a.arg] = None
-#             args.append(t)
-
-#         out = []
-#         for s in node.body:
-#             out.append(str(self.visit(s)) + ";")
-
-#         body = "\n\t".join(out)
-#         decls = "\n\t".join([f"{t} {v};" for v, t in self.fn._xir_decls.items() if t is not None])
-
-
-#         func = node.name
-#         retval = self._get_c_type(node._xir_type.ret,
-#                                   func[len('execute_'):] if isinstance(self._get_type(node._xir_type.ret), TyProduct) else None)
-#         if retval.startswith("struct "):
-#             self.defns.append(retval)
-#             retval = retval[:retval.index("{")]
-
-#         self.defns.append(f"{retval} {func} ({', '.join(args)});")
-
-#         #TODO: return a C AST?
-#         output = f"""
-# {retval} {func} ({', '.join(args)}) {{
-#         {decls}
-#         {body}
-# }}"""
-#         self.fn = None
-
-#         return output
-
-#     def translate(self, sem, types):
-#         self.types = types
-#         self.defns = []
-#         return self.visit(sem)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',
