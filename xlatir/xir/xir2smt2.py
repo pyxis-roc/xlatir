@@ -71,6 +71,7 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                      x, y),
                    ('RCP_ROUND', 'f32', 'str'): lambda x, m: RCP('f32', x, m),
                    ('RCP_ROUND', 'f64', 'str'): lambda x, m: RCP('f64', x, m),
+                   ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
 
                    ('REM', '*', '*'): '%',
 
@@ -259,7 +260,8 @@ class SMT2lib(object):
     MUL_ROUND = _do_fnop_builtin
     DIV_ROUND = _do_fnop_builtin
     FMA_ROUND = _do_fnop_builtin
-    RCP_ROUND = _do_fnop
+    RCP_ROUND = _do_fnop # because we want different routines for f32/f64 even though fp.div is builtin
+    RCP = _do_fnop # approx
 
     def _do_fnop_sat(self, n, fnty, args, node):
         if fnty[1].v == 's32':
