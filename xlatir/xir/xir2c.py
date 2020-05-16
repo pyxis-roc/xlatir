@@ -242,7 +242,7 @@ class Clib(object):
     MUL = _do_infix_op
     DIV = _do_infix_op
     REM = _do_infix_op
-    
+
     def _do_compare_unordered(self, n, fnty, args, node):
         assert n[-1] == 'u' # unordered
         n = n[:-1]
@@ -560,8 +560,9 @@ def write_output(outfile, translations, defns):
         f.write("#include <stdint.h>\n\n")
         f.write("#include <math.h>\n\n")
         f.write('#include "lop3_lut.h"\n')
+        f.write('#include "readbyte_prmt.h"\n')
         f.write("struct cc_register { int cf;};\n")
-        f.write("#define ptx_min(a, b) ((a) > (b) ? (b) : (a))") # TODO: actually implement a min
+
         f.write('\n')
         f.write("\n".join(defns))
 

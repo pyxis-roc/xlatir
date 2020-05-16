@@ -133,6 +133,10 @@ class RewritePythonisms(ast.NodeTransformer):
                 assert isinstance(node.args[2], ast.Str)
                 node.func.id = 'compare_' + node.args[2].s
                 node.args.pop() # remove the last
+            elif node.func.id == 'ReadByte':
+                assert isinstance(node.args[0], ast.Str)
+                node.func.id = 'ReadByte_' + node.args[0].s
+                node.args = node.args[1:]
             elif node.func.id in ROUND_SAT_ARITH_FNS:
                 if node.func.id == 'FMA_ROUND':
                     node.args.insert(3, node.args[-1])
@@ -532,6 +536,16 @@ class TypeEqnGenerator(ast.NodeVisitor):
         elif fn == 'int':
             # int is not treated as a cast
             return self.visit(node.args[0])
+        elif fn.startswith('ReadByte_'):
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyConstant('u32'), # u8
+                                                                           [TyConstant('b32'),
+                                                                            TyConstant('b32'), # TODO: b64!
+                                                                            TyConstant('b32')])
+                                                                     ))
+            node._xir_type = fnt
+            return ret
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
         self.ret += 1
