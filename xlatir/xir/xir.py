@@ -137,6 +137,18 @@ class RewritePythonisms(ast.NodeTransformer):
                 assert isinstance(node.args[0], ast.Str)
                 node.func.id = 'ReadByte_' + node.args[0].s
                 node.args = node.args[1:]
+            elif node.func.id.startswith('extractAndSignOrZeroExt'):
+                assert isinstance(node.args[2], ast.Num) and node.args[2].n == 32
+                assert isinstance(node.args[1], ast.NameConstant) and node.args[1].value in (True, False)
+                # This is not necessary, but could simplify implementations?
+                if node.args[1].value == False:
+                    node.func.id = "extractAndZeroExt" + node.func.id[len("extractAndSignOrZeroExt"):]
+                elif node.args[1].value == True:
+                    node.func.id = "extractAndSignExt" + node.func.id[len("extractAndSignOrZeroExt"):]
+                else:
+                    assert False, f"Unsupported {node.args[1].value}"
+
+                node.args = node.args[0:1] # this will happen before Assign
             elif node.func.id in ROUND_SAT_ARITH_FNS:
                 if node.func.id == 'FMA_ROUND':
                     node.args.insert(3, node.args[-1])
@@ -183,6 +195,19 @@ class RewritePythonisms(ast.NodeTransformer):
 
         return node
 
+    def visit_Assign(self, node):
+        # rewrite extractAnd*Ext so that we can support languages that don't support returning arrays
+        node = self.generic_visit(node)
+
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if isinstance(node.value, ast.Call):
+                if isinstance(node.value.func, ast.Name) and node.value.func.id.startswith('extractAnd'):
+                    rhs = node.value
+                    rhs.args.append(node.targets[0])
+                    return ast.Expr(rhs)
+
+        return node
+
 class TypeEqnGenerator(ast.NodeVisitor):
     def __init__(self):
         self.type_variables = {}
@@ -215,6 +240,16 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 return self.get_or_gen_ty_var('cc_reg.cf')
 
         raise NotImplementedError(f"Attribute node {node} not handled")
+
+    def visit_For(self, node):
+        assert len(node.orelse) == 0, f"Don't support orelse on For node"
+
+        tty = self.visit(node.target)
+        ity = self.visit(node.iter)
+        self.equations.append(TyEqn(tty, ity))
+
+        for s in node.body:
+            self.visit(s)
 
     def visit_FunctionDef(self, node):
         for a in node.args.args:
@@ -334,6 +369,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
         node._xir_type = ty
         return ty
 
+    def visit_Expr(self, node):
+        return self.visit(node.value)
+
     def visit_NameConstant(self, node):
         if node.value == True or node.value == False:
             ty = TyConstant("bool")
@@ -344,6 +382,24 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         node._xir_type = ty
         return ty
+
+    def visit_Index(self, node):
+        ty = self.visit(node.value)
+        node._xir_type = ty
+        return ty
+
+    def visit_Subscript(self, node):
+        vty = self.visit(node.value)
+
+        if isinstance(node.slice, ast.Index):
+            sty = self.visit(node.slice)
+        else:
+            raise NotImplementedError(f"Don't support non-Index array indices for {node.value}")
+
+
+        node._xir_type = TyApp(vty, [sty])
+        self.equations.append(TyEqn(sty, TyConstant('s32')))
+        return vty
 
     def visit_UnaryOp(self, node):
         self.generic_visit(node)
@@ -544,6 +600,30 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                             TyConstant('b32'), # TODO: b64!
                                                                             TyConstant('b32')])
                                                                      ))
+            node._xir_type = fnt
+            return ret
+        elif fn == 'extractAndZeroExt_4':
+            print("HERE")
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma', 'gamma1'],
+                                                                     TyApp(TyConstant('void'),
+                                                                           [TyVar('gamma'),
+                                                                            TyVar('gamma1')]))) #array
+            node._xir_type = fnt
+            return ret
+        elif fn == 'range':
+            if len(node.args) != 2:
+                # though we should support step...
+                raise NotImplementedError(f"range with {len(node.args)} not supported")
+
+            if not (isinstance(node.args[0], ast.Num) and isinstance(node.args[1], ast.Num)):
+                raise NotImplementedError(f"range with non-constant arguments not supported")
+
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyConstant('s32'),
+                                                                           [TyConstant('s32'),
+                                                                            TyConstant('s32')])))
             node._xir_type = fnt
             return ret
 

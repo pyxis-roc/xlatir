@@ -434,6 +434,9 @@ class CXlator(xirxlat.Xlator):
 
         return f"{'!' if comparefn == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({compareto})"
 
+    def xlat_Subscript(self, var, varty, index, indexty, node):
+        return f"{var}[{index}]"
+
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1
         return f"{fn}({', '.join(args[:arglen])})"
@@ -455,6 +458,11 @@ class CXlator(xirxlat.Xlator):
         body = ["\t\t" + x + ";" for x in body]
 
         return f"while({test}) {{" + "\n" + "\n".join(body) + "\n}"
+
+    def xlat_For(self, target, range_start, range_end, body, node):
+        body = ["\t\t" + x + ";" for x in body]
+
+        return f"for({target} = {range_start}; {target} < {range_end}; {target}++) {{" + "\n" + "\n".join(body) + "\n}"
 
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         body = "\n\t".join([s + ";" for s in body])

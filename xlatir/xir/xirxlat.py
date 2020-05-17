@@ -34,6 +34,9 @@ class Xlator(object):
     def xlat_Attribute(self, value, attr: str, node):
         raise NotImplementedError
 
+    def xlat_Subscript(self, var, varty, index, indexty, node):
+        raise NotImplementedError
+
     def xlat_Str(self, s, node):
         raise NotImplementedError
 
@@ -56,6 +59,9 @@ class Xlator(object):
         raise NotImplementedError
 
     def xlat_If(self, test, body, orelse, node):
+        raise NotImplementedError
+
+    def xlat_For(self, target, range_start, range_end, body, node):
         raise NotImplementedError
 
     def xlat_Break(self, node):
@@ -119,7 +125,7 @@ class XIRToX(ast.NodeVisitor):
                 return tuple([op] + arg_types)
             elif op.startswith('ReadByte_') and len(arg_types) == 3:
                 return tuple([op] + arg_types)
-            
+
         raise NotImplementedError(f"Arguments of length {len(arg_types)} for {op}/{opty} not currently handled")
 
     def _get_float_val(self, node):
@@ -152,6 +158,19 @@ class XIRToX(ast.NodeVisitor):
         #TODO decide whether to use . or ->
         # TODO: use visit
         return self.X.xlat_Attribute(self.visit(node.value), node.attr, node)
+
+    def visit_Index(self, node):
+        return self.visit(node.value)
+    
+    def visit_Subscript(self, node):
+        #TODO decide whether to use . or ->
+        # TODO: use visit
+        var = self.visit(node.value)
+        index = self.visit(node.slice)
+        varty = self.X.get_native_type(self._get_type(node.value._xir_type))
+        indexty = self.X.get_native_type(self._get_type(node.slice._xir_type))
+
+        return self.X.xlat_Subscript(var, varty, index, indexty, node)
 
     def visit_Str(self, node):
         return self.X.xlat_Str(node.s, node)
@@ -314,6 +333,18 @@ class XIRToX(ast.NodeVisitor):
         body = [self.visit(x) for x in node.body]
 
         return self.X.xlat_While(test, body, node)
+
+    def visit_For(self, node):
+        target = self.visit(node.target)
+        assert isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range"
+
+        #TODO: check for ast.Num, but xir would've done this
+
+        range_start = self.visit(node.iter.args[0])
+        range_end = self.visit(node.iter.args[1])
+        body = [self.visit(x) for x in node.body]
+
+        return self.X.xlat_For(target, range_start, range_end, body, node)
 
     def visit_FunctionDef(self, node):
         # perhaps make this per block?
