@@ -56,11 +56,11 @@ Def_IfExp = PolyTyDef(["if_gamma"], TyApp(TyVar("if_gamma"),
 
 VARARGS_FNS = set(['min'])
 
-ROUND_SAT_ARITH_FNS = set(['ADD_ROUND', 'SUB_ROUND', 'MUL_ROUND', 'DIV_ROUND', 'FMA_ROUND', 'SQRT_ROUND', 'RCP_ROUND',  'ADD_ROUND_SATURATE',  'SUB_ROUND_SATURATE', 'MUL_ROUND_SATURATE'])
+ROUND_SAT_ARITH_FNS = set(['ADD_ROUND', 'SUB_ROUND', 'MUL_ROUND', 'DIV_ROUND', 'FMA_ROUND', 'SQRT_ROUND', 'RCP_ROUND',  'ADD_ROUND_SATURATE',  'SUB_ROUND_SATURATE', 'MUL_ROUND_SATURATE', 'FMA_ROUND_SATURATE'])
 
 SAT_ARITH_FNS = set(['ADD_SATURATE', 'SUB_SATURATE', 'MUL_SATURATE', 'DIV_SATURATE'])
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
@@ -127,16 +127,30 @@ class RewritePythonisms(ast.NodeTransformer):
 
         return self.generic_visit(node)
 
+    SUFFIX_FNS = {'compare': (2, ast.Str),
+                  'zext': (1, ast.Num),
+                  'ReadByte': (0, ast.Str),
+                  }
+
+    def add_fn_suffix(self, node):
+        arg, arg_type = self.SUFFIX_FNS[node.func.id]
+
+        assert isinstance(node.args[arg], arg_type), f"{node.func.id} does not have {arg_type} as argument #{arg}"
+        if arg_type == ast.Str:
+            suffix = node.args[arg].s
+        elif arg_type == ast.Num:
+            suffix = str(node.args[arg].n)
+        else:
+            raise NotImplementedError(f"Don't support {arg_type} as suffix")
+
+        node.func.id = node.func.id + '_' + suffix
+        del node.args[arg]
+        return node
+
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
-            if node.func.id == 'compare':
-                assert isinstance(node.args[2], ast.Str)
-                node.func.id = 'compare_' + node.args[2].s
-                node.args.pop() # remove the last
-            elif node.func.id == 'ReadByte':
-                assert isinstance(node.args[0], ast.Str)
-                node.func.id = 'ReadByte_' + node.args[0].s
-                node.args = node.args[1:]
+            if node.func.id in self.SUFFIX_FNS:
+                return self.add_fn_suffix(node)
             elif node.func.id.startswith('extractAndSignOrZeroExt'):
                 assert isinstance(node.args[2], ast.Num) and node.args[2].n == 32
                 assert isinstance(node.args[1], ast.NameConstant) and node.args[1].value in (True, False)
@@ -150,7 +164,7 @@ class RewritePythonisms(ast.NodeTransformer):
 
                 node.args = node.args[0:1] # this will happen before Assign
             elif node.func.id in ROUND_SAT_ARITH_FNS:
-                if node.func.id == 'FMA_ROUND':
+                if node.func.id == 'FMA_ROUND' or node.func.id == 'FMA_ROUND_SATURATE':
                     node.args.insert(3, node.args[-1])
                     node.args.pop()
                 elif node.func.id in ('RCP_ROUND', 'SQRT_ROUND'):
@@ -190,6 +204,11 @@ class RewritePythonisms(ast.NodeTransformer):
                     return ast.Call(func=ast.Name(f"FLOAT_COMPARE_{node.func.id}", ast.Load()),
                                     args=[node.args[0], node.args[1]],
                                     keywords={})
+            elif node.func.id == 'float':
+                if not isinstance(node.args[0], ast.Str):
+                    return node.args[0] # don't support float as a type cast
+            else:
+                node = self.generic_visit(node)
         else:
             node = self.generic_visit(node)
 
@@ -508,7 +527,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == 'FMA':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
                                                                Def_FMAOp)
-            elif fn == 'FMA_ROUND':
+            elif fn == 'FMA_ROUND' or fn == 'FMA_ROUND_SATURATE':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:4],
                                                                Def_FMARoundOp)
             elif fn == 'RCP_ROUND' or fn == 'SQRT_ROUND':
@@ -517,7 +536,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == "SHR" or fn == "SHL":
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_ShiftOps)
-            elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
+            elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" or fn in ('SINE', 'COSINE'):
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
                                                                Def_GenericUnaryOp)
             elif fn in ROUND_SAT_ARITH_FNS:
@@ -591,19 +610,27 @@ class TypeEqnGenerator(ast.NodeVisitor):
             return ret
         elif fn == 'int':
             # int is not treated as a cast
+            # fold this into RewritePythonisms?
             return self.visit(node.args[0])
+        elif fn == 'zext_64':
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyConstant('u64'),
+                                                                           [TyVar('gamma')])
+                                                           ))
+            node._xir_type = fnt
+            return ret
         elif fn.startswith('ReadByte_'):
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef(['gamma'],
                                                                      TyApp(TyConstant('u32'), # u8
                                                                            [TyConstant('b32'),
-                                                                            TyConstant('b32'), # TODO: b64!
+                                                                            TyConstant('b64'),
                                                                             TyConstant('b32')])
                                                                      ))
             node._xir_type = fnt
             return ret
         elif fn == 'extractAndZeroExt_4':
-            print("HERE")
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef(['gamma', 'gamma1'],
                                                                      TyApp(TyConstant('void'),

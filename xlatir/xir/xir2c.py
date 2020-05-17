@@ -60,6 +60,12 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('FMA', 'float', 'float', 'float'): 'FMA',
                 ('FMA', 'double', 'double', 'double'): 'FMA',
 
+                ('SINE', 'float'): 'sinf',
+                ('SINE', 'double'): 'sin',
+
+                ('COSINE', 'float'): 'cosf',
+                ('COSINE', 'double'): 'cos',
+
                 ('MIN', 'double', 'double'): 'fmin',
                 ('MAX', 'double', 'double'): 'fmax',
                 ('MAX', '*', '*'): 'MAX',
@@ -128,6 +134,7 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('DIV_ROUND', '*', '*', '*'): 'DIV_ROUND',
                 ('FMA_ROUND', '*', '*', '*', '*'): 'FMA_ROUND',
                 ('SQRT_ROUND', '*', '*'): 'SQRT_ROUND',
+                ('zext_64', '*'): 'uint64_t'
 
 }
 
@@ -155,7 +162,9 @@ class Clib(object):
     MAX = _do_fnop
     LOG2 = _do_fnop
     MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop
-
+    COSINE = _do_fnop
+    SINE = _do_fnop
+    
     set_memory = _do_fnop
     FTZ = _do_fnop
     logical_op3 = _do_fnop
@@ -203,6 +212,7 @@ class Clib(object):
     SUB_ROUND_SATURATE = _do_fnop_sat
     MUL_SATURATE = _do_fnop_sat
     MUL_ROUND_SATURATE = _do_fnop_sat
+    FMA_ROUND_SATURATE = _do_fnop_sat
 
     def ISNAN(self, n, fnty, args, mode):
         #TODO: check types
@@ -292,6 +302,19 @@ class Clib(object):
     def compare_num(self, n, fnty, args, node):
         assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
         return f"!(isnan({args[0]}) || isnan({args[1]}))"
+
+
+    def _do_cast(self, n, fnty, args, node):
+        if fnty not in XIR_TO_C_OPS:
+            opkey = tuple([n] + ['*'] * len(args))
+        else:
+            opkey = fnty
+
+        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        return f"(({XIR_TO_C_OPS[opkey]}) {args[0]})"
+
+    zext_64 = _do_cast
 
 class CXlator(xirxlat.Xlator):
     desugar_boolean_xor = True
