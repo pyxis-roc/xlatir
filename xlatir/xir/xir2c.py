@@ -164,7 +164,7 @@ class Clib(object):
     MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop
     COSINE = _do_fnop
     SINE = _do_fnop
-    
+
     set_memory = _do_fnop
     FTZ = _do_fnop
     logical_op3 = _do_fnop
@@ -351,6 +351,11 @@ class CXlator(xirxlat.Xlator):
 
             return f"struct retval_{declname} {{ {'; '.join(elt_names)};  }}"
 
+        if isinstance(t, TyArray):
+            elt_type = self._get_c_type(t.elt)
+            assert len(t.sizes) == 1, f"Unsupported non-1D arrays: {t.sizes}"
+            return f"{elt_type} {declname}[{t.sizes[0]}]"
+
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
                 return f'literal_type'
@@ -363,6 +368,9 @@ class CXlator(xirxlat.Xlator):
             return XIR_TO_C_TYPES[t.value]
 
     def get_declaration(self, node, declname = None):
+        if isinstance(self.x2x._get_type(node._xir_type), TyArray):
+            declname = node.id
+
         return self._get_c_type(node, declname)
 
     def get_native_type(self, xirty, declname = None):
@@ -489,7 +497,7 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         body = "\n\t".join([s + ";" for s in body])
-        decls = "\n\t".join([f"{t} {v};" for (v, t) in decls])
+        decls = "\n\t".join([f"{t} {v};" if "[" not in t else t + ";" for (v, t) in decls]) #TODO: fix this hack for arrays
 
         if retval.startswith("struct "):
             self.x2x.defns.append(retval + ";")

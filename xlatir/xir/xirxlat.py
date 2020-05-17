@@ -161,7 +161,7 @@ class XIRToX(ast.NodeVisitor):
 
     def visit_Index(self, node):
         return self.visit(node.value)
-    
+
     def visit_Subscript(self, node):
         #TODO decide whether to use . or ->
         # TODO: use visit

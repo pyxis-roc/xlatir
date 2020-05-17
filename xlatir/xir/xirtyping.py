@@ -94,6 +94,19 @@ class TyProduct(TyTerm):
 
         return TyProduct(arg_copies)
 
+class TyArray(TyTerm):
+    def __init__(self, elt, sizes):
+        self.elt = elt
+        self.sizes = sizes # must be constants, don't support variables [could introduce TyValConstant]
+
+    def __str__(self):
+        return f"TyArray({self.elt}, [{', '.join([str(s) for s in self.sizes])}])"
+
+    __repr__ = __str__
+
+    def copy(self, subst = None):
+        return TyArray(self.elt.copy(subst), list(self.sizes))
+
 # rewrite this in terms of TyProduct?
 class TyApp(TyTerm):
     def __init__(self, ret, args):
@@ -150,6 +163,121 @@ def test_PolyTyDef():
         pass
 
     print(add_tydef.get({'gamma': 'gamma0'}))
+
+def find(n, reps):
+    #TODO: this depends on the key being "immutable", and fails for TyArray
+    key = str(n)
+
+    if key not in reps:
+        reps[key] = n
+
+    if reps[key] is not n:
+        r = find(reps[key], reps)
+        reps[key] = r
+
+    return reps[key]
+
+def union(s, t, reps):
+    if isinstance(s, TyConstant):
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyConstant):
+        reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyVarLiteral): #TODO: introduced for shift?
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyVarLiteral): #TODO: introduce for shift?
+        reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyProduct):   #TODO: setp_q
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyProduct):
+        reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyArray):   #TODO: dpXa
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyArray):
+        reps[str(s)] = reps[str(t)]
+    else:
+        reps[str(s)] = reps[str(t)]
+
+# dragon book, figure 6.32
+def unify(m, n, reps = None):
+    if reps is None:
+        reps = {}
+
+    s = find(m, reps)
+    t = find(n, reps)
+
+    #print(f"{m} {s}")
+    #print(f"{n} {t}")
+
+    if s is t: return True
+
+    if isinstance(s, TyConstant) and isinstance(t, TyConstant):
+        if s == t:
+            return True
+
+        # uX = bX
+        if (s.value[0] == "u" and t.value[0] == "b") or (s.value[0] == "b" and t.value[0] == "u"):
+            if s.value[1:] == t.value[1:]:
+                return True
+
+    if isinstance(s, TyApp) and isinstance(t, TyApp):
+        if len(s.args) == len(t.args):
+            union(s, t, reps)
+            if not unify(s.ret, t.ret, reps):
+                return False
+
+            for a, b in zip(s.args, t.args):
+                if not unify(a, b, reps):
+                    print(f"Failed to unify {a} and {b} [when unifying applications {s} and {t}]")
+                    return False
+
+            return True
+        else:
+            return False
+
+    if isinstance(s, TyProduct) and isinstance(t, TyProduct):
+        if len(s.args) == len(t.args):
+            union(s, t, reps)
+            for a, b in zip(s.args, t.args):
+                if not unify(a, b, reps):
+                    print(f"Failed to unify {a} and {b} [when unifying {s} and {t}]")
+                    return False
+
+            return True
+        else:
+            return False
+
+    if isinstance(s, TyArray) and isinstance(t, TyArray):
+        if len(s.sizes) == len(t.sizes):
+            union(s, t, reps)
+
+            if not unify(s.elt, t.elt):
+                print(f"Failed to unify {s.elt} and {e.elt} [when unifying arrays {s} and {t}]")
+                return False
+
+            for i, (a, b) in enumerate(zip(s.sizes, t.sizes)):
+                # hmm ... avoid solving for sizes
+                if a == '?':
+                    a = b
+                    s.sizes[i] = a
+                elif b == '?':
+                    b = a
+                    t.sizes[i] = b
+
+                if a != b:
+                    print(f"Failed to unify {a} and {b} [when unifying arrays {s} and {t}]")
+                    return False
+
+            return True
+        else:
+            return False
+
+    if isinstance(s, TyVar) or isinstance(t, TyVar):
+        union(s, t, reps)
+        return True
+
+
+    print("FAIL", s, t)
+    return False
 
 if __name__ == "__main__":
     test_PolyTyDef()

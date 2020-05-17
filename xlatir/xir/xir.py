@@ -416,9 +416,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
             raise NotImplementedError(f"Don't support non-Index array indices for {node.value}")
 
 
-        node._xir_type = TyApp(vty, [sty])
+        aet = self.get_or_gen_ty_var(f"array_elt_type")
+
+        node._xir_type = TyApp(aet, [sty])
+
+        self.equations.append(TyEqn(vty, TyArray(aet, ['?'])))
         self.equations.append(TyEqn(sty, TyConstant('s32')))
-        return vty
+
+        return aet
 
     def visit_UnaryOp(self, node):
         self.generic_visit(node)
@@ -630,12 +635,13 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      ))
             node._xir_type = fnt
             return ret
-        elif fn == 'extractAndZeroExt_4':
+        elif fn == 'extractAndZeroExt_4' or fn == 'extractAndSignExt_4':
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
-                                                           PolyTyDef(['gamma', 'gamma1'],
+                                                           PolyTyDef([''],
                                                                      TyApp(TyConstant('void'),
-                                                                           [TyVar('gamma'),
-                                                                            TyVar('gamma1')]))) #array
+                                                                           [TyConstant('u32'),
+                                                                            TyArray(TyConstant('u32'),
+                                                                                    [4])]))) #array
             node._xir_type = fnt
             return ret
         elif fn == 'range':
@@ -686,7 +692,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
     def visit_Assert(self, node):
         # assert nodes are not type checked
         pass
-    
+
     def visit_While(self, node):
         assert len(node.orelse) == 0 # not supported
 
@@ -695,79 +701,6 @@ class TypeEqnGenerator(ast.NodeVisitor):
             self.visit(s)
 
         self.equations.append(TyEqn(test, TyConstant('bool')))
-
-def find(n, reps):
-    key = str(n)
-
-    if key not in reps:
-        reps[key] = n
-
-    if reps[key] is not n:
-        r = find(reps[key], reps)
-        reps[key] = r
-
-    return reps[key]
-
-def union(s, t, reps):
-    if isinstance(s, TyConstant):
-        reps[str(t)] = reps[str(s)]
-    elif isinstance(t, TyConstant):
-        reps[str(s)] = reps[str(t)]
-    elif isinstance(s, TyVarLiteral): #TODO: introduced for shift?
-        reps[str(t)] = reps[str(s)]
-    elif isinstance(t, TyVarLiteral): #TODO: introduce for shift?
-        reps[str(s)] = reps[str(t)]
-    elif isinstance(s, TyProduct):
-        reps[str(t)] = reps[str(s)]
-    elif isinstance(t, TyProduct):
-        reps[str(s)] = reps[str(t)]
-    else:
-        reps[str(s)] = reps[str(t)]
-
-# dragon book, figure 6.32
-def unify(m, n, reps = None):
-    if reps is None:
-        reps = {}
-
-    s = find(m, reps)
-    t = find(n, reps)
-
-    #print(f"{m} {s}")
-    #print(f"{n} {t}")
-
-    if s is t: return True
-
-    if isinstance(s, TyConstant) and isinstance(t, TyConstant):
-        if s == t:
-            return True
-
-        # uX = bX
-        if (s.value[0] == "u" and t.value[0] == "b") or (s.value[0] == "b" and t.value[0] == "u"):
-            if s.value[1:] == t.value[1:]:
-                return True
-
-    if isinstance(s, TyApp) and isinstance(t, TyApp):
-        if len(s.args) == len(t.args):
-            union(s, t, reps)
-            if not unify(s.ret, t.ret, reps):
-                return False
-
-            for a, b in zip(s.args, t.args):
-                if not unify(a, b, reps):
-                    print(f"Failed to unify {a} and {b}")
-                    return False
-
-            return True
-        else:
-            return False
-
-    if isinstance(s, TyVar) or isinstance(t, TyVar):
-        union(s, t, reps)
-        return True
-
-
-    print("FAIL", s, t)
-    return False
 
 def infer_types(insn_sem):
     # generate type equations
@@ -788,7 +721,10 @@ def infer_types(insn_sem):
 
     print("****")
     for v in reps:
-        print(v, reps[v], find(reps[v], reps))
+        if not isinstance(v, (TyArray, TyProduct)):
+            print(v, reps[v])
+        else:
+            print(v, reps[v], find(reps[v], reps))
 
     return reps
 
