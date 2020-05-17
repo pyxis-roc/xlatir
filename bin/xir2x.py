@@ -62,6 +62,12 @@ if __name__ == "__main__":
                 continue
             else:
                 raise
+        except NotImplementedError as e:
+            if not args.interactive:
+                tyerrors.append((pi, e))
+                continue
+            else:
+                raise
 
         try:
             xlation = translator.translate(sem, ty)
