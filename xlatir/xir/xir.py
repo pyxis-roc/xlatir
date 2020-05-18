@@ -416,7 +416,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
             raise NotImplementedError(f"Don't support non-Index array indices for {node.value}")
 
 
-        aet = self.get_or_gen_ty_var(f"array_elt_type")
+        aet = self.get_or_gen_ty_var(f"array_elt_type{self.ret}")
+        self.ret += 1
 
         node._xir_type = TyApp(aet, [sty])
 
@@ -635,13 +636,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      ))
             node._xir_type = fnt
             return ret
-        elif fn == 'extractAndZeroExt_4' or fn == 'extractAndSignExt_4':
+        elif fn.startswith('extractAndZeroExt') or fn.startswith('extractAndSignExt'):
+            arraysz = int(fn[fn.rindex("_")+1:])
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef([''],
                                                                      TyApp(TyConstant('void'),
                                                                            [TyConstant('u32'),
                                                                             TyArray(TyConstant('u32'),
-                                                                                    [4])]))) #array
+                                                                                    [arraysz])])))
             node._xir_type = fnt
             return ret
         elif fn == 'range':
