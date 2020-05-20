@@ -337,6 +337,33 @@ class SMT2lib(object):
     def subnormal_check(self, n, fnty, args, node):
         return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
 
+    def _do_SHR(self, n, fnty, args, node):
+        assert fnty[1].v[0] in ('u', 'b', 's'), fnty[1].v[0]
+        assert fnty[2].v[0] in ('u', 'b', 's'), fnty[2].v[0]
+
+        width1 = int(fnty[1].v[1:])
+        width2 = int(fnty[2].v[1:])
+
+        if width1 == width2:
+            return self._do_fnop_builtin(n, fnty, args, node)
+        else:
+            # PTX requires shift amount be a unsigned 32-bit value for
+            # the shr types. SMT2 requires that the shift argument be
+            # the same type as first argument.
+
+            # TODO: shl types!
+
+            if width1 > width2:
+                # source argument bigger than shift, so enlarge shift
+                args[1] = SExprList(SExprList(Symbol("_"), Symbol("zero_extend"),
+                                              Decimal(width1-width2)), args[1])
+            else:
+                # source argument smaller than shift, so truncate shift
+                args[1] = SExprList(SExprList(Symbol("_"), Symbol("extract"),
+                                              Decimal(width1-1), Decimal(0)), args[1])
+
+            return self._do_fnop_builtin(n, fnty, args, node)
+
     GTE = _do_fnop_builtin
     GT = _do_fnop_builtin
     LT = _do_fnop_builtin
@@ -347,7 +374,7 @@ class SMT2lib(object):
     OR = _do_fnop_builtin
     AND = _do_fnop_builtin
     XOR = _do_fnop_builtin
-    SHR = _do_fnop_builtin
+    SHR = _do_SHR
     SHL = _do_fnop_builtin
 
     ADD = _do_fnop_builtin
@@ -357,7 +384,7 @@ class SMT2lib(object):
     REM = _do_fnop_builtin
 
     zext_64 = _do_fnop
-    
+
     def ISNAN(self, n, fnty, args, mode):
         #TODO: check types
         return bool_to_pred(SExprList(Symbol("fp.isNaN"), *args))
