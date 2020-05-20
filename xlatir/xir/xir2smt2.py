@@ -25,7 +25,9 @@ def bool_to_pred(x):
     return SExprList(Symbol("bool_to_pred"), x)
 
 def generic_round(fn, nargs):
-    if nargs == 2:
+    if nargs == 1:
+        return lambda x, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x)
+    elif nargs == 2:
         return lambda x, y, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x, y)
     elif nargs == 3:
         return lambda x, y, z, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x, y, z)
@@ -73,12 +75,22 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('RCP_ROUND', 'f64', 'str'): lambda x, m: RCP('f64', x, m),
                    ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
 
-                   ('REM', '*', '*'): '%',
+                   ('REM', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvurem"), x, y),
+                   # TODO: investigate since this could be bvsmod and is machine-specific
+                   ('REM', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsrem"), x, y),
 
                    ('SHR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
+                   ('SHR', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
+
+                   # to avoid casts
+                   ('SHR', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
                    ('SHR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
 
                    ('SHL', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
+                   ('SHL', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
+
+                   # to avoid casts
+                   ('SHL', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
                    ('SHL', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
 
 
@@ -187,6 +199,12 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('ABSOLUTE', 'f32'): lambda x: SExprList(Symbol("fp.abs"), x),
                    ('ABSOLUTE', 'f64'): lambda x: SExprList(Symbol("fp.abs"), x),
 
+                   ('LOG2', 'f32'): lambda x: SExprList(Symbol("log2_f32"), x),
+                   ('LOG2', 'f64'): lambda x: SExprList(Symbol("log2_f64"), x),
+
+                   ('POW', 'f32', 'f32'): lambda x, y: SExprList(Symbol("pow_f32"), x, y),
+                   ('POW', 'f64', 'f64'): lambda x, y: SExprList(Symbol("pow_f64"), x, y),
+
                    ('ROUND', '*'): lambda x: x, # TODO
                    ('ADD_SATURATE', 's32', 's32'): lambda x, y: SExprList(Symbol('ADD_SATURATE_s32'),
                                                                           x, y),
@@ -200,7 +218,22 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('SUB_ROUND', '*', '*', '*'): generic_round('fp.sub', 2),
                    ('MUL_ROUND', '*', '*', '*'): generic_round('fp.mul', 2),
                    ('DIV_ROUND', '*', '*', '*'): generic_round('fp.div', 2),
-                   ('FMA_ROUND', '*', '*', '*', '*'): generic_round('fp.fma', 3)
+                   ('FMA_ROUND', '*', '*', '*', '*'): generic_round('fp.fma', 3),
+
+                   ('SQRT_ROUND', 'f32', 'str'): generic_round('sqrt_round_f32', 1),
+                   ('SQRT_ROUND', 'f64', 'str'): generic_round('sqrt_round_f64', 1),
+
+                   ('SQRT', 'f32'): lambda x: SExprList(Symbol('sqrt_f32'), x),
+                   ('SQRT', 'f64'): lambda x: SExprList(Symbol('sqrt_f64'), x),
+
+                   ('SINE', 'f32'): lambda x: SExprList(Symbol('sin_f32'), x),
+                   ('SINE', 'f64'): lambda x: SExprList(Symbol('sin_f64'), x),
+
+                   ('COSINE', 'f32'): lambda x: SExprList(Symbol('cos_f32'), x),
+                   ('COSINE', 'f64'): lambda x: SExprList(Symbol('cos_f64'), x),
+
+                   # this mirrors machine-specific, but should probably outsource to smt2 file
+                   ("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "*"): lambda x: x,
 }
 
 class SMT2lib(object):
@@ -242,7 +275,7 @@ class SMT2lib(object):
         op = self._get_op(fnty, builtin = False)
         return op(*args[:arglen])
 
-    POW = _nie
+    POW = _do_fnop
     MIN = _do_fnop_builtin
     MAX = _nie
     set_memory = _nie
@@ -261,8 +294,13 @@ class SMT2lib(object):
     DIV_ROUND = _do_fnop_builtin
     FMA_ROUND = _do_fnop_builtin
     RCP_ROUND = _do_fnop # because we want different routines for f32/f64 even though fp.div is builtin
+    SQRT_ROUND = _do_fnop
     RCP = _do_fnop # approx
-
+    LOG2 = _do_fnop
+    SQRT = _do_fnop
+    SINE = _do_fnop
+    COSINE = _do_fnop
+    
     def _do_fnop_sat(self, n, fnty, args, node):
         if fnty[1].v == 's32':
             return self._do_fnop(n, fnty, args, node)
@@ -281,6 +319,7 @@ class SMT2lib(object):
     SUB_ROUND_SATURATE = _do_fnop_sat
     MUL_ROUND_SATURATE = _do_fnop_sat
     DIV_ROUND_SATURATE = _do_fnop_sat
+    FMA_ROUND_SATURATE = _do_fnop_sat
 
     ADD_SATURATE = _do_fnop_sat
     SUB_SATURATE = _do_fnop_sat
@@ -307,7 +346,7 @@ class SMT2lib(object):
     SUB = _do_fnop_builtin
     MUL = _do_fnop_builtin
     DIV = _do_fnop_builtin
-
+    REM = _do_fnop_builtin
 
     def ISNAN(self, n, fnty, args, mode):
         #TODO: check types
@@ -389,6 +428,8 @@ class SMT2lib(object):
                                       SExprList(Symbol("or"),
                                                 SExprList(Symbol("fp.isNaN"), args[0]),
                                                 SExprList(Symbol("fp.isNaN"), args[1]))))
+
+    MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop_builtin
 
 def is_call(sexpr, func):
     return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
@@ -473,13 +514,15 @@ class SMT2Xlator(xirxlat.Xlator):
         t = xir.find(ty, self.x2x.types)
 
         if isinstance(t, TyPtr):
-            pt = self._get_c_type(t.pty)
-            return f"{pt} *"
+            pt = self._get_smt2_type(t.pty)
+            raise NotImplementedError(f"Support for pointer types")
+            return Symbol("ptr_{pt}")
 
         if isinstance(t, TyApp):
             arg_types = [self._get_smt2_type(x) for x in t.args]
             assert declname is not None, "declname must be provided for fn ptrs"
-            return f"{self._get_c_type(t.ret)} (*{declname})({', '.join(arg_types)})"
+            raise NotImplementedError(f"Declarations for function pointer types")
+            return f"{self._get_smt2_type(t.ret)} (*{declname})({', '.join(arg_types)})"
 
         if isinstance(t, TyProduct):
             #NOTE: this won't handle function pointers as return values
@@ -510,6 +553,19 @@ class SMT2Xlator(xirxlat.Xlator):
         return self._get_smt2_type(xirty, declname)
 
     def xlat_Name(self, name: str, node):
+        if name.startswith("MACHINE_SPECIFIC_"):
+            if name == "MACHINE_SPECIFIC_execute_lg2_negative_number":
+                namety = self.get_native_type(self.x2x._get_type(node._xir_type))
+                return self.xlat_float_val("nan", namety)
+            elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_signed":
+                namety = self.get_native_type(self.x2x._get_type(node._xir_type))
+                width = int(namety.v[1:])
+                return Hexadecimal((1 << width) - 1, width = width//4)
+            elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
+                return Symbol("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned") # lambda x: x
+            else:
+                raise NotImplementedError(f"Not implemented: Machine-specific value {name}")
+
         return Symbol(name)
 
     def xlat_NameConstant(self, value, vty, node):
@@ -584,17 +640,26 @@ class SMT2Xlator(xirxlat.Xlator):
     def xlat_Break(self, node):
         raise NotImplemented("Don't support Break loops in SMT2 yet")
 
-    def xlat_float_val(self, v):
+    def xlat_float_val(self, v, vty):
+        assert vty.v in ('f32', 'f64'), f"Unsupported float constant type {vty}"
+        if vty.v == 'f32':
+            vty = (Decimal(8), Decimal(24))
+        elif vty.v == 'f64':
+            vty = (Decimal(11), Decimal(53))
+
         if v == 'inf':
-            return "INFINITY" # since C99
+            return SExprList(Symbol("_"), Symbol("+oo"), *vty)
         elif v == '-inf':
-            return "-INFINITY" # since C99
+            return SExprList(Symbol("_"), Symbol("-oo"), *vty)
         elif v == 'nan':
-            return "NAN" # since C99, but could also use nan()?
+            return SExprList(Symbol("_"), Symbol("NaN"), *vty)
         elif v == '-nan':
-            return "-NAN"
-        elif v == '-0.0' or v == '0.0':
-            return v
+            # TODO: FP theory *does* allow negative NaNs if using a raw format (i.e. fp)
+            return SExprList(Symbol("_"), Symbol("NaN"), *vty)
+        elif v == '0.0' or v == '+0.0':
+            return SExprList(Symbol("_"), Symbol("+zero"), *vty)
+        elif v == '-0.0':
+            return SExprList(Symbol("_"), Symbol("-zero"), *vty)
         else:
             raise NotImplementedError(f"Unknown float constant {v}")
 

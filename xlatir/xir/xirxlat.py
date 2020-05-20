@@ -67,7 +67,7 @@ class Xlator(object):
     def xlat_Break(self, node):
         raise NotImplementedError
 
-    def xlat_float_val(self, v):
+    def xlat_float_val(self, v, vty):
         raise NotImplementedError
 
     def xlat_float_compare(self, comparefn, constval, compareto):
@@ -282,7 +282,8 @@ class XIRToX(ast.NodeVisitor):
             _, v = self._get_float_val(node)
             assert v is not None, node.args[0]
 
-            return self.X.xlat_float_val(v)
+            ty = self._get_type(node._xir_type)
+            return self.X.xlat_float_val(v, self.X.get_native_type(ty.ret))
         elif n == 'FLOAT_COMPARE_EQ' or n == 'FLOAT_COMPARE_NOTEQ':
             _, v = self._get_float_val(node.args[1])
             assert v is not None, node.args[1]

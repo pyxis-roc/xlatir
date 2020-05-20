@@ -443,7 +443,7 @@ class CXlator(xirxlat.Xlator):
     def xlat_Break(self, node):
         return "break\n"
 
-    def xlat_float_val(self, v):
+    def xlat_float_val(self, v, vty):
         if v == 'inf':
             return "INFINITY" # since C99
         elif v == '-inf':

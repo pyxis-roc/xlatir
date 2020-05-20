@@ -484,6 +484,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
             return v, fullty
 
+        fn_name_ty = self.visit(node.func)
         fn = node.func.id if isinstance(node.func, ast.Name) else None
 
         if fn == 'set_sign_bitWidth':
@@ -661,9 +662,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                             TyConstant('s32')])))
             node._xir_type = fnt
             return ret
+        elif fn == 'float':
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, Def_GenericUnaryOp)
+            node._xir_type = fnt
+            return ret
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
         self.ret += 1
+
         self.generic_visit(node)
         #node._xir_type = fnt
         return fnt
