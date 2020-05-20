@@ -544,7 +544,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericRoundUnaryOp)
             elif fn == "SHR" or fn == "SHL":
-                if isinstance(node.args[2], ast.Num):
+                if isinstance(node.args[1], ast.Num):
                     tydecl = Def_ShiftOps_Literal
                 else:
                     tydecl = Def_ShiftOps
