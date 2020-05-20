@@ -237,6 +237,10 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    # this mirrors machine-specific, but should probably outsource to smt2 file
                    ("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "*"): lambda x: x,
+                   ("zext_64", 'b32'): lambda x: SExprList(SExprList(Symbol('_'),
+                                                                     Symbol('zero_extend'),
+                                                                     Decimal(32)),
+                                                           x)
 }
 
 class SMT2lib(object):
@@ -352,6 +356,8 @@ class SMT2lib(object):
     DIV = _do_fnop_builtin
     REM = _do_fnop_builtin
 
+    zext_64 = _do_fnop
+    
     def ISNAN(self, n, fnty, args, mode):
         #TODO: check types
         return bool_to_pred(SExprList(Symbol("fp.isNaN"), *args))
@@ -470,8 +476,11 @@ def create_dag(statements):
             k = get_key(s.v[2])
             expr[str(s.v[1])] = k
             if k in values:
-                if not isinstance(values[k], Symbol):
+                if isinstance(values[k], (Numeral, Decimal, Hexadecimal, Binary)):
+                    # sanity check, but note this will change the depiction of the constant?
                     assert values[k].v == s.v[2].v, f"Two different constants have the same key {values[k]} and {s.v[2]}"
+                    # this should never happen
+                    assert str(values[k]) == str(s.v[2]), f"Same constant value, but different types! {str(values[k])} != {str(s.v[2])}"
                 else:
                     # values[k] is a Symbol, but RHS is not, so set it to a constant
                     if not isinstance(s.v[2], Symbol):
@@ -738,6 +747,7 @@ class SMT2Xlator(xirxlat.Xlator):
 
             include_file("ptx_utils.smt2", f)
             include_file("lop3_lut.smt2", f)
+            include_file("readbyte_prmt.smt2", f)
 
             print("; :end global", file=f)
 
