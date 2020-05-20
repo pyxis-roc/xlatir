@@ -66,6 +66,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                      Symbol("roundNearestTiesToEven"),
                                                                      x, y),
 
+                   ('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24_s32"), x, y),
+                   ('MUL24', 'u32', 'u32'): lambda x, y: SExprList(Symbol("MUL24_u32"), x, y),
+
                    ('DIV', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvudiv"), x, y),
                    ('DIV', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsdiv"), x, y),
                    ('DIV', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.div"),
@@ -300,7 +303,8 @@ class SMT2lib(object):
     SQRT = _do_fnop
     SINE = _do_fnop
     COSINE = _do_fnop
-    
+    MUL24 = _do_fnop
+
     def _do_fnop_sat(self, n, fnty, args, node):
         if fnty[1].v == 's32':
             return self._do_fnop(n, fnty, args, node)
