@@ -41,10 +41,13 @@ Def_FMARoundOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
                                             [TyVar("gamma"), TyVar("gamma"), TyVar("gamma"), TyConstant("str")]))
 
 
-#TODO: remove the u32?
 Def_ShiftOps = PolyTyDef(["gamma_in", "gamma_shift"], TyApp(TyVar("gamma_in"),
                                                           [TyVar("gamma_in"),
                                                            TyVar("gamma_shift")]))
+
+Def_ShiftOps_Literal = PolyTyDef(["gamma_in"], TyApp(TyVar("gamma_in"),
+                                                     [TyVar("gamma_in"),
+                                                      TyVar("gamma_in")]))
 
 Def_GenericUnaryOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"), [TyVar("gamma")]))
 
@@ -541,8 +544,13 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericRoundUnaryOp)
             elif fn == "SHR" or fn == "SHL":
+                if isinstance(node.args[2], ast.Num):
+                    tydecl = Def_ShiftOps_Literal
+                else:
+                    tydecl = Def_ShiftOps
+
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
-                                                               Def_ShiftOps)
+                                                               tydecl)
             elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" or fn in ('SINE', 'COSINE'):
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
                                                                Def_GenericUnaryOp)
