@@ -106,8 +106,8 @@ def smt2_literal(v, ty):
     if ty == 'pred':
         assert v == 1 or v == 0, f"Wrong value for pred: {v}"
         return Binary(v, 1)
-    elif ty in ('u8', 'u16', 'u32', 'u64',
-                's16', 's32', 's64',
+    elif ty in ('u8', 'u16', 'u32', 'u64', 'u128',
+                's16', 's32', 's64', 's128',
                 'b16', 'b32', 'b64'):
         signed = ty[0] == 's'
         width = int(ty[1:])
