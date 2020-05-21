@@ -683,6 +683,16 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                                     [arraysz])])))
             node._xir_type = fnt
             return ret
+        elif fn.startswith('na_extractAndZeroExt') or fn.startswith('na_extractAndSignExt'):
+            # the na versions are non-array versions
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyVar('u32'),
+                                                                           [TyConstant('u32'),
+                                                                            TyConstant('u8')])))
+            node._xir_type = fnt
+            return ret
+
         elif fn == 'range':
             if len(node.args) != 2:
                 # though we should support step...
