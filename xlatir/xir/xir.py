@@ -34,6 +34,10 @@ Def_GenericRoundBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
                                                        [TyVar("gamma_in"), TyVar("gamma_in")]))
 
+# returns a 2's complement bit vector
+Def_Mul24 = PolyTyDef(["gamma"], TyApp(TyConstant("u64"),
+                                       [TyVar("gamma"), TyVar("gamma")]))
+
 Def_FMAOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
                                        [TyVar("gamma"), TyVar("gamma"), TyVar("gamma")]))
 
@@ -133,6 +137,8 @@ class RewritePythonisms(ast.NodeTransformer):
     SUFFIX_FNS = {'compare': (2, ast.Str),
                   'zext': (1, ast.Num),
                   'ReadByte': (0, ast.Str),
+                  'truncate': (1, ast.Num),
+                  'sext': (1, ast.Num),
                   }
 
     def add_fn_suffix(self, node):
@@ -148,6 +154,7 @@ class RewritePythonisms(ast.NodeTransformer):
 
         node.func.id = node.func.id + '_' + suffix
         del node.args[arg]
+        self.generic_visit(node)
         return node
 
     def visit_Call(self, node):
@@ -465,8 +472,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
             width = widtharg.n
 
             if ty == 'Integer':
-                # 8 is for immLut
-                assert width in (8, 16, 32, 64), f"Invalid width {width} for Integer"
+                # 8 is for immLut, 128 is for MULWIDE
+                assert width in (8, 16, 32, 64, 128), f"Invalid width {width} for Integer"
                 fullty = f"{'s' if sign else 'u'}{width}"
             elif ty == 'Float':
                 assert width == 32, f"Invalid width {width} for float"
@@ -534,6 +541,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
             if fn == 'MULWIDE':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_MulOp)
+            elif fn == 'MUL24':
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               Def_Mul24)
             elif fn == 'FMA':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
                                                                Def_FMAOp)
@@ -631,6 +641,24 @@ class TypeEqnGenerator(ast.NodeVisitor):
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef(['gamma'],
                                                                      TyApp(TyConstant('u64'),
+                                                                           [TyVar('gamma')])
+                                                           ))
+            node._xir_type = fnt
+            return ret
+        elif fn.startswith('sext'):
+            width = int(fn[fn.rfind("_")+1:])
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyConstant(f's{width}'),
+                                                                           [TyVar('gamma')])
+                                                           ))
+            node._xir_type = fnt
+            return ret
+        elif fn.startswith('truncate_'):
+            width = int(fn[fn.rfind("_")+1:])
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
+                                                           PolyTyDef(['gamma'],
+                                                                     TyApp(TyConstant(f'u{width}'),
                                                                            [TyVar('gamma')])
                                                            ))
             node._xir_type = fnt
