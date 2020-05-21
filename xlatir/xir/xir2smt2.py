@@ -14,6 +14,8 @@ import textwrap
 import os
 import struct
 from smt2ast import *
+import xirunroll
+import copy
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rm': 'RTN', # negative inf
@@ -576,10 +578,21 @@ class SMT2Xlator(xirxlat.Xlator):
         self.lib = SMT2lib()
         self._if_exp_recognizer = IfExpRecognizer()
         self._if_to_if_exp = IfToIfExp()
+        self._array_fn = ArrayFn()
 
     def pre_xlat_transform(self, s):
         self._if_exp_recognizer.visit(s)
         s = self._if_to_if_exp.visit(s)
+        s = xirunroll.Unroll(s)
+
+        s = self._array_fn.convert(s, 'extractAndZeroExt_4', 1, 4, 'na_extractAndZeroExt_4')
+        s = self._array_fn.convert(s, 'extractAndZeroExt_2', 1, 2, 'na_extractAndZeroExt_2')
+        s = self._array_fn.convert(s, 'extractAndSignExt_4', 1, 4, 'na_extractAndSignExt_4')
+        s = self._array_fn.convert(s, 'extractAndSignExt_2', 1, 2, 'na_extractAndSignExt_2')
+
+        s = constantify(s)
+        s = dearrayify(s)
+
         return s
 
     def _get_smt2_type(self, node, declname = None):
@@ -611,7 +624,8 @@ class SMT2Xlator(xirxlat.Xlator):
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
-                return Symbol('literal_type')
+                #print(t, " is a literal_type")
+                return Symbol(f'literal_type{t}')
 
             assert isinstance(t, TyConstant), f"Non-TyConstant type: {t}"
 
@@ -891,6 +905,150 @@ class IfToIfExp(ast.NodeTransformer):
             node = ast.Assign([ast.Name(id=toplevel, ctx=ast.Store())], node)
 
         return node
+
+class ArrayFn(ast.NodeTransformer):
+    """Transform functions that return arrays of constant size into
+       assignments to individual elements
+
+       e.g. extractAndZeroExt_4(x, num1) to
+            num1[0] = extractAndZeroExt_4(x, 0)
+            ...
+            num1[3] = extractAndZeroExt_4(x, 3)
+"""
+
+    def visit_Expr(self, node):
+        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == self._array_fn:
+            return self.visit(node.value)
+
+        return node
+
+    def visit_FunctionDef(self, node):
+        self._converted = False
+        self._arrays = set()
+        node = self.generic_visit(node)
+
+        if self._converted:
+            # assists dearrayification
+            out = []
+            for v, sz in self._arrays:
+                initializer = ast.List([ast.Num(0)]*sz, ast.Load())
+                node.body.insert(0, ast.Assign([ast.Name(v, ast.Store())], initializer))
+
+        return node
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == self._array_fn:
+            self._converted = True
+
+            out = []
+
+            self._arrays.add((node.args[self._array_arg_idx].id, self._array_sz))
+
+            for i in range(self._array_sz):
+                call = copy.deepcopy(node)
+                call.func.id = self._array_fn_rename
+                call.args[self._array_arg_idx] = ast.Num(i)
+
+                out.append(ast.Assign([ast.Subscript(node.args[self._array_arg_idx],
+                                                    ast.Index(ast.Num(i)),
+                                                    ast.Store())],
+                                      call))
+
+            return out
+
+        return node
+
+    def convert(self, node, array_fn, array_arg_idx, array_sz, array_fn_rename = None):
+        self._array_fn = array_fn
+        self._array_arg_idx = array_arg_idx
+        self._array_sz = array_sz
+        if array_fn_rename is None: array_fn_rename = array_fn
+        self._array_fn_rename = array_fn_rename
+
+        return self.visit(node)
+
+class PropagateConstants(ast.NodeTransformer):
+    def visit_Name(self, node):
+        if node.id in self._constants:
+            if isinstance(node.ctx, ast.Load):
+                return ast.Num(self._constants[node.id])
+
+        return node
+
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in self._constants:
+            return None # delete the assignment
+
+        return self.generic_visit(node)
+
+    def propagate(self, node, constants):
+        self._constants = constants
+        return self.visit(node)
+
+# extremely simple, we really need a better partial evaluator ...
+class GatherConstants(ast.NodeVisitor):
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            v = node.targets[0].id
+            if isinstance(node.value, ast.Num):
+                if v in self._constants:
+                    del self._constants[v]
+                    self._non_constants[v] = node.value.n
+                elif v not in self._non_constants:
+                    self._constants[v] = node.value.n
+
+    def gather(self, node):
+        self._constants = {}
+        self._non_constants = {}
+        self.visit(node)
+        return self._constants
+
+def constantify(s):
+    g = GatherConstants()
+    p = PropagateConstants()
+
+    c = g.gather(s)
+    if len(c):
+        print("constants", c)
+        s = p.propagate(s, c)
+        import extract_ex_semantics
+
+        x = extract_ex_semantics.EvalFunc()
+        s = x.visit(s)
+
+    return s
+
+def dearrayify(s):
+    import extract_ex_semantics
+
+    daf = extract_ex_semantics.Dearrayification()
+    return daf.dearrayify(s)
+
+def test_GatherConstants():
+    code = """
+x = 1
+y = 2
+x = 3
+z = x + y
+"""
+    i = ast.parse(code)
+
+    v = GatherConstants()
+    print(v.gather(i))
+
+def test_ArrayFn():
+    import astunparse
+
+    code = """
+def test():
+    extractAndZeroExt_4(x, num1)
+"""
+
+    i = ast.parse(code)
+    t = ArrayFn()
+    o = t.convert(i, 'extractAndZeroExt_4', 1, 4)
+
+    print(astunparse.unparse(o))
 
 def test_IfToIfExp():
     import astunparse
