@@ -14,8 +14,8 @@ import textwrap
 import os
 import struct
 from smt2ast import *
-import xirunroll
 import copy
+import xirpeval
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rm': 'RTN', # negative inf
@@ -368,7 +368,7 @@ class SMT2lib(object):
     def subnormal_check(self, n, fnty, args, node):
         return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
 
-    def _do_SHR(self, n, fnty, args, node):
+    def _do_SHIFT(self, n, fnty, args, node):
         assert fnty[1].v[0] in ('u', 'b', 's'), fnty[1].v[0]
         assert fnty[2].v[0] in ('u', 'b', 's'), fnty[2].v[0]
 
@@ -379,10 +379,8 @@ class SMT2lib(object):
             return self._do_fnop_builtin(n, fnty, args, node)
         else:
             # PTX requires shift amount be a unsigned 32-bit value for
-            # the shr types. SMT2 requires that the shift argument be
-            # the same type as first argument.
-
-            # TODO: shl types!
+            # the shr/shl instructions. SMT2 requires that the shift
+            # argument be the same type as first argument.
 
             if width1 > width2:
                 # source argument bigger than shift, so enlarge shift
@@ -405,8 +403,8 @@ class SMT2lib(object):
     OR = _do_fnop_builtin
     AND = _do_fnop_builtin
     XOR = _do_fnop_builtin
-    SHR = _do_SHR
-    SHL = _do_fnop_builtin
+    SHR = _do_SHIFT
+    SHL = _do_SHIFT
 
     ADD = _do_fnop_builtin
     SUB = _do_fnop_builtin
@@ -583,7 +581,7 @@ class SMT2Xlator(xirxlat.Xlator):
     def pre_xlat_transform(self, s):
         self._if_exp_recognizer.visit(s)
         s = self._if_to_if_exp.visit(s)
-        s = xirunroll.Unroll(s)
+        s = xirpeval.Unroll(s)
 
         s = self._array_fn.convert(s, 'extractAndZeroExt_4', 1, 4, 'na_extractAndZeroExt_4')
         s = self._array_fn.convert(s, 'extractAndZeroExt_2', 1, 2, 'na_extractAndZeroExt_2')
@@ -1011,17 +1009,14 @@ def constantify(s):
     if len(c):
         print("constants", c)
         s = p.propagate(s, c)
-        import extract_ex_semantics
 
-        x = extract_ex_semantics.EvalFunc()
+        x = xirpeval.EvalFunc()
         s = x.visit(s)
 
     return s
 
 def dearrayify(s):
-    import extract_ex_semantics
-
-    daf = extract_ex_semantics.Dearrayification()
+    daf = xirpeval.Dearrayification()
     return daf.dearrayify(s)
 
 def test_GatherConstants():
