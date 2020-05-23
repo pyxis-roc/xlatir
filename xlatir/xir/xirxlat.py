@@ -76,6 +76,9 @@ class Xlator(object):
     def xlat_Call(self, fn, fnty, args, node):
         raise NotImplementedError
 
+    def xlat_Pass(self, node):
+        return NotImplementedError
+
     def xlat_Return(self, v, vty, node):
         raise NotImplementedError
 
@@ -320,6 +323,9 @@ class XIRToX(ast.NodeVisitor):
         #TODO: embed struct name?
         return self.X.xlat_Return(v, self._retval_ty, node)
 
+    def visit_Pass(self, node):
+        return self.X.xlat_Pass(node)
+    
     def visit_Assign(self, node):
         assert len(node.targets) == 1, "Not supported"
 

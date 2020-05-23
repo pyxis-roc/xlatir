@@ -445,6 +445,55 @@ class UnrollLoop(ast.NodeTransformer):
 
         return node
 
+class PropagateConstants(ast.NodeTransformer):
+    def visit_Name(self, node):
+        if node.id in self._constants:
+            if isinstance(node.ctx, ast.Load):
+                return ast.Num(self._constants[node.id])
+
+        return node
+
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in self._constants:
+            return ast.Pass() # delete the assignment
+
+        return self.generic_visit(node)
+
+    def propagate(self, node, constants):
+        self._constants = constants
+        return self.visit(node)
+
+# extremely simple, we really need a better partial evaluator ...
+class GatherConstants(ast.NodeVisitor):
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            v = node.targets[0].id
+            if v in self._constants:
+                # two writes to the same variable. Without better analysis, assume NAC.
+                del self._constants[v]
+                self._non_constants[v] = node.value
+            elif v not in self._non_constants:
+                if isinstance(node.value, ast.Num):
+                    self._constants[v] = node.value.n
+
+    def gather(self, node):
+        self._constants = {}
+        self._non_constants = {}
+        self.visit(node)
+        return self._constants
+
+
+def constantify(s):
+    g = GatherConstants()
+    p = PropagateConstants()
+
+    c = g.gather(s)
+    if len(c):
+        s = p.propagate(s, c)
+        x = EvalFunc()
+        s = x.visit(s)
+
+    return s
 
 def Unroll(s):
     ulc = UnrollChecker()
@@ -471,3 +520,15 @@ for i in range(0, 4):
     o = ul.visit(r)
 
     print(astunparse.unparse(o))
+
+def test_GatherConstants():
+    code = """
+x = 1
+y = 2
+x = 3
+z = x + y
+"""
+    i = ast.parse(code)
+
+    v = GatherConstants()
+    print(v.gather(i))

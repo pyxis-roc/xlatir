@@ -535,6 +535,9 @@ def create_dag(statements):
     # first, assign value numbers to the statements in the array
     out = []
     for s in statements:
+        if isinstance(s, SExprList) and len(s.v) == 0: # pass
+            continue
+
         if is_call(s, "="):
             # treat assignment specially
             k = get_key(s.v[2])
@@ -583,12 +586,15 @@ class SMT2Xlator(xirxlat.Xlator):
         s = self._if_to_if_exp.visit(s)
         s = xirpeval.Unroll(s)
 
+        ef = xirpeval.EvalFunc()
+        s = ef.visit(s)
+
         s = self._array_fn.convert(s, 'extractAndZeroExt_4', 1, 4, 'na_extractAndZeroExt_4')
         s = self._array_fn.convert(s, 'extractAndZeroExt_2', 1, 2, 'na_extractAndZeroExt_2')
         s = self._array_fn.convert(s, 'extractAndSignExt_4', 1, 4, 'na_extractAndSignExt_4')
         s = self._array_fn.convert(s, 'extractAndSignExt_2', 1, 2, 'na_extractAndSignExt_2')
 
-        s = constantify(s)
+
         s = dearrayify(s)
 
         return s
@@ -640,6 +646,9 @@ class SMT2Xlator(xirxlat.Xlator):
 
     def get_native_type(self, xirty, declname = None):
         return self._get_smt2_type(xirty, declname)
+
+    def xlat_Pass(self, node):
+        return SExprList()
 
     def xlat_Name(self, name: str, node):
         if name.startswith("MACHINE_SPECIFIC_"):
@@ -965,71 +974,11 @@ class ArrayFn(ast.NodeTransformer):
 
         return self.visit(node)
 
-class PropagateConstants(ast.NodeTransformer):
-    def visit_Name(self, node):
-        if node.id in self._constants:
-            if isinstance(node.ctx, ast.Load):
-                return ast.Num(self._constants[node.id])
-
-        return node
-
-    def visit_Assign(self, node):
-        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in self._constants:
-            return None # delete the assignment
-
-        return self.generic_visit(node)
-
-    def propagate(self, node, constants):
-        self._constants = constants
-        return self.visit(node)
-
-# extremely simple, we really need a better partial evaluator ...
-class GatherConstants(ast.NodeVisitor):
-    def visit_Assign(self, node):
-        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            v = node.targets[0].id
-            if isinstance(node.value, ast.Num):
-                if v in self._constants:
-                    del self._constants[v]
-                    self._non_constants[v] = node.value.n
-                elif v not in self._non_constants:
-                    self._constants[v] = node.value.n
-
-    def gather(self, node):
-        self._constants = {}
-        self._non_constants = {}
-        self.visit(node)
-        return self._constants
-
-def constantify(s):
-    g = GatherConstants()
-    p = PropagateConstants()
-
-    c = g.gather(s)
-    if len(c):
-        print("constants", c)
-        s = p.propagate(s, c)
-
-        x = xirpeval.EvalFunc()
-        s = x.visit(s)
-
-    return s
-
 def dearrayify(s):
+    # we need this here because we convert array functions to
+    # non-array-functions.
     daf = xirpeval.Dearrayification()
     return daf.dearrayify(s)
-
-def test_GatherConstants():
-    code = """
-x = 1
-y = 2
-x = 3
-z = x + y
-"""
-    i = ast.parse(code)
-
-    v = GatherConstants()
-    print(v.gather(i))
 
 def test_ArrayFn():
     import astunparse
