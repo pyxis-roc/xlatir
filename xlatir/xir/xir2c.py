@@ -16,10 +16,12 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'u16': 'uint16_t',
                   'u32': 'uint32_t',
                   'u64': 'uint64_t',
+                  'u128': 'my_uint128_t',
                   's8': 'int8_t',
                   's16': 'int16_t',
                   's32': 'int32_t',
                   's64': 'int64_t',
+                  's128': 'my_int128_t',
                   'f32': 'float',
                   'f64': 'double',
                   'pred': 'uint32_t', #TODO
@@ -134,7 +136,16 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('DIV_ROUND', '*', '*', '*'): 'DIV_ROUND',
                 ('FMA_ROUND', '*', '*', '*', '*'): 'FMA_ROUND',
                 ('SQRT_ROUND', '*', '*'): 'SQRT_ROUND',
-                ('zext_64', '*'): 'uint64_t'
+
+                ('zext_64', '*'): 'uint64_t',
+                ('sext_64', '*'): 'int64_t',
+                ('sext_32', '*'): 'int32_t',
+                ('sext_16', '*'): 'int32_t',
+
+                #TODO: for signed types?
+                ('truncate_64', '*'): 'uint64_t',
+                ('truncate_32', '*'): 'uint32_t',
+                ('truncate_16', '*'): 'uint32_t',
 
 }
 
@@ -316,6 +327,14 @@ class Clib(object):
 
     zext_64 = _do_cast
 
+    sext_16 = _do_cast
+    sext_32 = _do_cast
+    sext_64 = _do_cast
+
+    truncate_16 = _do_cast
+    truncate_32 = _do_cast
+    truncate_64 = _do_cast
+
 class CXlator(xirxlat.Xlator):
     desugar_boolean_xor = True
 
@@ -468,6 +487,9 @@ class CXlator(xirxlat.Xlator):
     def xlat_Subscript(self, var, varty, index, indexty, node):
         return f"{var}[{index}]"
 
+    def xlat_Pass(self, node):
+        return ";"
+    
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1
         return f"{fn}({', '.join(args[:arglen])})"

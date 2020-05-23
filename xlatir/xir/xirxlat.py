@@ -77,7 +77,7 @@ class Xlator(object):
         raise NotImplementedError
 
     def xlat_Pass(self, node):
-        return NotImplementedError
+        raise NotImplementedError
 
     def xlat_Return(self, v, vty, node):
         raise NotImplementedError
