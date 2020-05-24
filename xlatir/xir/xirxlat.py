@@ -126,7 +126,7 @@ class XIRToX(ast.NodeVisitor):
                 return tuple([op] + arg_types)
             elif op in xir.ROUND_SAT_ARITH_FNS and len(arg_types) == 3:
                 return tuple([op] + arg_types)
-            elif op.startswith('ReadByte_') and len(arg_types) == 3:
+            elif (op.startswith('ReadByte_') or op == 'ReadByte') and len(arg_types) == 3:
                 return tuple([op] + arg_types)
 
         raise NotImplementedError(f"Arguments of length {len(arg_types)} for {op}/{opty} not currently handled")

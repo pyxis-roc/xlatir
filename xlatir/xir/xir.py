@@ -136,24 +136,30 @@ class RewritePythonisms(ast.NodeTransformer):
 
     SUFFIX_FNS = {'compare': (2, ast.Str),
                   'zext': (1, ast.Num),
-                  'ReadByte': (0, ast.Str),
+                  'ReadByte': (0, (ast.Str, ast.NameConstant)),
                   'truncate': (1, ast.Num),
                   'sext': (1, ast.Num),
                   }
 
     def add_fn_suffix(self, node):
-        arg, arg_type = self.SUFFIX_FNS[node.func.id]
+        argid, arg_type = self.SUFFIX_FNS[node.func.id]
+        arg = node.args[argid]
 
-        assert isinstance(node.args[arg], arg_type), f"{node.func.id} does not have {arg_type} as argument #{arg}"
-        if arg_type == ast.Str:
-            suffix = node.args[arg].s
-        elif arg_type == ast.Num:
-            suffix = str(node.args[arg].n)
+        assert isinstance(arg, arg_type), f"{node.func.id} does not have {arg_type} as argument #{argid}, actual type is {type(arg)}"
+        if isinstance(arg, ast.Str):
+            suffix = arg.s
+        elif isinstance(arg, ast.Num):
+            suffix = str(arg.n)
+        elif isinstance(arg, ast.NameConstant):
+            if arg.value is None:
+                suffix = ''
+            else:
+                raise NotImplementedError(f"Don't support NamedConstant with value = {arg.value}")
         else:
             raise NotImplementedError(f"Don't support {arg_type} as suffix")
 
-        node.func.id = node.func.id + '_' + suffix
-        del node.args[arg]
+        node.func.id = node.func.id + ('_' + suffix if suffix else '')
+        del node.args[argid]
         self.generic_visit(node)
         return node
 
@@ -663,7 +669,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                            ))
             node._xir_type = fnt
             return ret
-        elif fn.startswith('ReadByte_'):
+        elif fn.startswith('ReadByte_') or fn == 'ReadByte':
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef(['gamma'],
                                                                      TyApp(TyConstant('u32'), # u8
