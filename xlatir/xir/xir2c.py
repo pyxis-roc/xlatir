@@ -30,8 +30,10 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'void': 'void',
                   'bool': 'unsigned int', #TODO
                   'cc_reg': 'struct cc_register',
+                  'cc_reg_ref': 'struct cc_register *',
                   # temporary until we find a better way
-                  'str': 'str'
+                  'str': 'str',
+                  'carryflag': 'int',
                   }
 
 #TODO: Rewrite this
@@ -355,7 +357,7 @@ class CXlator(xirxlat.Xlator):
 
         if isinstance(t, TyPtr):
             pt = self._get_c_type(t.pty)
-            return f"{pt} *"
+            return f"{pt} * {declname}"
 
         if isinstance(t, TyApp):
             arg_types = [self._get_c_type(x) for x in t.args]
@@ -420,7 +422,12 @@ class CXlator(xirxlat.Xlator):
 
     #TODO: types?
     def xlat_Attribute(self, value, attr: str, node):
-        return f'{value}.{attr}'
+        is_ptr = False
+        if isinstance(node._xir_type, TyVar) and node._xir_type.name == "TY:cc_reg.cf":
+            cc_reg_type = self.x2x._get_type(TyVar("TY:cc_reg"))
+            is_ptr = isinstance(cc_reg_type, TyPtr)
+
+        return f'{value}{"->" if is_ptr else "."}{attr}'
 
     def xlat_Str(self, s, node):
         return repr(s)
@@ -489,10 +496,14 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_Pass(self, node):
         return ";"
-    
+
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1
-        return f"{fn}({', '.join(args[:arglen])})"
+        if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
+            # because we're using strings
+            return f"{fn}({', '.join(args[:arglen])}, __OVERFLOW__)"
+        else:
+            return f"{fn}({', '.join(args[:arglen])})"
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
@@ -505,7 +516,11 @@ class CXlator(xirxlat.Xlator):
             return f"return"
 
     def xlat_Assign(self, lhs, rhs, node):
-        return f"{lhs} = {rhs}"
+        if isinstance(lhs, list) and (rhs.startswith("ADD_CARRY") or rhs.startswith("SUB_CARRY")):
+            return f"{lhs[0]} = {rhs}".replace("__OVERFLOW__", "&" + lhs[1])
+        else:
+            # yes, this will pass lists through and fail to compile.
+            return f"{lhs} = {rhs}"
 
     def xlat_While(self, test, body, node):
         body = ["\t\t" + x + ";" for x in body]

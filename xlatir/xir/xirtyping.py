@@ -40,7 +40,7 @@ class TyVarLiteral(TyVar):
 
     def __eq__(self, other):
         #name is the value of the literal...
-        return (self is other) or (isinstance(other, TyVar) and other.name == self.name)
+        return (self is other) or (isinstance(other, TyVarLiteral) and other.name == self.name)
 
     def __str__(self):
         return f"TyVarLiteral({self.name}, {self.literal})"
@@ -213,6 +213,12 @@ def unify(m, n, reps = None):
     if isinstance(s, TyConstant) and isinstance(t, TyConstant):
         if s == t:
             return True
+
+        # unify carryflag with both u and s
+        if s.value == "carryflag" or t.value == "carryflag":
+            notcarryflag = s.value if s.value != "carryflag" else t.value
+            if notcarryflag[0] == "u" or notcarryflag[0] == "s":
+                return True
 
         # uX = bX
         if (s.value[0] == "u" and t.value[0] == "b") or (s.value[0] == "b" and t.value[0] == "u"):

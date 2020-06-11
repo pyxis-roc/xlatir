@@ -124,7 +124,7 @@ class XIRToX(ast.NodeVisitor):
                 return tuple([op] + arg_types)
             elif (op == 'FMA_ROUND' or op == 'FMA_ROUND_SATURATE') and len(arg_types) == 4:
                 return tuple([op] + arg_types)
-            elif op in xir.ROUND_SAT_ARITH_FNS and len(arg_types) == 3:
+            elif op in (xir.ROUND_SAT_ARITH_FNS | xir.CARRY_ARITH_FNS) and len(arg_types) == 3:
                 return tuple([op] + arg_types)
             elif (op.startswith('ReadByte_') or op == 'ReadByte') and len(arg_types) == 3:
                 return tuple([op] + arg_types)

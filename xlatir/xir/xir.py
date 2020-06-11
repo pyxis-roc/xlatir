@@ -31,6 +31,13 @@ Def_GenericRoundBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
                                                    [TyVar("gamma"), TyVar("gamma"),
                                                     TyConstant('str')]))
 
+# through trickery in the unifier, carryflag will become gamma.
+Def_GenericCarryBinOp = PolyTyDef(["gamma1"], TyApp(TyProduct([TyVar("gamma1"),
+                                                               TyConstant("carryflag")]),
+                                                    [TyVar("gamma1"), TyVar("gamma1"),
+                                                     TyVar("gamma1")]))
+
+
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
                                                        [TyVar("gamma_in"), TyVar("gamma_in")]))
 
@@ -67,7 +74,9 @@ ROUND_SAT_ARITH_FNS = set(['ADD_ROUND', 'SUB_ROUND', 'MUL_ROUND', 'DIV_ROUND', '
 
 SAT_ARITH_FNS = set(['ADD_SATURATE', 'SUB_SATURATE', 'MUL_SATURATE', 'DIV_SATURATE'])
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS
+CARRY_ARITH_FNS = set(['ADD_CARRY', 'SUB_CARRY'])
+
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
@@ -272,7 +281,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
     def visit_Attribute(self, node):
         if isinstance(node.value, ast.Name) and node.value.id == 'cc_reg':
             if node.attr == 'cf':
-                return self.get_or_gen_ty_var('cc_reg.cf')
+                # TODO: connect cc_reg's type to cc_reg.cf type without messing up carryflag
+                node._xir_type = self.get_or_gen_ty_var('cc_reg.cf')
+                return node._xir_type
 
         raise NotImplementedError(f"Attribute node {node} not handled")
 
@@ -495,6 +506,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 fullty = "bool"
             elif ty == 'ConditionCodeRegister':
                 fullty = "cc_reg"
+            elif ty == "ConditionCodeRegisterRef":
+                fullty = TyPtr(TyConstant("cc_reg"))
             else:
                 assert False, f"Unrecognized type: {ty}"
 
@@ -512,7 +525,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
             else:
                 tv = v
 
-            self.equations.append(TyEqn(tv, TyConstant(fullty)))
+            if isinstance(fullty, str):
+                self.equations.append(TyEqn(tv, TyConstant(fullty)))
+            else:
+                self.equations.append(TyEqn(tv, fullty))
+
             return tv
         elif fn == 'set_value':
             v, fullty = _get_ty_from_fn_call(node.args[2], node.args[0],
@@ -573,6 +590,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn in ROUND_SAT_ARITH_FNS:
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
                                                                Def_GenericRoundBinOp)
+            elif fn in CARRY_ARITH_FNS:
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
+                                                               Def_GenericCarryBinOp)
             else:
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericBinOp)
@@ -777,7 +797,7 @@ def infer_types(insn_sem):
 
     for eq in eqg.equations:
         if not unify(eq.lhs, eq.rhs, reps):
-            assert False, f"Failing to unify: {eq}"
+            assert False, f"Failed to unify: {eq}"
 
     print("****")
     for v in reps:
