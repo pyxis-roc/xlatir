@@ -55,7 +55,7 @@ if __name__ == "__main__":
         sem = translator.X.pre_xlat_transform(sem)
 
         try:
-            ty = xir.infer_types(sem)
+            ty = xir.infer_types(sem, xir.TYPE_DECLS)
         except AssertionError as e:
             if not args.interactive:
                 tyerrors.append((pi, e))

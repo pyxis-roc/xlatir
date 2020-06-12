@@ -78,7 +78,7 @@ CARRY_ARITH_FNS = set(['ADD_CARRY', 'SUB_CARRY'])
 
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS
 
-BITWISE_FNS = set(['AND', 'SHR', 'OR', 'SHL', 'XOR', 'NOT'])
+BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN', 'SQRT', 'RCP']) #also unary
 COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
@@ -87,6 +87,15 @@ COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
                    'compare_neu','compare_num'])
 
 BOOLEAN_OP_PTX = set(['booleanOp_and', 'booleanOp_or', 'booleanOp_xor'])
+
+TYPE_DECLS = {'MULWIDE': {('u16', 'u16'): 'u32',
+                          ('s16', 's16'): 's32',
+                          ('u32', 'u32'): 'u64',
+                          ('s32', 's32'): 's64',
+                          ('u64', 'u64'): 'u128',
+                          ('s64', 's64'): 's128',
+                          }}
+
 
 class RewritePythonisms(ast.NodeTransformer):
     desugar_boolean_xor = True
@@ -256,6 +265,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
     def __init__(self):
         self.type_variables = {}
         self.equations = []
+        self.call_types = [] # track function call and argument types
         self.ret = 0
         self.literal_index = 0
         self.fn = None
@@ -344,7 +354,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(fnt, app))
         self.equations.append(TyEqn(app, defty))
-
+        self.call_types.append((fn, fnt, app))
         return ret, fnt, defty, app
 
     def visit_Compare(self, node):
@@ -576,7 +586,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn == 'RCP_ROUND' or fn == 'SQRT_ROUND':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericRoundUnaryOp)
-            elif fn == "SHR" or fn == "SHL":
+            elif fn == "SHR" or fn == "SHL" or fn == "SAR":
                 if isinstance(node.args[1], ast.Num):
                     tydecl = Def_ShiftOps_Literal
                 else:
@@ -782,7 +792,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(test, TyConstant('bool')))
 
-def infer_types(insn_sem):
+def infer_types(insn_sem, type_decls = None):
     # generate type equations
     print(astunparse.unparse(insn_sem))
     print(ast.dump(insn_sem))
@@ -805,6 +815,47 @@ def infer_types(insn_sem):
             print(v, reps[v])
         else:
             print(v, reps[v], find(reps[v], reps))
+
+    if type_decls is not None:
+        reps = types_from_decls(eqg, reps, type_decls)
+
+    return reps
+
+def types_from_decls(eqg, reps, type_decls):
+    inct = eqg.call_types
+    changed = True
+
+    while changed and len(inct):
+        out = []
+        changed = False
+        for ct in inct:
+            fn, fnt, app = ct
+
+            if fn in type_decls:
+                arg_reps = [find(x, reps) for x in app.args]
+                arg_types = tuple([x.value if isinstance(x, TyConstant) else '?' for x in arg_reps])
+                ret_rep = find(app.ret, reps)
+                print("==>", fn, fnt, app)
+                print("   ", ret_rep, arg_types)
+
+                if arg_types not in type_decls[fn]:
+                    if '?' in arg_types: # we don't the types of some arguments
+                        out.append(ct)
+                    else:
+                        print(f"WARNING: No type declaration for {fn}: {' * '.join(arg_types)} found. Either a type declaration is missing or there is a type error in the arguments.")
+
+                    continue
+
+                if isinstance(ret_rep, TyConstant):
+                    assert ret_rep.value == type_decls[fn][arg_types], f"{fn}: {' * '.join(arg_types)} -> {ret_rep.value} is invalid, return type must be '{type_decls[fn][arg_types]}'"
+                else:
+                    if not unify(app.ret, TyConstant(type_decls[fn][arg_types]), reps):
+                        assert False, f"Failed to unify from declaration {fn}: {' * '.join(arg_types)} -> {type_decls[fn][arg_types]}"
+                    else:
+                        print("    return-type", find(app.ret, reps))
+                        changed = True
+
+        inct = out
 
     return reps
 

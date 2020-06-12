@@ -32,7 +32,7 @@ class TyVar(TyTerm):
         else:
             return TyVar(self.name)
 
-# temporary for now
+# temporary for now: note this behaves like TyVar
 class TyVarLiteral(TyVar):
     def __init__(self, name, literal):
         super(TyVarLiteral, self).__init__(name)
@@ -197,7 +197,7 @@ def union(s, t, reps):
     else:
         reps[str(s)] = reps[str(t)]
 
-# dragon book, figure 6.32
+# dragon book, figure 6.32, suitably adapted, but should be made simpler
 def unify(m, n, reps = None):
     if reps is None:
         reps = {}
@@ -284,6 +284,7 @@ def unify(m, n, reps = None):
 
     print("FAIL", s, t)
     return False
+
 
 if __name__ == "__main__":
     test_PolyTyDef()

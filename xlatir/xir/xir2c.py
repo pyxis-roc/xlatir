@@ -44,6 +44,7 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('REM', '*', '*'): '%',
 
                 ('SHR', '*', '*'): '>>',
+                ('SAR', '*', '*'): '>>',
                 ('SHL', '*', '*'): '<<',
 
                 ('GT', '*', '*'): '>',
@@ -142,12 +143,12 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('zext_64', '*'): 'uint64_t',
                 ('sext_64', '*'): 'int64_t',
                 ('sext_32', '*'): 'int32_t',
-                ('sext_16', '*'): 'int32_t',
+                ('sext_16', '*'): 'int16_t',
 
                 #TODO: for signed types?
                 ('truncate_64', '*'): 'uint64_t',
                 ('truncate_32', '*'): 'uint32_t',
-                ('truncate_16', '*'): 'uint32_t',
+                ('truncate_16', '*'): 'uint16_t',
 
 }
 
@@ -258,6 +259,7 @@ class Clib(object):
     AND = _do_infix_op
     XOR = _do_infix_op
     SHR = _do_infix_op
+    SAR = _do_infix_op
     SHL = _do_infix_op
 
     ADD = _do_infix_op
@@ -405,6 +407,11 @@ class CXlator(xirxlat.Xlator):
                 return "-1"
             elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
                 return "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" # lambda x: x
+            elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
+                width = int(self.x2x._get_type(node._xir_type).value[1:])
+                return str(2**width-1)
+            elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_float":
+                return "NAN" # shouldn't the FP unit do this?
             else:
                 raise NotImplementedError(f"Not implemented: Machine-specific value {name}")
 
