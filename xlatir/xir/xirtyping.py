@@ -178,6 +178,7 @@ def find(n, reps):
     return reps[key]
 
 def union(s, t, reps):
+    #print("\t unioning", s, reps[str(s)], t, reps[str(t)])
     if isinstance(s, TyConstant):
         reps[str(t)] = reps[str(s)]
     elif isinstance(t, TyConstant):
@@ -196,6 +197,8 @@ def union(s, t, reps):
         reps[str(s)] = reps[str(t)]
     else:
         reps[str(s)] = reps[str(t)]
+
+    #print("\t\t result", s, reps[str(s)], t, reps[str(t)])
 
 # dragon book, figure 6.32, suitably adapted, but should be made simpler
 def unify(m, n, reps = None):
@@ -255,8 +258,7 @@ def unify(m, n, reps = None):
     if isinstance(s, TyArray) and isinstance(t, TyArray):
         if len(s.sizes) == len(t.sizes):
             union(s, t, reps)
-
-            if not unify(s.elt, t.elt):
+            if not unify(s.elt, t.elt, reps):
                 print(f"Failed to unify {s.elt} and {e.elt} [when unifying arrays {s} and {t}]")
                 return False
 
@@ -270,7 +272,7 @@ def unify(m, n, reps = None):
                     t.sizes[i] = b
 
                 if a != b:
-                    print(f"Failed to unify {a} and {b} [when unifying arrays {s} and {t}]")
+                    print(f"Failed to unify, non-matching sizes {a} and {b} [when unifying arrays {s} and {t}]")
                     return False
 
             return True
