@@ -31,6 +31,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'bool': 'unsigned int', #TODO
                   'cc_reg': 'struct cc_register',
                   'cc_reg_ref': 'struct cc_register *',
+                  'b1': 'BIT_T', # NOT REALLY, but used as a indicator
                   # temporary until we find a better way
                   'str': 'str',
                   'carryflag': 'int',
@@ -49,6 +50,7 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
 
                 ('GT', '*', '*'): '>',
                 ('LT', '*', '*'): '<',
+                ('LTE', '*', '*'): '<=',
                 ('NOTEQ', '*', '*'): '!=',
                 ('GTE', '*', '*'): '>=',
                 ('EQ', '*', '*'): '==',
@@ -363,8 +365,13 @@ class CXlator(xirxlat.Xlator):
 
         if isinstance(t, TyApp):
             arg_types = [self._get_c_type(x) for x in t.args]
-            assert declname is not None, "declname must be provided for fn ptrs"
-            return f"{self._get_c_type(t.ret)} (*{declname})({', '.join(arg_types)})"
+            ret_type = self._get_c_type(t.ret)
+            if ret_type == "BIT_T":
+                # TODO: why do bitarray accesses show up as fnptrs? [or actually other way around?]
+                return ret_type
+            else:
+                assert declname is not None, "declname must be provided for fn ptrs"
+                return f"{self._get_c_type(t.ret)} (*{declname})({', '.join(arg_types)})"
 
         if isinstance(t, TyProduct):
             #NOTE: this won't handle function pointers as return values
@@ -377,7 +384,11 @@ class CXlator(xirxlat.Xlator):
         if isinstance(t, TyArray):
             elt_type = self._get_c_type(t.elt)
             assert len(t.sizes) == 1, f"Unsupported non-1D arrays: {t.sizes}"
-            return f"{elt_type} {declname}[{t.sizes[0]}]"
+            if elt_type == "BIT_T":
+                # bitstrings
+                return f"bitstring{t.sizes[0]}_t"
+            else:
+                return f"{elt_type} {declname}[{t.sizes[0]}]"
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
@@ -499,7 +510,13 @@ class CXlator(xirxlat.Xlator):
         return f"{'!' if comparefn == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({compareto})"
 
     def xlat_Subscript(self, var, varty, index, indexty, node):
-        return f"{var}[{index}]"
+        if varty.startswith('bitstring'):
+            if isinstance(node.ctx, ast.Load):
+                return f"((({var} & (1 << {index})) == (1 << {index})))" # return 1 or 0
+            else:
+                return (var, index)
+        else:
+            return f"{var}[{index}]"
 
     def xlat_Pass(self, node):
         return ";"
@@ -509,6 +526,8 @@ class CXlator(xirxlat.Xlator):
         if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
             # because we're using strings
             return f"{fn}({', '.join(args[:arglen])}, __OVERFLOW__)"
+        elif fn == "BITSTRING" or fn == "FROM_BITSTRING":
+            return args[0]
         else:
             return f"{fn}({', '.join(args[:arglen])})"
 
@@ -525,6 +544,12 @@ class CXlator(xirxlat.Xlator):
     def xlat_Assign(self, lhs, rhs, node):
         if isinstance(lhs, list) and (rhs.startswith("ADD_CARRY") or rhs.startswith("SUB_CARRY")):
             return f"{lhs[0]} = {rhs}".replace("__OVERFLOW__", "&" + lhs[1])
+        elif isinstance(lhs, tuple):
+            lhs_type = self._get_c_type(node.targets[0]._xir_type)
+            assert isinstance(node.targets[0], ast.Subscript) and lhs_type == "BIT_T"
+            var, index = lhs
+            # index is evaluated twice ...
+            return f"{var} = ({var} & ~(1 << {index})) | (({rhs}) << ({index}))"
         else:
             # yes, this will pass lists through and fail to compile.
             return f"{lhs} = {rhs}"

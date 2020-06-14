@@ -79,7 +79,7 @@ CARRY_ARITH_FNS = set(['ADD_CARRY', 'SUB_CARRY'])
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT'])
-COMPARE_FNS = set(['GT', 'LT', 'NOTEQ', 'GTE', 'EQ'])
+COMPARE_FNS = set(['GT', 'LT', 'LTE', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN', 'SQRT', 'RCP']) #also unary
 COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
                    'compare_gt','compare_gtu','compare_hi','compare_hs','compare_le','compare_leu',
@@ -456,6 +456,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         aet = self.get_or_gen_ty_var(f"array_elt_type{self.ret}")
         self.ret += 1
 
+        # TODO: this is really the function call for [], so it must be []: vty * sty -> set
         node._xir_type = TyApp(aet, [sty])
 
         self.equations.append(TyEqn(vty, TyArray(aet, ['?'])))
@@ -748,6 +749,26 @@ class TypeEqnGenerator(ast.NodeVisitor):
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, Def_GenericUnaryOp)
             node._xir_type = fnt
             return ret
+        elif fn == 'BITSTRING':
+            assert isinstance(node.args[3], ast.Num), f"BITSTRING needs a constant size: {node.args[3]}"
+            arraysz = node.args[3].n
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:1],
+                                                           PolyTyDef([''],
+                                                                     TyApp(TyArray(TyConstant('b1'),
+                                                                                   [arraysz]),
+                                                                           [TyConstant(f'b{arraysz}')])))
+            node._xir_type = fnt
+            return ret
+        elif fn == 'FROM_BITSTRING':
+            assert isinstance(node.args[1], ast.Num), f"FROM_BITSTRING needs a constant size: {node.args[1]}"
+            arraysz = node.args[1].n
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:1],
+                                                           PolyTyDef([''],
+                                                                     TyApp(TyConstant(f'b{arraysz}'),
+                                                                           [TyArray(TyConstant('b1'),
+                                                                                    [arraysz])])))
+            node._xir_type = fnt
+            return ret
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
         self.ret += 1
@@ -802,12 +823,18 @@ def infer_types(insn_sem, type_decls = None):
     #print(eqg.type_variables)
     #print(eqg.equations)
 
-    for eq in eqg.equations:
-        print(eq)
+    #for eq in eqg.equations:
+    #    print(eq)
 
     for eq in eqg.equations:
+        print(eq)
         if not unify(eq.lhs, eq.rhs, reps):
+            for k, v in reps.items():
+                print(f"\t{k}: {v}")
             assert False, f"Failed to unify: {eq}"
+
+    if type_decls is not None:
+        reps = types_from_decls(eqg, reps, type_decls)
 
     print("****")
     for v in reps:
@@ -815,9 +842,6 @@ def infer_types(insn_sem, type_decls = None):
             print(v, reps[v])
         else:
             print(v, reps[v], find(reps[v], reps))
-
-    if type_decls is not None:
-        reps = types_from_decls(eqg, reps, type_decls)
 
     return reps
 
