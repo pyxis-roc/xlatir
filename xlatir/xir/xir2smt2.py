@@ -65,6 +65,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('ADD_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
                    ('ADD_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
 
+                   ('ADD_CARRY', 'u64', 'u64', 'u64'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 's64', 's64', 's64'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
+
 
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
@@ -860,6 +863,7 @@ class SMT2Xlator(xirxlat.Xlator):
             (define-sort predpair () (Pair pred pred))
             (define-sort cc_reg () (CCRegister b1))
             (define-sort u32_carry () (Pair (_ BitVec 32) b1))
+            (define-sort u64_carry () (Pair (_ BitVec 64) b1))
             """), file=f)
 
             for sz in [16, 32, 64, 128]:
