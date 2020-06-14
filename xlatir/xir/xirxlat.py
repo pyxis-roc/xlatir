@@ -325,7 +325,7 @@ class XIRToX(ast.NodeVisitor):
 
     def visit_Pass(self, node):
         return self.X.xlat_Pass(node)
-    
+
     def visit_Assign(self, node):
         assert len(node.targets) == 1, "Not supported"
 
@@ -372,7 +372,7 @@ class XIRToX(ast.NodeVisitor):
         self._retval_ty = retval
 
         # order is important!
-        body = [self.visit(s) for s in node.body if not isinstance(s, ast.Assert)]
+        body = accumulate_body([self.visit(s) for s in node.body if not isinstance(s, ast.Assert)])
         decls = [(v, t) for (v, t) in self.fn._xir_decls.items() if t is not None]
 
         self.fn = None
@@ -387,3 +387,14 @@ class XIRToX(ast.NodeVisitor):
         #TODO: handle this?
         self.defns = []
         return self.visit(sem)
+
+def accumulate_body(stmts):
+    """Allow statements to return a list of translations that are then folded into a single list"""
+    out = []
+    for s in stmts:
+        if isinstance(s, list):
+            out.extend(s)
+        else:
+            out.append(s)
+
+    return out

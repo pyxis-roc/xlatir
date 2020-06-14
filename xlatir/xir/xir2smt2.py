@@ -57,12 +57,23 @@ def RCP(ty, x, rm = Symbol('rn')):
                                Hexadecimal(1, width=(exp+signi)//4)),
                      x)
 
+def extract_cf(x):
+    # actually do a proper type check?
+    return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
 
 XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
+                   ('ADD_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
+
+
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
                                                                      x, y),
                    ('SUB', '*', '*'): lambda x, y: SExprList(Symbol("bvsub"), x, y),
+
+                   ('SUB_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)),
+                   ('SUB_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
+
                    ('SUB', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.sub"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
                                                                      x, y),
@@ -407,6 +418,8 @@ class SMT2lib(object):
     SHL = _do_SHIFT
 
     ADD = _do_fnop_builtin
+    ADD_CARRY = _do_fnop
+    SUB_CARRY = _do_fnop
     SUB = _do_fnop_builtin
     MUL = _do_fnop_builtin
     DIV = _do_fnop_builtin
@@ -532,6 +545,9 @@ def create_dag(statements):
             return values[k]
 
 
+    if True:
+        print(statements)
+
     # first, assign value numbers to the statements in the array
     out = []
     for s in statements:
@@ -580,6 +596,7 @@ class SMT2Xlator(xirxlat.Xlator):
         self._if_exp_recognizer = IfExpRecognizer()
         self._if_to_if_exp = IfToIfExp()
         self._array_fn = ArrayFn()
+        self._tvndx = 0 # tmp variable suffixes
 
     def pre_xlat_transform(self, s):
         self._if_exp_recognizer.visit(s)
@@ -678,6 +695,12 @@ class SMT2Xlator(xirxlat.Xlator):
 
     #TODO: types?
     def xlat_Attribute(self, value, attr: str, node):
+        if isinstance(node._xir_type, TyVar) and node._xir_type.name == "TY:cc_reg.cf":
+            #cc_reg_type = self.x2x._get_type(TyVar("TY:cc_reg"))
+            #is_ptr = isinstance(cc_reg_type, TyPtr)
+            return SExprList(Symbol(attr), Symbol(value))
+            pass
+
         return f'{value}.{attr}'
 
     def xlat_Str(self, s, node):
@@ -782,8 +805,19 @@ class SMT2Xlator(xirxlat.Xlator):
         else:
             return v
 
+    def _get_tmp_var(self):
+        nv = Symbol(f"tmp_var_gen_{self._tvndx}")
+        self._tvndx += 1
+        return nv
+
     def xlat_Assign(self, lhs, rhs, node):
-        return SExprList(Symbol("="), lhs, rhs)
+        if isinstance(lhs, list):
+            tv = self._get_tmp_var()
+            return [SExprList(Symbol("="), tv, rhs),
+                    SExprList(Symbol("="), lhs[0], SExprList(Symbol("first"), tv)),
+                    SExprList(Symbol("="), lhs[1], SExprList(Symbol("second"), tv))]
+        else:
+            return SExprList(Symbol("="), lhs, rhs)
 
     def xlat_While(self, test, body, node):
         raise NotImplemented("Don't support While loops in SMT2 yet")
@@ -815,12 +849,17 @@ class SMT2Xlator(xirxlat.Xlator):
             print(textwrap.dedent("""\
             ; :begin global
             (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
+            (declare-datatypes (T1) ((CCRegister (mk-ccreg (cf T1)))))
+
             (define-sort u8 () (_ BitVec 8))
+            (define-sort b1 () (_ BitVec 1))
             (define-sort pred () (_ BitVec 1))
 
             (define-fun bool_to_pred ((x Bool)) pred (ite x #b1 #b0))
             (define-fun pred_to_bool ((x pred)) Bool (= x #b1))
             (define-sort predpair () (Pair pred pred))
+            (define-sort cc_reg () (CCRegister b1))
+            (define-sort u32_carry () (Pair (_ BitVec 32) b1))
             """), file=f)
 
             for sz in [16, 32, 64, 128]:
