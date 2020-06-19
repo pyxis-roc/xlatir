@@ -24,11 +24,14 @@ ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rn': 'RNE'} # nearest even, no support in PTX for RNA
 
 
-DT = namedtuple('datatype', 'name constructor fields fieldtypes')
-DATA_TYPES_LIST = [DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',)),
-                   DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag')),
-                   DT('u32_cc_reg', 'mk-pair', ('first', 'second'), ('u32', 'cc_reg')),
-                   DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred')),]
+DT = namedtuple('datatype', 'name constructor fields fieldtypes sort_cons')
+
+DATA_TYPES_LIST = [DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred'), 'Pair'),
+                   DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',), 'CCRegister'),
+                   DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag'), 'Pair'),
+                   DT('u64_carry', 'mk-pair', ('first', 'second'), ('u64', 'carryflag'), 'Pair'),
+                   DT('u32_cc_reg', 'mk-pair', ('first', 'second'), ('u32', 'cc_reg'), 'Pair'),
+                   ]
 
 DATA_TYPES = dict([(dt.name, dt) for dt in DATA_TYPES_LIST])
 
@@ -958,20 +961,20 @@ class SMT2Xlator(xirxlat.Xlator):
 
             (define-sort u8 () (_ BitVec 8))
             (define-sort b1 () (_ BitVec 1))
+            (define-sort carryflag () b1)
             (define-sort pred () (_ BitVec 1))
 
             (define-fun bool_to_pred ((x Bool)) pred (ite x #b1 #b0))
             (define-fun pred_to_bool ((x pred)) Bool (= x #b1))
-            (define-sort predpair () (Pair pred pred))
-            (define-sort cc_reg () (CCRegister b1))
-            (define-sort u32_carry () (Pair (_ BitVec 32) b1))
-            (define-sort u64_carry () (Pair (_ BitVec 64) b1))
-            (define-sort u32_cc_reg () (Pair (_ BitVec 32) cc_reg))
             """), file=f)
 
             for sz in [16, 32, 64, 128]:
                 for prefix in ['b', 's', 'u']:
                     print(f"(define-sort {prefix}{sz} () (_ BitVec {sz}))", file=f)
+
+            for dt in DATA_TYPES_LIST:
+                #(define-sort predpair () (Pair pred pred))
+                print(f"(define-sort {dt.name} () ({dt.sort_cons} {' '.join(dt.fieldtypes)}))", file=f)
 
             for sz in [32, 64]:
                 print(f"(define-sort f{sz} () Float{sz})", file=f)
