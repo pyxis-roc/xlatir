@@ -544,9 +544,6 @@ class SMT2lib(object):
 
     MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop_builtin
 
-def is_call(sexpr, func):
-    return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
-
 def create_dag(statements):
     # value numbering
     expr = {}
