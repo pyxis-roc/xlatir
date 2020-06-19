@@ -28,9 +28,14 @@ DT = namedtuple('datatype', 'name constructor fields fieldtypes sort_cons')
 
 DATA_TYPES_LIST = [DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred'), 'Pair'),
                    DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',), 'CCRegister'),
+                   DT('s32_carry', 'mk-pair', ('first', 'second'), ('s32', 'carryflag'), 'Pair'),
                    DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag'), 'Pair'),
                    DT('u64_carry', 'mk-pair', ('first', 'second'), ('u64', 'carryflag'), 'Pair'),
+                   DT('s64_carry', 'mk-pair', ('first', 'second'), ('s64', 'carryflag'), 'Pair'),
                    DT('u32_cc_reg', 'mk-pair', ('first', 'second'), ('u32', 'cc_reg'), 'Pair'),
+                   DT('s32_cc_reg', 'mk-pair', ('first', 'second'), ('s32', 'cc_reg'), 'Pair'),
+                   DT('s64_cc_reg', 'mk-pair', ('first', 'second'), ('s64', 'cc_reg'), 'Pair'),
+                   DT('u64_cc_reg', 'mk-pair', ('first', 'second'), ('u64', 'cc_reg'), 'Pair'),
                    ]
 
 DATA_TYPES = dict([(dt.name, dt) for dt in DATA_TYPES_LIST])
@@ -91,6 +96,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    ('SUB_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)),
                    ('SUB_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
+
+                   ('SUB_CARRY', 'u64', 'u64', 'u64'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)),
+                   ('SUB_CARRY', 's64', 's64', 's64'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
 
                    ('SUB', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.sub"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
