@@ -16,11 +16,23 @@ import struct
 from smt2ast import *
 import copy
 import xirpeval
+from collections import namedtuple
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rm': 'RTN', # negative inf
                     'rz': 'RTZ', # zero
                     'rn': 'RNE'} # nearest even, no support in PTX for RNA
+
+
+DT = namedtuple('datatype', 'name constructor fields fieldtypes')
+DATA_TYPES_LIST = [DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',)),
+                   DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag')),
+                   DT('u32_cc_reg', 'mk-pair', ('first', 'second'), ('u32', 'cc_reg')),
+                   DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred')),]
+
+DATA_TYPES = dict([(dt.name, dt) for dt in DATA_TYPES_LIST])
+
+FIELDS_TO_DT = dict([(dt.fieldtypes, Symbol(dt.name)) for dt in DATA_TYPES_LIST])
 
 
 def bool_to_pred(x):
@@ -530,15 +542,22 @@ def create_dag(statements):
     values = {}
 
     def get_key(st):
-        if isinstance(st, SExprList):
-            return tuple([get_key(v) for v in st.v])
-        elif isinstance(st, (Symbol, Numeral, Decimal, Hexadecimal, Binary, String)):
-            k = str(st)
+        def _add_key(k):
             if k not in expr:
                 expr[k] = len(expr) + 1
                 values[len(expr)] = st
 
             return expr[k]
+
+        if isinstance(st, SExprList):
+            if is_call(st, "_xir_attr_ref"):
+                # treat attr refs specially since they are a single variable
+                return _add_key(str(st))
+            else:
+                # this is function application
+                return tuple([get_key(v) for v in st.v])
+        elif isinstance(st, (Symbol, Numeral, Decimal, Hexadecimal, Binary, String)):
+            return _add_key(str(st))
         else:
             raise NotImplementedError(f"create_dag: Not implemented yet: {st}/{type(st)}")
 
@@ -548,7 +567,7 @@ def create_dag(statements):
         else:
             return values[k]
 
-    _debug_trace = False
+    _debug_trace = True
 
     if _debug_trace:
         print("STATEMENTS")
@@ -567,16 +586,6 @@ def create_dag(statements):
 
             expr_key = str(s.v[1])
             expr[expr_key] = k
-
-            if isinstance(s.v[1], SExprList):
-                # TODO: when fields are updated, the structure is updated too
-
-                assert isinstance(s.v[1].v[0], Symbol) and s.v[1].v[0].v == "_xir_attr_ref", f"LHS is not a symbol or write to a structure {s.v[1]}"
-                if not isinstance(s.v[1].v[2], Symbol):
-                    raise NotImplementedError(f"Don't support attr more than one-level deep")
-
-                expr_key_2 = str(s.v[1].v[2])
-                expr[expr_key_2] = k
 
             if k in values:
                 # update the value that a value number points to
@@ -615,6 +624,8 @@ def create_dag(statements):
         print("VALUES -> EXPRESSIONS")
         for v, e in values.items():
             print("\t", v, e)
+
+        print("RETVAL", retval)
     #print(expr)
     #print(values)
     r = reconstitute(retval)
@@ -623,7 +634,7 @@ def create_dag(statements):
 
 def eliminate_xir_attr_ref(dag):
     if isinstance(dag, SExprList):
-        if isinstance(dag.v[0], Symbol) and dag.v[0].v == "_xir_attr_ref":
+        if is_call(dag, "_xir_attr_ref"):
             return SExprList(Symbol(dag.v[1].v), dag.v[2])
         else:
             out = []
@@ -688,23 +699,19 @@ class SMT2Xlator(xirxlat.Xlator):
 
         if isinstance(t, TyApp):
             arg_types = [self._get_smt2_type(x) for x in t.args]
-            assert declname is not None, "declname must be provided for fn ptrs"
-            raise NotImplementedError(f"Declarations for function pointer types")
-            return f"{self._get_smt2_type(t.ret)} (*{declname})({', '.join(arg_types)})"
+            return SExprList(self._get_smt2_type(t.ret), *arg_types)
 
         if isinstance(t, TyProduct):
             #NOTE: this won't handle function pointers as return values
             elt_types = [self._get_smt2_type(x) for x in t.args]
-            assert declname is not None, "declname must be provided for product types"
             elt_names = [f"(out{k} {ty})" for k, ty in enumerate(elt_types)]
-            if elt_types[0].v == "pred" and elt_types[1].v == "pred":
-                return Symbol("predpair")
-            elif elt_types[0].v == "u32" and elt_types[1].v == "cc_reg":
-                return Symbol("u32_cc_reg")
-            elif elt_types[0].v == "u32" and elt_types[1].v == "carryflag":
-                return Symbol("u32_carry")
+
+            field_types_key = tuple([e.v for e in elt_types])
+
+            if field_types_key in FIELDS_TO_DT:
+                return FIELDS_TO_DT[field_types_key]
             else:
-                raise NotImplementedError(f"Type is TyProduct, but don't know how to handle these constituents: {elt_types[0].v} x {elt_types[1].v}")
+                raise NotImplementedError(f"Type is TyProduct, but {field_types_key} not found in FIELDS_TO_DT")
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
@@ -763,7 +770,8 @@ class SMT2Xlator(xirxlat.Xlator):
             #is_ptr = isinstance(cc_reg_type, TyPtr)
 
             # this mirrors the selector syntax
-            return SExprList(Symbol("_xir_attr_ref"), String(attr), value)
+            # (_xir_attr_ref field-name variable variable-type)
+            return SExprList(Symbol("_xir_attr_ref"), String(attr), value, Symbol("cc_reg"))
             pass
 
         return f'{value}.{attr}'
@@ -877,12 +885,44 @@ class SMT2Xlator(xirxlat.Xlator):
 
     def xlat_Assign(self, lhs, rhs, node):
         if isinstance(lhs, list):
+            # deconstruct a assignment by first assigning to a temporary variable
+            # and then deconstructing each individual field
+            #  (a, b) = f()
+            # is turned to
+            #
+            #   tmp = f()
+            #   a = (first tmp)
+            #   b = (second tmp)
+            #
+
+            # for some reason targets[X] does not have ._xir_type
+            rhsty = self.get_native_type(node.value._xir_type)
             tv = self._get_tmp_var()
-            return [SExprList(Symbol("="), tv, rhs),
-                    SExprList(Symbol("="), lhs[0], SExprList(Symbol("first"), tv)),
-                    SExprList(Symbol("="), lhs[1], SExprList(Symbol("second"), tv))]
+            out = [SExprList(Symbol("="), tv, rhs)]
+            if rhsty.v[0].v not in DATA_TYPES:
+                raise NotImplementdError(f"Don't know how to unpack {rhsty.v[0]}, not in DATA_TYPES")
+
+            fields = DATA_TYPES[rhsty.v[0].v].fields
+            for ln, sel in zip(lhs, fields):
+                out.append(SExprList(Symbol("="), ln, SExprList(Symbol(sel), tv)))
+
+            return out
         else:
-            return SExprList(Symbol("="), lhs, rhs)
+            if is_call(lhs, "_xir_attr_ref"):
+                out = [SExprList(Symbol("="), lhs, rhs)]
+                dt = DATA_TYPES[lhs.v[3].v]
+                var = lhs.v[2]
+                reconstruct = [Symbol(dt.constructor)]
+                for sel in dt.fields:
+                    reconstruct.append(SExprList(Symbol("_xir_attr_ref"),
+                                                 String(sel),
+                                                 var,
+                                                 Symbol(dt.name)))
+
+                out.append(SExprList(Symbol("="), var, SExprList(*reconstruct)))
+                return out
+            else:
+                return SExprList(Symbol("="), lhs, rhs)
 
     def xlat_While(self, test, body, node):
         raise NotImplemented("Don't support While loops in SMT2 yet")
