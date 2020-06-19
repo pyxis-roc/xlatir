@@ -102,10 +102,16 @@ class SExprList(SExpr):
 
     __repr__ = __str__
 
+def is_call(sexpr, func):
+    return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
+
 def smt2_literal(v, ty):
     if ty == 'pred':
         assert v == 1 or v == 0, f"Wrong value for pred: {v}"
         return Binary(v, 1)
+    elif ty == 'cc_reg':
+        assert v == 1 or v == 0, f"Wrong value for cc_reg: {v}"
+        return SExprList(Symbol("mk-ccreg"), Binary(v, 1))
     elif ty in ('u8', 'u16', 'u32', 'u64', 'u128',
                 's16', 's32', 's64', 's128',
                 'b16', 'b32', 'b64'):
@@ -157,10 +163,13 @@ def from_smt2_literal(value, ty):
         else:
             return value.v # this is the value
 
-    if isinstance(value.v[0], Symbol) and value.v[0].v == "mk-pair":
-        return (value.v[1].v, value.v[2].v)
+    if is_call(value, "mk-pair"):
+        return (from_smt2_literal(value.v[1], ty[0]), from_smt2_literal(value.v[2], ty[1]))
 
-    if isinstance(value.v[0], Symbol) and value.v[0].v == "_":
+    if is_call(value, "mk-ccreg"):
+        return from_smt2_literal(value.v[1], "b1")
+
+    if is_call(value, "_"):
         if value.v[1].v == "-oo":
             return float("-inf")
         elif value.v[1].v == "+oo":
@@ -174,7 +183,7 @@ def from_smt2_literal(value, ty):
         else:
             raise NotImplementedError(f"Can't handle _ [{value}]")
 
-    if isinstance(value.v[0], Symbol) and value.v[0].v == "fp":
+    if is_call(value, "fp"):
         sign = value.v[1]
         exp = value.v[2]
         significand = value.v[3]
