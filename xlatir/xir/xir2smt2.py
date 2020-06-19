@@ -528,10 +528,11 @@ def create_dag(statements):
     # value numbering
     expr = {}
     values = {}
+
     def get_key(st):
         if isinstance(st, SExprList):
             return tuple([get_key(v) for v in st.v])
-        elif isinstance(st, (Symbol, Numeral, Decimal, Hexadecimal, Binary)):
+        elif isinstance(st, (Symbol, Numeral, Decimal, Hexadecimal, Binary, String)):
             k = str(st)
             if k not in expr:
                 expr[k] = len(expr) + 1
@@ -547,9 +548,12 @@ def create_dag(statements):
         else:
             return values[k]
 
+    _debug_trace = False
 
-    if True:
-        print(statements)
+    if _debug_trace:
+        print("STATEMENTS")
+        for s in statements:
+            print(s)
 
     # first, assign value numbers to the statements in the array
     out = []
@@ -559,18 +563,37 @@ def create_dag(statements):
 
         if is_call(s, "="):
             # treat assignment specially
-            k = get_key(s.v[2])
-            expr[str(s.v[1])] = k
+            k = get_key(s.v[2]) # value_key
+
+            expr_key = str(s.v[1])
+            expr[expr_key] = k
+
+            if isinstance(s.v[1], SExprList):
+                # TODO: when fields are updated, the structure is updated too
+
+                assert isinstance(s.v[1].v[0], Symbol) and s.v[1].v[0].v == "_xir_attr_ref", f"LHS is not a symbol or write to a structure {s.v[1]}"
+                if not isinstance(s.v[1].v[2], Symbol):
+                    raise NotImplementedError(f"Don't support attr more than one-level deep")
+
+                expr_key_2 = str(s.v[1].v[2])
+                expr[expr_key_2] = k
+
             if k in values:
+                # update the value that a value number points to
+
                 if isinstance(values[k], (Numeral, Decimal, Hexadecimal, Binary)):
                     # sanity check, but note this will change the depiction of the constant?
                     assert values[k].v == s.v[2].v, f"Two different constants have the same key {values[k]} and {s.v[2]}"
                     # this should never happen
                     assert str(values[k]) == str(s.v[2]), f"Same constant value, but different types! {str(values[k])} != {str(s.v[2])}"
                 else:
-                    # values[k] is a Symbol, but RHS is not, so set it to a constant
                     if not isinstance(s.v[2], Symbol):
+                        # values[k] is a Symbol, but RHS is not, so set it to a constant
                         values[k] = s.v[2].v
+                    # elif not isinstance(s.v[1], Symbol):
+                    #     TODO?
+                    #     assert isinstance(s.v[1], SExprList) and s.v[1].v[0].v == "attr", f"LHS is not a symbol or write to a structure {s.v[1]}"
+                    #     values[k] = s.v[2].v
                     else:
                         # both symbols, don't record
                         pass
@@ -584,11 +607,33 @@ def create_dag(statements):
     # assume statement is return [maybe indicate more robustly?]
     retval = out[-1]
 
+    if _debug_trace:
+        print("EXPRESSIONS -> VALUES")
+        for e, v in expr.items():
+            print("\t", e, v)
+
+        print("VALUES -> EXPRESSIONS")
+        for v, e in values.items():
+            print("\t", v, e)
     #print(expr)
     #print(values)
     r = reconstitute(retval)
     #print(r)
     return r
+
+def eliminate_xir_attr_ref(dag):
+    if isinstance(dag, SExprList):
+        if isinstance(dag.v[0], Symbol) and dag.v[0].v == "_xir_attr_ref":
+            return SExprList(Symbol(dag.v[1].v), dag.v[2])
+        else:
+            out = []
+            for v in dag.v:
+                vo = eliminate_xir_attr_ref(v)
+                out.append(vo)
+
+            return SExprList(*out)
+    else:
+        return dag
 
 class SMT2Xlator(xirxlat.Xlator):
     desugar_boolean_xor = False
@@ -599,9 +644,12 @@ class SMT2Xlator(xirxlat.Xlator):
         self._if_exp_recognizer = IfExpRecognizer()
         self._if_to_if_exp = IfToIfExp()
         self._array_fn = ArrayFn()
+        self._ref_return_fixer = RefReturnFixer()
         self._tvndx = 0 # tmp variable suffixes
 
     def pre_xlat_transform(self, s):
+        s = self._ref_return_fixer.fix_returns(s)
+
         self._if_exp_recognizer.visit(s)
         s = self._if_to_if_exp.visit(s)
         s = xirpeval.Unroll(s)
@@ -613,7 +661,6 @@ class SMT2Xlator(xirxlat.Xlator):
         s = self._array_fn.convert(s, 'extractAndZeroExt_2', 1, 2, 'na_extractAndZeroExt_2')
         s = self._array_fn.convert(s, 'extractAndSignExt_4', 1, 4, 'na_extractAndSignExt_4')
         s = self._array_fn.convert(s, 'extractAndSignExt_2', 1, 2, 'na_extractAndSignExt_2')
-
 
         s = dearrayify(s)
 
@@ -629,7 +676,14 @@ class SMT2Xlator(xirxlat.Xlator):
 
         if isinstance(t, TyPtr):
             pt = self._get_smt2_type(t.pty)
-            raise NotImplementedError(f"Support for pointer types")
+
+            if isinstance(t.pty, TyConstant) and pt.v == 'cc_reg':
+                if declname:
+                    return SExprList(Symbol(declname), pt.v)
+                else:
+                    return pt
+
+            raise NotImplementedError(f"Support for pointer types {t} pointing to {pt}")
             return Symbol("ptr_{pt}")
 
         if isinstance(t, TyApp):
@@ -643,8 +697,14 @@ class SMT2Xlator(xirxlat.Xlator):
             elt_types = [self._get_smt2_type(x) for x in t.args]
             assert declname is not None, "declname must be provided for product types"
             elt_names = [f"(out{k} {ty})" for k, ty in enumerate(elt_types)]
-            assert elt_types[0].v == "pred" and elt_types[1].v == "pred"
-            return Symbol("predpair")
+            if elt_types[0].v == "pred" and elt_types[1].v == "pred":
+                return Symbol("predpair")
+            elif elt_types[0].v == "u32" and elt_types[1].v == "cc_reg":
+                return Symbol("u32_cc_reg")
+            elif elt_types[0].v == "u32" and elt_types[1].v == "carryflag":
+                return Symbol("u32_carry")
+            else:
+                raise NotImplementedError(f"Type is TyProduct, but don't know how to handle these constituents: {elt_types[0].v} x {elt_types[1].v}")
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
@@ -701,7 +761,9 @@ class SMT2Xlator(xirxlat.Xlator):
         if isinstance(node._xir_type, TyVar) and node._xir_type.name == "TY:cc_reg.cf":
             #cc_reg_type = self.x2x._get_type(TyVar("TY:cc_reg"))
             #is_ptr = isinstance(cc_reg_type, TyPtr)
-            return SExprList(Symbol(attr), Symbol(value))
+
+            # this mirrors the selector syntax
+            return SExprList(Symbol("_xir_attr_ref"), String(attr), value)
             pass
 
         return f'{value}.{attr}'
@@ -828,7 +890,7 @@ class SMT2Xlator(xirxlat.Xlator):
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         self._retval_ty = retval
 
-        expr = create_dag(body)
+        expr = eliminate_xir_attr_ref(create_dag(body))
 
         #TODO: this should be done elsewhere
         output = SExprList(Symbol("define-fun"),
@@ -864,6 +926,7 @@ class SMT2Xlator(xirxlat.Xlator):
             (define-sort cc_reg () (CCRegister b1))
             (define-sort u32_carry () (Pair (_ BitVec 32) b1))
             (define-sort u64_carry () (Pair (_ BitVec 64) b1))
+            (define-sort u32_cc_reg () (Pair (_ BitVec 32) cc_reg))
             """), file=f)
 
             for sz in [16, 32, 64, 128]:
@@ -890,6 +953,38 @@ class SMT2Xlator(xirxlat.Xlator):
                     print(f"; :end {t.v[1]}", file=f)
 
                 print("\n", file=f)
+
+class RefReturnFixer(ast.NodeVisitor):
+    """Change all Return statements for functions accepting a ref
+       parameter to also return that parameter."""
+
+    REF_TYPES = set(["ConditionCodeRegisterRef"])
+
+    def visit_Return(self, node):
+        self._returns.append(node)
+
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if isinstance(node.value, ast.Call):
+                call = node.value
+                if isinstance(call.func, ast.Name) and call.func.id == "set_sign_bitWidth":
+
+                    if call.args[2].s in self.REF_TYPES:
+                        self._ref_args.append(node.targets[0])
+
+
+    def fix_returns(self, node):
+        self._ref_args = []
+        self._returns = []
+
+        print("HERE2", node)
+        self.visit(node)
+
+        if len(self._ref_args):
+            for r in self._returns:
+                r.value = ast.Tuple(elts=[r.value] + self._ref_args, ctx = ast.Load())
+
+        return node
 
 class IfExpRecognizer(ast.NodeVisitor):
     def visit_If(self, node):
