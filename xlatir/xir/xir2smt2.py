@@ -28,6 +28,8 @@ DT = namedtuple('datatype', 'name constructor fields fieldtypes sort_cons')
 
 DATA_TYPES_LIST = [DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred'), 'Pair'),
                    DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',), 'CCRegister'),
+                   DT('s16_carry', 'mk-pair', ('first', 'second'), ('s16', 'carryflag'), 'Pair'),
+                   DT('u16_carry', 'mk-pair', ('first', 'second'), ('u16', 'carryflag'), 'Pair'),
                    DT('s32_carry', 'mk-pair', ('first', 'second'), ('s32', 'carryflag'), 'Pair'),
                    DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag'), 'Pair'),
                    DT('u64_carry', 'mk-pair', ('first', 'second'), ('u64', 'carryflag'), 'Pair'),
@@ -82,6 +84,9 @@ def extract_cf(x):
     return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
 
 XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
+                   ('ADD_CARRY', 'u16', 'u16', 'u16'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 's16', 's16', 's16'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
+
                    ('ADD_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
                    ('ADD_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
 
@@ -140,6 +145,13 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    # to avoid casts
                    ('SHR', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
                    ('SHR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
+
+                   ('SAR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
+                   ('SAR', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
+
+                   # to avoid casts
+                   ('SAR', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
+                   ('SAR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
 
                    ('SHL', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
                    ('SHL', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
@@ -442,6 +454,7 @@ class SMT2lib(object):
     XOR = _do_fnop_builtin
     SHR = _do_SHIFT
     SHL = _do_SHIFT
+    SAR = _do_SHIFT
 
     ADD = _do_fnop_builtin
     ADD_CARRY = _do_fnop
@@ -575,7 +588,7 @@ def create_dag(statements):
         else:
             return values[k]
 
-    _debug_trace = True
+    _debug_trace = False
 
     if _debug_trace:
         print("STATEMENTS")
@@ -756,6 +769,12 @@ class SMT2Xlator(xirxlat.Xlator):
                 return Hexadecimal((1 << width) - 1, width = width//4)
             elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
                 return Symbol("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned") # lambda x: x
+            elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
+                width = int(self.x2x._get_type(node._xir_type).value[1:])
+                return Binary(2**width-1, width)
+            elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_float":
+                namety = self.get_native_type(self.x2x._get_type(node._xir_type))
+                return self.xlat_float_val("nan", namety)
             else:
                 raise NotImplementedError(f"Not implemented: Machine-specific value {name}")
 
@@ -1025,7 +1044,6 @@ class RefReturnFixer(ast.NodeVisitor):
         self._ref_args = []
         self._returns = []
 
-        print("HERE2", node)
         self.visit(node)
 
         if len(self._ref_args):
