@@ -60,6 +60,8 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('LOG2', 'float'): 'log2f',
                 ('LOG2', 'double'): 'log2',
                 ('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
+                ('MACHINE_SPECIFIC_execute_rem_divide_by_neg', '*', '*'): 'MACHINE_SPECIFIC_execute_rem_divide_by_neg',
+                ('MACHINE_SPECIFIC_execute_div_divide_by_zero_integer', '*'): '',
 
                 ('FTZ', 'float'): 'FTZ',
                 ('FTZ', 'double'): 'FTZ',
@@ -173,11 +175,23 @@ class Clib(object):
         return f"{XIR_TO_C_OPS[opkey]}({', '.join([a for a in args[:arglen]])})"
 
 
+    def _do_mach_specific(self, n, fnty, args, node):
+        if n == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
+            if fnty[1][0] == "u": 
+                return f"~(({fnty[1]}) 0)"
+            else:
+                return f"~((u{fnty[1]}) 0)"
+        else:
+            raise NotImplementedError(f"Can't handle {n}")
+
     POW = _do_fnop
     MIN = _do_fnop
     MAX = _do_fnop
     LOG2 = _do_fnop
     MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop
+    MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_fnop
+    MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_mach_specific
+
     COSINE = _do_fnop
     SINE = _do_fnop
 
@@ -417,10 +431,13 @@ class CXlator(xirxlat.Xlator):
             elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_signed":
                 return "-1"
             elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
-                return "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" # lambda x: x
+                return name # lambda x: x
+            elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_neg":
+                return name # lambda x, y: x % abs(y)
             elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
-                width = int(self.x2x._get_type(node._xir_type).value[1:])
-                return str(2**width-1)
+                return name
+                #width = int(self.x2x.get_type(node._xir_type).name[1:])
+                #return str(2**width-1)
             elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_float":
                 return "NAN" # shouldn't the FP unit do this?
             else:
@@ -451,7 +468,12 @@ class CXlator(xirxlat.Xlator):
         return repr(s)
 
     def xlat_Num(self, n, nty, node):
-        return str(n)
+        if nty == 'uint64_t':
+            return str(n) + "UL"
+        elif nty == 'int64_t':
+            return str(n) + "L"
+        else:
+            return str(n)
 
     def xlat_BoolOp(self, op, opty, values, node):
         return "(" + f" {op} ".join(values) + ")"

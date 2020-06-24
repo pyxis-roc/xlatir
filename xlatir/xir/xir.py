@@ -76,7 +76,11 @@ SAT_ARITH_FNS = set(['ADD_SATURATE', 'SUB_SATURATE', 'MUL_SATURATE', 'DIV_SATURA
 
 CARRY_ARITH_FNS = set(['ADD_CARRY', 'SUB_CARRY'])
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS
+MACHINE_SPECIFIC_FNS = set(["MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned",
+                            "MACHINE_SPECIFIC_execute_rem_divide_by_neg",
+                            "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer"])
+
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS | MACHINE_SPECIFIC_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'LTE', 'NOTEQ', 'GTE', 'EQ'])
@@ -604,6 +608,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif fn in CARRY_ARITH_FNS:
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:3],
                                                                Def_GenericCarryBinOp)
+            elif fn == 'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer':
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:1],
+                                                               Def_GenericUnaryOp)
             else:
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericBinOp)
