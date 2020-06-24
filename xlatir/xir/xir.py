@@ -486,6 +486,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return ret
 
     def visit_Call(self, node):
+        def _set_fn_node_type(node, fnt):
+            node._xir_type = fnt
+            if isinstance(node.func, ast.Name):
+                # "allow" polymorphism by having each call site use different type variables
+                node.func._xir_type = fnt
+
         def _get_ty_from_fn_call(vararg, signarg, tyarg, widtharg):
             if isinstance(vararg, ast.Name):
                 v = vararg.id
@@ -554,23 +560,23 @@ class TypeEqnGenerator(ast.NodeVisitor):
             return tv
         elif fn in COMPARE_PTX:
             #TODO: support bool and pred
-            tv = self.get_or_gen_ty_var(fn)
+            # tv = self.get_or_gen_ty_var(fn)
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                            PolyTyDef(["gamma"],
                                                                      TyApp(TyConstant('bool'),
                                                                            [TyVar("gamma"),
                                                                             TyVar("gamma")])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
 
             return ret
         elif fn in BOOLEAN_OP_PTX:
-            tv = self.get_or_gen_ty_var(fn)
+            # tv = self.get_or_gen_ty_var(fn)
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                            PolyTyDef([],
                                                                      TyApp(TyConstant('bool'),
                                                                            [TyConstant("bool"),
                                                                             TyConstant("bool")])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
 
             return ret
 
@@ -615,7 +621,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                Def_GenericBinOp)
 
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
 
             return ret
         elif fn in VARARGS_FNS:
@@ -627,14 +633,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
             else:
                 raise NotImplementedError(f"Function {fn} not implemented")
 
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
 
             return ret
         elif fn in COMPARE_FNS:
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            Def_GenericCompare)
 
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
 
             return ret
         elif fn in FLOAT_FNS:
@@ -645,7 +651,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             else:
                 retty = TyConstant("bool")
 
-            node._xir_type = TyApp(retty, [argty])
+            _set_fn_node_type(node, TyApp(retty, [argty]))
             return retty
         elif fn == 'set_memory':
             # don't use _generate_poly_call, since this is a variable...
@@ -656,7 +662,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             self.equations.append(TyEqn(sm_var, sm_ty))
             self.equations.append(TyEqn(addrty, TyConstant('intptr_t')))
 
-            node._xir_type = sm_ty
+            _set_fn_node_type(node, sm_ty)
             return sm_ty
         elif fn == 'logical_op3':
             res, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:4],
@@ -666,7 +672,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                             TyConstant('b32'),
                                                                             TyConstant('b32'),
                                                                             TyConstant('u8')])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return res
         elif fn == 'subnormal_check':
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
@@ -675,7 +681,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                            [TyVar('gamma')]))
                                                            )
 
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn == 'int':
             # int is not treated as a cast
@@ -687,7 +693,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyConstant('u64'),
                                                                            [TyVar('gamma')])
                                                            ))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn.startswith('sext'):
             width = int(fn[fn.rfind("_")+1:])
@@ -696,7 +702,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyConstant(f's{width}'),
                                                                            [TyVar('gamma')])
                                                            ))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn.startswith('truncate_'):
             width = int(fn[fn.rfind("_")+1:])
@@ -705,7 +711,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyConstant(f'u{width}'),
                                                                            [TyVar('gamma')])
                                                            ))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn.startswith('ReadByte_') or fn == 'ReadByte':
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
@@ -715,7 +721,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                             TyConstant('b64'),
                                                                             TyConstant('b32')])
                                                                      ))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn.startswith('extractAndZeroExt') or fn.startswith('extractAndSignExt'):
             arraysz = int(fn[fn.rindex("_")+1:])
@@ -725,7 +731,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                            [TyConstant('u32'),
                                                                             TyArray(TyConstant('u32'),
                                                                                     [arraysz])])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn.startswith('na_extractAndZeroExt') or fn.startswith('na_extractAndSignExt'):
             # the na versions are non-array versions
@@ -734,7 +740,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyVar('u32'),
                                                                            [TyConstant('u32'),
                                                                             TyConstant('u8')])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
 
         elif fn == 'range':
@@ -750,11 +756,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyConstant('s32'),
                                                                            [TyConstant('s32'),
                                                                             TyConstant('s32')])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn == 'float':
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, Def_GenericUnaryOp)
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn == 'BITSTRING':
             assert isinstance(node.args[3], ast.Num), f"BITSTRING needs a constant size: {node.args[3]}"
@@ -764,7 +770,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyArray(TyConstant('b1'),
                                                                                    [arraysz]),
                                                                            [TyConstant(f'b{arraysz}')])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
         elif fn == 'FROM_BITSTRING':
             assert isinstance(node.args[1], ast.Num), f"FROM_BITSTRING needs a constant size: {node.args[1]}"
@@ -774,7 +780,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyConstant(f'b{arraysz}'),
                                                                            [TyArray(TyConstant('b1'),
                                                                                     [arraysz])])))
-            node._xir_type = fnt
+            _set_fn_node_type(node, fnt)
             return ret
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
@@ -790,6 +796,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                            Def_IfExp)
 
         node._xir_type = fnt
+
+        #self.equations.append(TyEqn(depty.args[1], depty.args[2]))
+        #self.equations.append(TyEqn(fnt.ret, fnt.args[1]))
 
         return ret
 
@@ -849,6 +858,8 @@ def infer_types(insn_sem, type_decls = None):
             print(v, reps[v])
         else:
             print(v, reps[v], find(reps[v], reps))
+
+    #print("OUT FROM infer", reps)
 
     return reps
 

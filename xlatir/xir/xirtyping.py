@@ -164,15 +164,18 @@ def test_PolyTyDef():
 
     print(add_tydef.get({'gamma': 'gamma0'}))
 
-def find(n, reps):
+def find(n, reps, create_missing = False):
     #TODO: this depends on the key being "immutable", and fails for TyArray
     key = str(n)
 
     if key not in reps:
-        reps[key] = n
+        if create_missing:
+            reps[key] = n
+        else:
+            raise KeyError(f"{key} not found in representatives")
 
     if reps[key] is not n:
-        r = find(reps[key], reps)
+        r = find(reps[key], reps, create_missing)
         reps[key] = r
 
     return reps[key]
@@ -195,6 +198,10 @@ def union(s, t, reps):
         reps[str(t)] = reps[str(s)]
     elif isinstance(t, TyArray):
         reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyApp):
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyApp):
+        reps[str(s)] = reps[str(t)]
     else:
         reps[str(s)] = reps[str(t)]
 
@@ -205,8 +212,8 @@ def unify(m, n, reps = None):
     if reps is None:
         reps = {}
 
-    s = find(m, reps)
-    t = find(n, reps)
+    s = find(m, reps, create_missing = True)
+    t = find(n, reps, create_missing = True)
 
     #print(f"{m} {s}")
     #print(f"{n} {t}")

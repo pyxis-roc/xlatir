@@ -107,7 +107,9 @@ class XIRToX(ast.NodeVisitor):
         return ty
 
     def _get_op_type(self, op, opty):
-        opty = xir.find(opty, self.types)
+        if isinstance(opty, TyVar):
+            opty = xir.find(opty, self.types)
+
         assert isinstance(opty, TyApp)
         arg_types = [self.X.get_native_type(self._get_type(a)) for a in opty.args]
 

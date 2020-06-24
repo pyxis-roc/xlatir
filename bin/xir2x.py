@@ -50,6 +50,7 @@ if __name__ == "__main__":
     rp = xir.RewritePythonisms()
     rp.desugar_boolean_xor = translator.X.desugar_boolean_xor
     for pi in args.ptxinsn:
+        print("==>", pi)
         sem = semantics["execute_" + pi]
         rp.visit(sem)
         sem = translator.X.pre_xlat_transform(sem)

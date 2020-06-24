@@ -139,6 +139,8 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    # TODO: investigate since this could be bvsmod and is machine-specific
                    ('REM', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsrem"), x, y),
 
+                   ("MACHINE_SPECIFIC_execute_rem_divide_by_neg", "signed", "signed"): lambda x, y: SExprList(Symbol("bvsrem"), x, SExprList(Symbol("bvneg"), y)), # this is probably the same as bvsrem?
+
                    ('SHR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
                    ('SHR', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
 
@@ -301,6 +303,16 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    # this mirrors machine-specific, but should probably outsource to smt2 file
                    ("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "*"): lambda x: x,
+
+                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "u16"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16"),
+                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "u32"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32"),
+                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "u64"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64"),
+
+                   # these still point to uX for convenience
+                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "s16"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16"),
+                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "s32"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32"),
+                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "s64"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64"),
+
                    ("zext_64", 'b32'): lambda x: SExprList(SExprList(Symbol('_'),
                                                                      Symbol('zero_extend'),
                                                                      Decimal(32)), x),
@@ -556,6 +568,8 @@ class SMT2lib(object):
                                                 SExprList(Symbol("fp.isNaN"), args[1]))))
 
     MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop_builtin
+    MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_fnop_builtin
+    MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_fnop
 
 def create_dag(statements):
     # value numbering
@@ -704,7 +718,10 @@ class SMT2Xlator(xirxlat.Xlator):
         else:
             ty = node
 
-        t = xir.find(ty, self.x2x.types)
+        if isinstance(ty, TyVar):
+            t = xir.find(ty, self.x2x.types)
+        else:
+            t = ty
 
         if isinstance(t, TyPtr):
             pt = self._get_smt2_type(t.pty)
@@ -768,10 +785,11 @@ class SMT2Xlator(xirxlat.Xlator):
                 width = int(namety.v[1:])
                 return Hexadecimal((1 << width) - 1, width = width//4)
             elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned":
-                return Symbol("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned") # lambda x: x
+                return Symbol(name) # lambda x: x
+            elif name == "MACHINE_SPECIFIC_execute_rem_divide_by_neg":
+                return Symbol(name) # lambda x, y: x % abs(y) ???
             elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
-                width = int(self.x2x._get_type(node._xir_type).value[1:])
-                return Binary(2**width-1, width)
+                return Symbol(name)
             elif name == "MACHINE_SPECIFIC_execute_div_divide_by_zero_float":
                 namety = self.get_native_type(self.x2x._get_type(node._xir_type))
                 return self.xlat_float_val("nan", namety)
@@ -1006,6 +1024,7 @@ class SMT2Xlator(xirxlat.Xlator):
             include_file("ptx_utils.smt2", f)
             include_file("lop3_lut.smt2", f)
             include_file("readbyte_prmt.smt2", f)
+            include_file("machine_specific.smt2", f)
 
             print("; :end global", file=f)
 
@@ -1104,6 +1123,8 @@ class IfToIfExp(ast.NodeTransformer):
 
         if self._in_if_exp:
             test = node.test
+            assert len(node.orelse) > 0, f"No else found when converting to IfExp: this means tests are not exhaustive for: {ast.dump(node)}"
+
             body = self.visit(node.body[0])
             orelse = self.visit(node.orelse[0])
             #print(ast.dump(test), "\n", ast.dump(body), "\n", ast.dump(orelse))
