@@ -114,7 +114,7 @@ def smt2_literal(v, ty):
         return SExprList(Symbol("mk-ccreg"), Binary(v, 1))
     elif ty in ('u8', 'u16', 'u32', 'u64', 'u128',
                 's16', 's32', 's64', 's128',
-                'b16', 'b32', 'b64'):
+                'b16', 'b32', 'b64', 'b1'):
         signed = ty[0] == 's'
         width = int(ty[1:])
 
