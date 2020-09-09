@@ -571,7 +571,7 @@ class SMT2lib(object):
     MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_fnop_builtin
     MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_fnop
 
-def create_dag(statements):
+def create_dag(statements, _debug_trace = False):
     # value numbering
     expr = {}
     values = {}
@@ -601,8 +601,6 @@ def create_dag(statements):
             return SExprList(*[reconstitute(v) for v in k])
         else:
             return values[k]
-
-    _debug_trace = False
 
     if _debug_trace:
         print("STATEMENTS")
