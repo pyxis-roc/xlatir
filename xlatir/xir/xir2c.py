@@ -57,8 +57,8 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
 
                 ('MIN', 'float', 'float'): 'fminf',
                 ('MAX', 'float', 'float'): 'fmaxf',
-                ('LOG2', 'float'): 'log2f',
-                ('LOG2', 'double'): 'log2',
+                ('LOG2', 'float'): 'LOG2',
+                ('LOG2', 'double'): 'LOG2',
                 ('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
                 ('MACHINE_SPECIFIC_execute_rem_divide_by_neg', '*', '*'): 'MACHINE_SPECIFIC_execute_rem_divide_by_neg',
                 ('MACHINE_SPECIFIC_execute_div_divide_by_zero_integer', '*'): '',
@@ -69,11 +69,11 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('FMA', 'float', 'float', 'float'): 'FMA',
                 ('FMA', 'double', 'double', 'double'): 'FMA',
 
-                ('SINE', 'float'): 'sinf',
-                ('SINE', 'double'): 'sin',
+                ('SINE', 'float'): 'SINE',
+                ('SINE', 'double'): 'SINE',
 
-                ('COSINE', 'float'): 'cosf',
-                ('COSINE', 'double'): 'cos',
+                ('COSINE', 'float'): 'COSINE',
+                ('COSINE', 'double'): 'COSINE',
 
                 ('MIN', 'double', 'double'): 'fmin',
                 ('MAX', 'double', 'double'): 'fmax',
