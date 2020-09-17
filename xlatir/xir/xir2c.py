@@ -75,6 +75,9 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('COSINE', 'float'): 'COSINE',
                 ('COSINE', 'double'): 'COSINE',
 
+                ('COPYSIGN', 'float'): 'COPYSIGN',
+                ('COPYSIGN', 'double'): 'COPYSIGN',
+
                 ('MIN', 'double', 'double'): 'fmin',
                 ('MAX', 'double', 'double'): 'fmax',
                 ('MAX', '*', '*'): 'MAX',
@@ -177,7 +180,7 @@ class Clib(object):
 
     def _do_mach_specific(self, n, fnty, args, node):
         if n == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
-            if fnty[1][0] == "u": 
+            if fnty[1][0] == "u":
                 return f"~(({fnty[1]}) 0)"
             else:
                 return f"~((u{fnty[1]}) 0)"
@@ -524,12 +527,18 @@ class CXlator(xirxlat.Xlator):
             raise NotImplementedError(f"Unknown float constant {v}")
 
     def xlat_float_compare(self, comparefn, constval, compareto):
-        if constval == 'inf' or constval == '-inf':
-            fn = "!isfinite"
+        if constval == 'inf':
+            fn = lambda x: f"(isinf({x}) == 1)"
+        elif constval == '-inf':
+            fn = lambda x: f"(isinf({x}) == -1)"
         elif constval == 'nan' or constval == '-nan':
-            fn = "isnan"
+            fn = lambda x: f"isnan({x})"
+        elif constval == '-0.0':
+            fn = lambda x: f"(fpclassify({x}) == FP_ZERO && signbit({x}))"
+        else:
+            raise NotImplementedError(f"Unknown float value in comparison {constval}")
 
-        return f"{'!' if comparefn == 'FLOAT_COMPARE_NOTEQ' else ''}{fn}({compareto})"
+        return f"{'!' if comparefn == 'FLOAT_COMPARE_NOTEQ' else ''}{fn(compareto)}"
 
     def xlat_Subscript(self, var, varty, index, indexty, node):
         if varty.startswith('bitstring'):

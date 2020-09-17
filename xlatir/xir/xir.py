@@ -80,7 +80,7 @@ MACHINE_SPECIFIC_FNS = set(["MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigne
                             "MACHINE_SPECIFIC_execute_rem_divide_by_neg",
                             "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer"])
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'RCP', "SINE", "COSINE"]) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS | MACHINE_SPECIFIC_FNS
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'EXP2', 'RCP', 'RSQRT', 'SINE', 'COSINE', 'COPYSIGN']) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS | MACHINE_SPECIFIC_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'LTE', 'NOTEQ', 'GTE', 'EQ'])
@@ -112,7 +112,8 @@ class RewritePythonisms(ast.NodeTransformer):
                                                "+nan",
                                                "+inf",
                                                "inf",
-                                               "-inf")
+                                               "-inf",
+                                               "-0.0")
         return False
 
     # TODO: handle machine_specific
@@ -605,7 +606,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                tydecl)
-            elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" or fn in ('SINE', 'COSINE'):
+            elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" or fn in ('SINE', 'COSINE') or fn == 'EXP2' or fn == 'RSQRT':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
                                                                Def_GenericUnaryOp)
             elif fn in ROUND_SAT_ARITH_FNS:
