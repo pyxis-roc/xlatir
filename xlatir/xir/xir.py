@@ -911,10 +911,16 @@ if __name__ == "__main__":
     args = p.parse_args()
     gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
 
+    rp = RewritePythonisms()
+
     if args.task == 'types':
         if len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all':
             args.ptxinsn = [k[len("execute_"):] for k in semantics]
 
         for pi in args.ptxinsn:
-            infer_types(semantics["execute_" + pi])
+            sem = semantics["execute_" + pi]
+            rp.visit(sem)
+
+            infer_types(semantics["execute_" + pi], type_decls = TYPE_DECLS)
+            print(f"**** TYPES OKAY {pi}")
 
