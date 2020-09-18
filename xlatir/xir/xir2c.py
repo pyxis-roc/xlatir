@@ -374,10 +374,20 @@ class CXlator(xirxlat.Xlator):
         else:
             ty = node
 
-        t = xir.find(ty, self.x2x.types)
+        if isinstance(ty, TyVar):
+            t = xir.find(ty, self.x2x.types)
+        else:
+            t = ty
 
         if isinstance(t, TyPtr):
             pt = self._get_c_type(t.pty)
+
+            if isinstance(t.pty, TyConstant) and pt == 'cc_reg':
+                if not declname:
+                    return "struct cc_register *"
+                else:
+                    return f"struct cc_register * {declname}"
+
             return f"{pt} * {declname}"
 
         if isinstance(t, TyApp):
