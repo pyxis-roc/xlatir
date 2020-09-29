@@ -114,6 +114,20 @@ class ControlFlowGraph(object):
 
         return idfa
 
+    def dump_dot(self, output, stmt_fn = str):
+        with open(output, "w") as f:
+            print("digraph {", file=f)
+            print("node [shape=rect]", file=f)
+            for block in self.nodes:
+                label =  '\\n'.join([stmt_fn(s) for s in self.nodes[block]])
+                if label == '': label = block
+                print(f'\t {block} [label="{label}"];', file=f)
+
+            for s, e in cfg.edges:
+                print(f"{s} -> {e};", file=f)
+
+            print("}", file=f)
+
 class IDFA(object):
     def __init__(self):
         pass
@@ -125,17 +139,19 @@ class IDFA(object):
         """Return true if update was made, false otherwise"""
         pass
 
-def meet_intersection(inputs):
-    if len(inputs):
-        return reduce(lambda x, y: x.intersection(y), inputs, inputs[0])
+    @staticmethod
+    def meet_intersection(inputs):
+        if len(inputs):
+            return reduce(lambda x, y: x.intersection(y), inputs, inputs[0])
 
-    return set()
+        return set()
 
-def meet_union(inputs):
-    if len(inputs):
-        return reduce(lambda x, y: x.union(y), inputs, inputs[0])
+    @staticmethod
+    def meet_union(inputs):
+        if len(inputs):
+            return reduce(lambda x, y: x.union(y), inputs, inputs[0])
 
-    return set()
+        return set()
 
 class Dominators(IDFA):
     def initialize(self, cfg):
@@ -148,7 +164,7 @@ class Dominators(IDFA):
     def xfer(self, node):
         input_facts = [self.dominators[pred] for pred in self.cfg.pred[node]]
 
-        doms = meet_intersection(input_facts)
+        doms = IDFA.meet_intersection(input_facts)
         doms.add(node)
 
         #print(node, cfg.pred[node], input_facts, doms)
@@ -240,7 +256,7 @@ class ReachingDefinitions(IDFA):
                                            [defns[w] - stmtcon.rdef_def for w in stmtcon.rwinfo['writes']], set())
 
     def xfer(self, node):
-        in_facts = meet_union([self.rdef[p] for p in self.cfg.pred[node]])
+        in_facts = IDFA.meet_union([self.rdef[p] for p in self.cfg.pred[node]])
         changed = False
 
         for stmtcon in self.cfg.nodes[node]:
@@ -256,64 +272,6 @@ class ReachingDefinitions(IDFA):
         self.rdef[node] = in_facts
 
         return changed
-
-def replace_symbols(s, replacement):
-    if isinstance(s, smt2ast.Symbol) and s.v in replacement:
-        return smt2ast.Symbol(replacement[s.v])
-    elif isinstance(s, smt2ast.SExprList):
-        return smt2ast.SExprList(*[replace_symbols(ss, replacement) for ss in s.v])
-    else:
-        return s
-
-def rename(rdef):
-    # rename lhs
-
-    varndx = dict([(x, 0) for x in rdef.defns.keys()])
-    defn2var = {}
-
-    for n in rdef.cfg.nodes:
-        bb = rdef.cfg.nodes[n]
-        for stmtcon in bb:
-            if len(stmtcon.rdef_def):
-                stmt = stmtcon.stmt
-                assert len(stmtcon.rdef_def) == 1, f"Don't support multiple assignments {stmtcon.rdef_def}/{stmt}"
-                for def_ in stmtcon.rdef_def:
-                    if isinstance(stmt.v[1], smt2ast.Symbol):
-                        v = stmt.v[1].v
-                        assert def_ in rdef.defns[v], f"Mismatch {def_} for variable {v}"
-                        stmt.v[1].v = v + str(varndx[v])
-                        defn2var[def_] = (v, v + str(varndx[v]))
-                        varndx[v] += 1
-                    else:
-                        raise NotImplementedError(f"Don't know how to rename LHS for {stmt}")
-
-                    break # since we're only doing one
-
-    # rename rhs
-    print(defn2var)
-    for n in rdef.cfg.nodes:
-        bb = rdef.cfg.nodes[n]
-
-        for i in range(len(bb)):
-            stmtcon = bb[i]
-            stmt = stmtcon.stmt
-            rd = stmtcon.rdef_in
-            replacements = [defn2var[rdd] for rdd in rd]
-
-            if smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi"):
-                v = stmt.v[2].v[1].v
-                repl = [smt2ast.Symbol(x[1]) for x in replacements if x[0] == v]
-
-                # this is an inconsistency
-                assert len(stmt.v[2].v) == len(repl) + 1, f"Missing definition for phi statement {stmt}, {repl}"
-                stmt.v[2].v[1:len(repl)+1] = repl
-                #print(stmtcon.stmt)
-            else:
-                #print(replacements)
-                repl = dict(replacements)
-                assert len(replacements) == len(repl), f"Two definitions for the same variable cannot reach the same non-phi statement: {replacements}/{repl} for {stmtcon.stmt}"
-
-                stmtcon.stmt = replace_symbols(stmtcon.stmt, repl)
 
 def get_branch_targets(xirstmts):
     labels = set()
@@ -367,7 +325,8 @@ def get_cfg(xirstmts):
     lbl_ndx = 1
     connect_to_previous = True
 
-    nodes = {'_START': [], '_EXIT': []}
+    nodes = {'_START': [], '_EXIT': [smt2ast.SExprList(*[smt2ast.Symbol("return"),
+                                                         smt2ast.Symbol("_retval")])]}
     cfg_edges = []
 
     for bb in basic_blocks:
@@ -390,6 +349,9 @@ def get_cfg(xirstmts):
             if smt2ast.is_call(last_stmt, "branch"):
                 cfg_edges.append((bb_label, last_stmt.v[1].v))
             elif smt2ast.is_call(last_stmt, "return"):
+                bb[-1] = smt2ast.SExprList(*[smt2ast.Symbol("="),
+                                             smt2ast.Symbol("_retval"),
+                                             last_stmt.v[1]])
                 cfg_edges.append((bb_label, "_EXIT"))
             elif smt2ast.is_call(last_stmt, "cbranch"):
                 for lbl in last_stmt.v[2:]:
@@ -451,6 +413,63 @@ def get_reads_and_writes(cfg):
 
             stmtcon.rwinfo = rw
 
+def replace_symbols(s, replacement):
+    if isinstance(s, smt2ast.Symbol) and s.v in replacement:
+        return smt2ast.Symbol(replacement[s.v])
+    elif isinstance(s, smt2ast.SExprList):
+        return smt2ast.SExprList(*[replace_symbols(ss, replacement) for ss in s.v])
+    else:
+        return s
+
+def rename(rdef):
+    # rename lhs
+
+    varndx = dict([(x, 0) for x in rdef.defns.keys()])
+    defn2var = {}
+
+    for n in rdef.cfg.nodes:
+        bb = rdef.cfg.nodes[n]
+        for stmtcon in bb:
+            if len(stmtcon.rdef_def):
+                stmt = stmtcon.stmt
+                assert len(stmtcon.rdef_def) == 1, f"Don't support multiple assignments {stmtcon.rdef_def}/{stmt}"
+                for def_ in stmtcon.rdef_def:
+                    if isinstance(stmt.v[1], smt2ast.Symbol):
+                        v = stmt.v[1].v
+                        assert def_ in rdef.defns[v], f"Mismatch {def_} for variable {v}"
+                        stmt.v[1].v = v + str(varndx[v])
+                        defn2var[def_] = (v, v + str(varndx[v]))
+                        varndx[v] += 1
+                    else:
+                        raise NotImplementedError(f"Don't know how to rename LHS for {stmt}")
+
+                    break # since we're only doing one
+
+    # rename rhs
+    for n in rdef.cfg.nodes:
+        bb = rdef.cfg.nodes[n]
+
+        for i in range(len(bb)):
+            stmtcon = bb[i]
+            stmt = stmtcon.stmt
+            rd = stmtcon.rdef_in
+            replacements = [defn2var[rdd] for rdd in rd]
+
+            if smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi"):
+                v = stmt.v[2].v[1].v
+                repl = [smt2ast.Symbol(x[1]) for x in replacements if x[0] == v]
+
+                # this is an inconsistency
+                assert len(stmt.v[2].v) == len(repl) + 1, f"Missing definition for phi statement {stmt}, {repl}"
+                stmt.v[2].v[1:len(repl)+1] = repl
+                #print(stmtcon.stmt)
+            else:
+                #print(replacements)
+                repl = dict(replacements)
+                assert len(replacements) == len(repl), f"Two definitions for the same variable cannot reach the same non-phi statement: {replacements}/{repl} for {stmtcon.stmt}"
+
+                stmtcon.stmt = replace_symbols(stmtcon.stmt, repl)
+
 def place_phi(cfg, domfrontier):
     placed_phi = dict()
     writes = dict([(k, set()) for k in cfg.nodes])
@@ -490,18 +509,13 @@ def place_phi(cfg, domfrontier):
             bb.insert(0, phistmt)
             phistmt.rwinfo = {'reads': set([v]), 'writes': set([v])}
 
-def dump_cfg(output, cfg):
-    with open(output, "w") as f:
-        print("digraph {", file=f)
-        for block in cfg.nodes:
-            label =  '  '.join([str(s) for s in cfg.nodes[block]])
-            if label == '': label = block
-            print(f'\t {block} [label="{label}"];', file=f)
+def convert_to_SSA(cfg):
+    get_reads_and_writes(cfg)
+    dom = cfg.run_idfa(Dominators())
+    place_phi(cfg, dom.frontier)
+    rdef = cfg.run_idfa(ReachingDefinitions())
+    rename(rdef)
 
-        for s, e in cfg.edges:
-            print(f"{s} -> {e};", file=f)
-
-        print("}", file=f)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert imperative code to functional code")
@@ -512,15 +526,8 @@ if __name__ == "__main__":
 
     statements = load_xir(args.xir)
     cfg = get_cfg(statements)
-    get_reads_and_writes(cfg)
-    dom = cfg.run_idfa(Dominators())
-    df = dom.frontier
-    place_phi(cfg, df)
-    #sys.exit(0)
-    rdef = cfg.run_idfa(ReachingDefinitions())
-    #print(rdef.rdef)
-    rename(rdef)
-    dump_cfg('test.dot', cfg)
+    convert_to_SSA(cfg)
+    cfg.dump_dot('test.dot')
 
     #v = create_dag(statements, args.debug)
     #print(eliminate_xir_attr_ref(v))
