@@ -73,6 +73,9 @@ def load_xir(xirf):
 
         return statements
 
+def is_phi(stmt):
+    return smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi")
+
 class Stmt(object):
     """Container for statements found in basic blocks.
 
@@ -159,6 +162,9 @@ class Dominators(IDFA):
         self.dominators = dict([(k, set(cfg.nodes.keys())) for k in cfg.nodes.keys()])
         self._dominated = None
         self._frontier = None
+        self._idom = None
+        self._domtree = None
+
         self.cfg = cfg
 
     def xfer(self, node):
@@ -226,6 +232,53 @@ class Dominators(IDFA):
         self._frontier = df
         return self._frontier
 
+    @property
+    def idom(self):
+        if self._idom is not None:
+            return self._idom
+
+        # this could be improved
+
+        idom = {}
+        for n in self.cfg.nodes:
+            dom = self.dominators[n]
+
+            # idom(n) is m where m strictly dominates n and m is
+            # strictly dominated by x where x is a dominator of n
+
+            for d in dom:
+                if d == n: continue
+
+                ddom = self.dominators[d]
+                for odom in dom:
+                    if odom != n and odom not in ddom: break
+                else:
+                    idom[n] = d # all other dominators of n dominate d
+                    break
+
+        self._idom = idom
+        return self._idom
+
+    @property
+    def domtree(self):
+        if self._domtree is not None:
+            return self._domtree
+
+        domtree = {}
+        for n, x in self.idom.items():
+            if x not in domtree: domtree[x] = []
+            domtree[x].append(n)
+
+        self._domtree = domtree
+        return self._domtree
+
+    def dump_idom_dot(self, output):
+        with open(output, "w") as f:
+            print("digraph {", file=f)
+            for n, x in self.idom.items():
+                print(f"{x} -> {n};", file=f)
+            print("}", file=f)
+
 class ReachingDefinitions(IDFA):
     def initialize(self, cfg):
         self.cfg = cfg
@@ -233,6 +286,7 @@ class ReachingDefinitions(IDFA):
         # assign definitions numbers
         dndx = 1
         defns = {}
+        rev_defns = {}
         self.rdef = dict([(k, set()) for k in self.cfg.nodes])
 
         for n in self.cfg.nodes:
@@ -245,8 +299,10 @@ class ReachingDefinitions(IDFA):
                     defns[w].add(dno)
                     dndx +=1
                     stmtcon.rdef_def.add(dno)
+                    rev_defns[dno] = w
 
         self.defns = defns
+        self.rev_defns = rev_defns
 
         for n in self.cfg.nodes:
             for stmtcon in self.cfg.nodes[n]:
@@ -272,6 +328,46 @@ class ReachingDefinitions(IDFA):
         self.rdef[node] = in_facts
 
         return changed
+
+class Uses(IDFA):
+    """Identify variables first used in a block ignoring phi
+       statements. These are, in functional SSA form, from the
+       `enclosing' scope
+     """
+
+    def initialize(self, cfg):
+        self.cfg = cfg
+        self.writes = {} # variables written/defined in this block
+        self.reads = {} # variables read in this block
+        self.outer_reads = {} # variables read, but not defined in this block
+        self.captured_parameters = {} # variables needed in this block that are not formal parameters
+
+        for n in self.cfg.nodes:
+            self.writes[n] = set()
+            self.outer_reads[n] = set()
+            self.reads[n] = set()
+            self.writes[n] = set()
+
+            for stmtcon in self.cfg.nodes[n]:
+                self.writes[n] |= stmtcon.rwinfo['writes']
+
+                # phi nodes are formal parameters, so don't include
+                # their reads
+                if not is_phi(stmtcon.stmt):
+                    self.reads[n] |= stmtcon.rwinfo['reads']
+
+            self.outer_reads[n] = self.reads[n] - self.writes[n]
+            self.captured_parameters[n] = self.outer_reads[n]
+
+    def xfer(self, node):
+        out_facts = IDFA.meet_union([self.outer_reads[s] for s in self.cfg.succ[node]])
+
+        new_in = self.outer_reads[node] | (out_facts - self.writes[node])
+        if new_in != self.captured_parameters[node]:
+            self.captured_parameters[node] = new_in
+            return True
+
+        return False
 
 def get_branch_targets(xirstmts):
     labels = set()
@@ -341,6 +437,10 @@ def get_cfg(xirstmts):
 
         if connect_to_previous:
             cfg_edges.append((prev_label, bb_label))
+
+            # add an explicit branch
+            nodes[prev_label].append(smt2ast.SExprList(smt2ast.Symbol("branch"),
+                                                       smt2ast.Symbol(bb_label))),
             prev_label = None
             connect_to_previous = False
 
@@ -352,6 +452,8 @@ def get_cfg(xirstmts):
                 bb[-1] = smt2ast.SExprList(*[smt2ast.Symbol("="),
                                              smt2ast.Symbol("_retval"),
                                              last_stmt.v[1]])
+                bb.append(smt2ast.SExprList(smt2ast.Symbol("branch"),
+                                            smt2ast.Symbol('_EXIT')))
                 cfg_edges.append((bb_label, "_EXIT"))
             elif smt2ast.is_call(last_stmt, "cbranch"):
                 for lbl in last_stmt.v[2:]:
@@ -423,7 +525,6 @@ def replace_symbols(s, replacement):
 
 def rename(rdef):
     # rename lhs
-
     varndx = dict([(x, 0) for x in rdef.defns.keys()])
     defn2var = {}
 
@@ -455,7 +556,7 @@ def rename(rdef):
             rd = stmtcon.rdef_in
             replacements = [defn2var[rdd] for rdd in rd]
 
-            if smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi"):
+            if is_phi(stmt):
                 v = stmt.v[2].v[1].v
                 repl = [smt2ast.Symbol(x[1]) for x in replacements if x[0] == v]
 
@@ -509,14 +610,238 @@ def place_phi(cfg, domfrontier):
             bb.insert(0, phistmt)
             phistmt.rwinfo = {'reads': set([v]), 'writes': set([v])}
 
+def branches_to_functions(cfg):
+    def fixup_branch(stmt, *indices):
+        for index in indices:
+            br = stmt.v[index].v
+            if br in params:
+                call = [stmt.v[index]] + [smt2ast.Symbol(p) for p in params[br]]
+                stmt.v[index] = smt2ast.SExprList(*call)
+
+        return stmt
+
+    params = {}
+    for n in cfg.nodes:
+        params[n] = []
+
+        for stmtcon in cfg.nodes[n]:
+            stmt = stmtcon.stmt
+            if is_phi(stmt):
+                params[n].append(stmt.v[1].v)
+
+    print(params)
+
+    for n in cfg.nodes:
+        for stmtcon in cfg.nodes[n]:
+            stmt = stmtcon.stmt
+            if smt2ast.is_call(stmt, "branch"):
+                #import pdb
+                #pdb.set_trace()
+                stmt = fixup_branch(stmt, 1)
+            elif smt2ast.is_call(stmt, "cbranch"):
+                stmt = fixup_branch(stmt, 2, 3)
+
+            stmtcon.stmt = stmt
+
+
 def convert_to_SSA(cfg):
     get_reads_and_writes(cfg)
     dom = cfg.run_idfa(Dominators())
+    print(dom.idom, dom.domtree)
+    dom.dump_idom_dot("idom.dot")
     place_phi(cfg, dom.frontier)
+    branches_to_functions(cfg)
     rdef = cfg.run_idfa(ReachingDefinitions())
     rename(rdef)
 
 
+class FunctionalCFG(object):
+    """Convert a CFG in SSA form to a functional program."""
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.formal_parameters = {} # formal parameters for BB that contain phi functions
+        self.let_levels = {} # nesting levels of let statements -- 0 is parameter
+
+        self.dom = self.cfg.run_idfa(Dominators())
+
+        get_reads_and_writes(self.cfg)
+        self._bb_formal_params()
+
+        uses = self.cfg.run_idfa(Uses())
+        self.captured_parameters = uses.captured_parameters # parameters that a BB reads from an enclosing scope
+        self.rdef = self.cfg.run_idfa(ReachingDefinitions())
+
+        self._bb_function_order()
+        self._bb_let_levels()
+
+    def _bb_formal_params(self):
+        formal_parameters = {}
+        levels = {}
+        cfg = self.cfg
+        let_stmts = {}
+
+        # identify formal parameters and let-binding levels
+        # the levels help in nesting let bindings when only parallel lets are available
+        for n in cfg.nodes:
+            bb = cfg.nodes[n]
+            formal_parameters[n] = []
+            levels[n] = {}
+            let_stmts[n] = {}
+
+            for stmtcon in bb:
+                if smt2ast.is_call(stmtcon.stmt, "="):
+                    if is_phi(stmtcon.stmt):
+                        v = stmtcon.stmt.v[1].v
+                        formal_parameters[n].append(v)
+                        levels[n][v] = 0
+                    else:
+                        stmtlevel = 0
+                        for x in stmtcon.rwinfo['reads']:
+                            # if a variable doesn't exist in levels, it
+                            # exists in an enclosing scope, making it
+                            # similar to a parameter
+                            stmtlevel = max(stmtlevel, levels[n][x] if x in levels[n] else 0)
+
+                        stmtlevel = stmtlevel + 1
+
+                        # this conveys levels
+                        for x in stmtcon.rwinfo['writes']:
+                            assert x not in levels[n], f"Can't have two writes to same variable {x}"
+                            levels[n][x] = stmtlevel
+                            let_stmts[n][x] = stmtcon.stmt
+
+                        stmtcon.level = stmtlevel
+
+        self.formal_parameters = formal_parameters
+        self.levels = levels
+        self.let_stmts = let_stmts
+
+        self._bb_let_levels()
+
+    def _bb_function_order(self):
+        order = []
+        visited = set()
+        wl = ['_START']
+
+        # currently breadth first
+
+        while len(wl):
+            n = wl.pop()
+            if n in visited: continue
+            order.append(n)
+            visited.add(n)
+            wl.extend(list(cfg.succ[n]))
+
+        self.order = order
+
+    def _bb_let_levels(self):
+        self.let_levels = {}
+
+        for n in self.levels:
+            levn = self.levels[n]
+
+            lets = sorted([(l, v) for v, l in levn.items() if l > 0], key=lambda x: x[0])
+
+            last_level = None
+            last_level_lets = []
+            let_levels = []
+
+            for l, v in lets:
+                if l != last_level:
+                    if len(last_level_lets): let_levels.append(last_level_lets)
+                    last_level = l
+                    last_level_lets = []
+
+                last_level_lets.append(v)
+
+            if len(last_level_lets): let_levels.append(last_level_lets)
+
+            self.let_levels[n] = let_levels
+
+    def dump(self, n = "_START", indent = 0, visited = set(), stmt_xlat = str):
+        if n in visited:
+            return
+
+        visited.add(n)
+
+        ind = "  "*indent
+
+        print(ind + "def ", n, f"({', '.join(self.formal_parameters[n])}): ", "#", self.let_levels[n], self.captured_parameters[n])
+
+        for lv in self.let_levels[n]:
+            for lvv in lv:
+                print(ind+"  " + stmt_xlat(self.let_stmts[n][lvv]))
+
+        # define mutually recursive functions
+        if n in self.dom.domtree:
+            # first do all the actual functions
+            for s in self.dom.domtree[n]:
+                if len(self.formal_parameters[s]):
+                    self.dump(s, indent+1, visited, stmt_xlat = stmt_xlat)
+
+            for s in self.dom.domtree[n]:
+                if not len(self.formal_parameters[s]):
+                    self.dump(s, indent+1, visited, stmt_xlat = stmt_xlat)
+
+
+        for stmtcon in self.cfg.nodes[n]:
+            stmt = stmtcon.stmt
+
+            if isinstance(stmt, smt2ast.SExprList):
+                sym = stmt.v[0].v
+                if sym not in ('=', 'branch', 'cbranch', 'label'):
+                    print(ind + "  " + stmt_xlat(stmt))
+                elif sym == '=' and smt2ast.is_call(stmt.v[2], "phi"):
+                    #print(ind + "  ", stmt)
+                    pass
+
+
+        if len(self.cfg.succ[n]) == 1:
+            succ = list(self.cfg.succ[n])[0]
+
+            if len(self.cfg.nodes[n]):
+                last_stmt = self.cfg.nodes[n][-1].stmt
+                if smt2ast.is_call(last_stmt, "branch"):
+                    print(ind + "  " + stmt_xlat(last_stmt))
+                else:
+                    print(ind + "  ", "return_ft1 ", succ, "()")
+            else:
+                print(ind + "  ", "return_ft2 ", succ, "()")
+        elif len(self.cfg.succ[n]) == 2:
+            ite = self.cfg.nodes[n][-1].stmt
+            print(ind + "  " + stmt_xlat(ite))
+
+        #for s in self.cfg.succ[n]:
+        #    self.dump(s, indent, visited, stmt_xlat = stmt_xlat)
+
+def xirs_to_py(s):
+    if smt2ast.is_call(s, "="):
+        return f"{s.v[1]} = {xirs_to_py(s.v[2])}"
+    elif smt2ast.is_call(s, "branch"):
+        return f"return {xirs_to_py(s.v[1])}"
+    elif smt2ast.is_call(s, "cbranch"):
+        return f"return {xirs_to_py(s.v[2])} if {xirs_to_py(s.v[1])} else {xirs_to_py(s.v[3])}"
+    elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
+        return str(s)
+    elif isinstance(s, smt2ast.SExprList):
+        fn = s.v[0].v
+        args = [xirs_to_py(x) for x in s.v[1:]]
+
+        if fn in ('<', '+'): # infix
+            return f"({args[0]} {fn} {args[1]})"
+        else:
+            args = ', '.join(args)
+            return f"{fn}({args})"
+    else:
+        raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
+
+def convert_to_functional(cfg):
+    x = FunctionalCFG(cfg)
+    #print(x.rdef.rev_defns)
+    x.dump(stmt_xlat = xirs_to_py)
+    print("print(_START())")
+    
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert imperative code to functional code")
     p.add_argument("xir", help="Serialized XIR, SMT2-like syntax as used internally by xir2smt")
@@ -527,6 +852,7 @@ if __name__ == "__main__":
     statements = load_xir(args.xir)
     cfg = get_cfg(statements)
     convert_to_SSA(cfg)
+    convert_to_functional(cfg)
     cfg.dump_dot('test.dot')
 
     #v = create_dag(statements, args.debug)
