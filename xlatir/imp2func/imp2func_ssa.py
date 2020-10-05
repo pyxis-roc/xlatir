@@ -14,6 +14,7 @@ import smt2ast
 from xir2smt2 import create_dag, eliminate_xir_attr_ref # this should be eventually dropped
 from functools import reduce
 import sys
+import itertools
 
 """
 # Syntax of the XIR Serialized SMT2-like Syntax.
@@ -360,7 +361,7 @@ class Uses(IDFA):
             self.captured_parameters[n] = self.outer_reads[n]
 
     def xfer(self, node):
-        out_facts = IDFA.meet_union([self.outer_reads[s] for s in self.cfg.succ[node]])
+        out_facts = IDFA.meet_union([self.captured_parameters[s] for s in self.cfg.succ[node]])
 
         new_in = self.outer_reads[node] | (out_facts - self.writes[node])
         if new_in != self.captured_parameters[node]:
@@ -629,7 +630,7 @@ def branches_to_functions(cfg):
             if is_phi(stmt):
                 params[n].append(stmt.v[1].v)
 
-    print(params)
+    #print(params)
 
     for n in cfg.nodes:
         for stmtcon in cfg.nodes[n]:
@@ -647,7 +648,7 @@ def branches_to_functions(cfg):
 def convert_to_SSA(cfg):
     get_reads_and_writes(cfg)
     dom = cfg.run_idfa(Dominators())
-    print(dom.idom, dom.domtree)
+    #print(dom.idom, dom.domtree)
     dom.dump_idom_dot("idom.dot")
     place_phi(cfg, dom.frontier)
     branches_to_functions(cfg)
@@ -669,7 +670,7 @@ class FunctionalCFG(object):
         self._bb_formal_params()
 
         uses = self.cfg.run_idfa(Uses())
-        self.captured_parameters = uses.captured_parameters # parameters that a BB reads from an enclosing scope
+        self.captured_parameters = dict([(k, list(v)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
         self.rdef = self.cfg.run_idfa(ReachingDefinitions())
 
         self._bb_function_order()
@@ -759,7 +760,35 @@ class FunctionalCFG(object):
 
             self.let_levels[n] = let_levels
 
-    def dump(self, n = "_START", indent = 0, visited = set(), stmt_xlat = str):
+    def _dump_body(self, n, indent = 1, stmt_xlat = str):
+        ind = "  "*indent
+
+        for stmtcon in self.cfg.nodes[n]:
+            stmt = stmtcon.stmt
+
+            if isinstance(stmt, smt2ast.SExprList):
+                sym = stmt.v[0].v
+                if sym not in ('=', 'branch', 'cbranch', 'label'):
+                    print(ind + stmt_xlat(stmt))
+                elif sym == '=' and smt2ast.is_call(stmt.v[2], "phi"):
+                    pass
+
+        if len(self.cfg.succ[n]) == 1:
+            succ = list(self.cfg.succ[n])[0]
+
+            if len(self.cfg.nodes[n]):
+                last_stmt = self.cfg.nodes[n][-1].stmt
+                if smt2ast.is_call(last_stmt, "branch"):
+                    print(ind + stmt_xlat(last_stmt))
+                else:
+                    print(ind + "return_ft1 ", succ, "()")
+            else:
+                print(ind + "return_ft2 ", succ, "()")
+        elif len(self.cfg.succ[n]) == 2:
+            ite = self.cfg.nodes[n][-1].stmt
+            print(ind + stmt_xlat(ite))
+
+    def dump_nested(self, n = "_START", indent = 0, visited = set(), stmt_xlat = str):
         if n in visited:
             return
 
@@ -778,42 +807,53 @@ class FunctionalCFG(object):
             # first do all the actual functions
             for s in self.dom.domtree[n]:
                 if len(self.formal_parameters[s]):
-                    self.dump(s, indent+1, visited, stmt_xlat = stmt_xlat)
+                    self.dump_nested(s, indent+1, visited, stmt_xlat = stmt_xlat)
 
             for s in self.dom.domtree[n]:
                 if not len(self.formal_parameters[s]):
-                    self.dump(s, indent+1, visited, stmt_xlat = stmt_xlat)
+                    self.dump_nested(s, indent+1, visited, stmt_xlat = stmt_xlat)
 
+        self._dump_body(n, indent+1, stmt_xlat)
 
-        for stmtcon in self.cfg.nodes[n]:
-            stmt = stmtcon.stmt
+    def fixup_linear_calls(self):
+        def _fixup(*calls):
+            for call in calls:
+                n = call.v[0].v
+                assert n in self.captured_parameters, f"No captured_parameters found for label {n}"
+                call.v.extend([smt2ast.Symbol(s) for s in self.captured_parameters[n]])
 
-            if isinstance(stmt, smt2ast.SExprList):
-                sym = stmt.v[0].v
-                if sym not in ('=', 'branch', 'cbranch', 'label'):
-                    print(ind + "  " + stmt_xlat(stmt))
-                elif sym == '=' and smt2ast.is_call(stmt.v[2], "phi"):
-                    #print(ind + "  ", stmt)
-                    pass
+        for n in self.cfg.nodes:
+            bb = self.cfg.nodes[n]
+            for stmtcon in bb:
+                stmt = stmtcon.stmt
+                if smt2ast.is_call(stmt, "branch"):
+                    _fixup(stmt.v[1])
+                elif smt2ast.is_call(stmt, "cbranch"):
+                    _fixup(stmt.v[2], stmt.v[3])
 
+    def dump_linear(self, n = "_START", visited = set(), stmt_xlat = str):
+        # define mutually recursive functions
+        if n in self.dom.domtree:
+            # first do all the actual functions
+            for s in self.dom.domtree[n]:
+                #if len(self.formal_parameters[s]):
+                self.dump_linear(s, visited, stmt_xlat = stmt_xlat)
 
-        if len(self.cfg.succ[n]) == 1:
-            succ = list(self.cfg.succ[n])[0]
+        if n in visited:
+            return
 
-            if len(self.cfg.nodes[n]):
-                last_stmt = self.cfg.nodes[n][-1].stmt
-                if smt2ast.is_call(last_stmt, "branch"):
-                    print(ind + "  " + stmt_xlat(last_stmt))
-                else:
-                    print(ind + "  ", "return_ft1 ", succ, "()")
-            else:
-                print(ind + "  ", "return_ft2 ", succ, "()")
-        elif len(self.cfg.succ[n]) == 2:
-            ite = self.cfg.nodes[n][-1].stmt
-            print(ind + "  " + stmt_xlat(ite))
+        visited.add(n)
 
-        #for s in self.cfg.succ[n]:
-        #    self.dump(s, indent, visited, stmt_xlat = stmt_xlat)
+        params = ', '.join(itertools.chain(self.formal_parameters[n], self.captured_parameters[n]))
+        print("def ", n,
+              f"({params}): ",
+              "#", self.let_levels[n], self.captured_parameters[n])
+
+        for lv in self.let_levels[n]:
+            for lvv in lv:
+                print("  " + stmt_xlat(self.let_stmts[n][lvv]))
+
+        self._dump_body(n, 1, stmt_xlat)
 
 def xirs_to_py(s):
     if smt2ast.is_call(s, "="):
@@ -836,23 +876,28 @@ def xirs_to_py(s):
     else:
         raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
 
-def convert_to_functional(cfg):
+def convert_to_functional(cfg, linear = False):
     x = FunctionalCFG(cfg)
     #print(x.rdef.rev_defns)
-    x.dump(stmt_xlat = xirs_to_py)
+    if linear:
+        x.fixup_linear_calls()
+        x.dump_linear(stmt_xlat = xirs_to_py)
+    else:
+        x.dump_nested(stmt_xlat = xirs_to_py)
+
     print("print(_START())")
-    
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert imperative code to functional code")
     p.add_argument("xir", help="Serialized XIR, SMT2-like syntax as used internally by xir2smt")
     p.add_argument("--debug", help="Enable debug trace", action="store_true")
-
+    p.add_argument("--linear", help="Generate linear code", action="store_true")
     args = p.parse_args()
 
     statements = load_xir(args.xir)
     cfg = get_cfg(statements)
     convert_to_SSA(cfg)
-    convert_to_functional(cfg)
+    convert_to_functional(cfg, args.linear)
     cfg.dump_dot('test.dot')
 
     #v = create_dag(statements, args.debug)
