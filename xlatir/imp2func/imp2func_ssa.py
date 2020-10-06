@@ -366,7 +366,8 @@ def convert_ssa_to_functional(ssa_cfg, linear = False):
 
 def convert_to_functional(statements):
     cfg = get_cfg(statements)
-    convert_to_SSA(cfg)
+    orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
+    cfg.orig_names = orig_names
     convert_ssa_to_functional(cfg, args.linear)
     return cfg
 

@@ -67,6 +67,11 @@ def rename(rdef):
 
                 stmtcon.stmt = replace_symbols(stmtcon.stmt, repl)
 
+    renamed = dict([(rv, v) for v, rv in defn2var.values()])
+    assert len(renamed) == len(defn2var) # duplicate names!
+
+    return renamed
+
 def place_phi(cfg, domfrontier):
     placed_phi = dict()
     writes = dict([(k, set()) for k in cfg.nodes])
@@ -146,5 +151,6 @@ def convert_to_SSA(cfg, cvt_branches_to_functions = True):
     place_phi(cfg, dom.frontier)
     if cvt_branches_to_functions: branches_to_functions(cfg)
     rdef = cfg.run_idfa(ReachingDefinitions())
-    rename(rdef)
+    renamed = rename(rdef)
+    return renamed
 
