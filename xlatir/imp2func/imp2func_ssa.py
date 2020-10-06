@@ -18,6 +18,7 @@ import itertools
 from impdfanalysis import *
 from impssa import convert_to_SSA
 
+# this is out-of-date
 """
 # Syntax of the XIR Serialized SMT2-like Syntax.
 
@@ -152,7 +153,7 @@ class FunctionalCFG(object):
             if n in visited: continue
             order.append(n)
             visited.add(n)
-            wl.extend(list(cfg.succ[n]))
+            wl.extend(list(self.cfg.succ[n]))
 
         self.order = order
 
@@ -180,16 +181,14 @@ class FunctionalCFG(object):
 
             self.let_levels[n] = let_levels
 
-    def _dump_body(self, n, indent = 1, stmt_xlat = str):
-        ind = "  "*indent
-
+    def _dump_body(self, output_engine, n):
         for stmtcon in self.cfg.nodes[n]:
             stmt = stmtcon.stmt
 
             if isinstance(stmt, smt2ast.SExprList):
                 sym = stmt.v[0].v
                 if sym not in ('=', 'branch', 'cbranch', 'label'):
-                    print(ind + stmt_xlat(stmt))
+                    output_engine.xlat_stmt(stmt)
                 elif sym == '=' and smt2ast.is_call(stmt.v[2], "phi"):
                     pass
 
@@ -198,42 +197,50 @@ class FunctionalCFG(object):
 
             if len(self.cfg.nodes[n]):
                 last_stmt = self.cfg.nodes[n][-1].stmt
-                if smt2ast.is_call(last_stmt, "branch"):
-                    print(ind + stmt_xlat(last_stmt))
-                else:
-                    print(ind + "return_ft1 ", succ, "()")
+                assert smt2ast.is_call(last_stmt, "branch"), f'Last statement of {n} with one successor needs to be a branch'
+                output_engine.xlat_stmt(last_stmt)
             else:
-                print(ind + "return_ft2 ", succ, "()")
+                assert False, f"Node {n} has no statements" # needs at least a branch
         elif len(self.cfg.succ[n]) == 2:
-            ite = self.cfg.nodes[n][-1].stmt
-            print(ind + stmt_xlat(ite))
+            cbranch = self.cfg.nodes[n][-1].stmt
+            assert smt2ast.is_call(cbranch, "cbranch"), f'Last statement of {n} with multiple successors needs to be a cbranch'
+            output_engine.xlat_stmt(cbranch)
+        elif len(self.cfg.succ[n]) == 0:
+            pass
+        else:
+            raise NotImplementedError(f"Don't support more than 2 successors for node {n}")
 
-    def dump_nested(self, n = "_START", indent = 0, visited = set(), stmt_xlat = str):
+    def dump_nested(self, output_engine, n = "_START", indent = 0, visited = set()):
         if n in visited:
             return
 
         visited.add(n)
 
-        ind = "  "*indent
+        output_engine.xlat_func_def(n, self.formal_parameters[n])
+        output_engine.open_func()
 
-        print(ind + "def ", n, f"({', '.join(self.formal_parameters[n])}): ", "#", self.let_levels[n], self.captured_parameters[n])
-
-        for lv in self.let_levels[n]:
-            for lvv in lv:
-                print(ind+"  " + stmt_xlat(self.let_stmts[n][lvv]))
+        for i, lv in enumerate(self.let_levels[n], 1):
+            output_engine.xlat_let([self.let_stmts[n][lvv] for lvv in lv], i)
+            output_engine.open_let()
 
         # define mutually recursive functions
         if n in self.dom.domtree:
-            # first do all the actual functions
+            # first do all the actual functions, those with phi
             for s in self.dom.domtree[n]:
                 if len(self.formal_parameters[s]):
-                    self.dump_nested(s, indent+1, visited, stmt_xlat = stmt_xlat)
+                    self.dump_nested(output_engine, s, indent+1, visited)
 
+            # these successors don't have phi, and should really be eliminated
             for s in self.dom.domtree[n]:
                 if not len(self.formal_parameters[s]):
-                    self.dump_nested(s, indent+1, visited, stmt_xlat = stmt_xlat)
+                    self.dump_nested(output_engine, s, indent+1, visited)
 
-        self._dump_body(n, indent+1, stmt_xlat)
+        self._dump_body(output_engine, n)
+
+        for i in self.let_levels[n]:
+            output_engine.close_let()
+
+        output_engine.close_func()
 
     def fixup_linear_calls(self):
         def _fixup(*calls):
@@ -251,61 +258,117 @@ class FunctionalCFG(object):
                 elif smt2ast.is_call(stmt, "cbranch"):
                     _fixup(stmt.v[2], stmt.v[3])
 
-    def dump_linear(self, n = "_START", visited = set(), stmt_xlat = str):
-        # define mutually recursive functions
+    def dump_linear(self, output_engine, n = "_START", visited = set()):
+        # define functions
         if n in self.dom.domtree:
-            # first do all the actual functions
+            # nodes that don't dominate other nodes won't be found in dominator tree
+            # which is organized as parent -> [children]
             for s in self.dom.domtree[n]:
-                #if len(self.formal_parameters[s]):
-                self.dump_linear(s, visited, stmt_xlat = stmt_xlat)
+                self.dump_linear(output_engine, s, visited)
 
         if n in visited:
             return
 
         visited.add(n)
 
-        params = ', '.join(itertools.chain(self.formal_parameters[n], self.captured_parameters[n]))
-        print("def ", n,
-              f"({params}): ",
-              "#", self.let_levels[n], self.captured_parameters[n])
+        params = itertools.chain(self.formal_parameters[n], self.captured_parameters[n])
+        output_engine.xlat_func_def(n, params)
+        output_engine.open_func()
 
-        for lv in self.let_levels[n]:
-            for lvv in lv:
-                print("  " + stmt_xlat(self.let_stmts[n][lvv]))
+        for i, lv in enumerate(self.let_levels[n], 1):
+            output_engine.xlat_let([self.let_stmts[n][lvv] for lvv in lv], i)
+            output_engine.open_let()
 
-        self._dump_body(n, 1, stmt_xlat)
+        self._dump_body(output_engine, n)
 
-def xirs_to_py(s):
-    if smt2ast.is_call(s, "="):
-        return f"{s.v[1]} = {xirs_to_py(s.v[2])}"
-    elif smt2ast.is_call(s, "branch"):
-        return f"return {xirs_to_py(s.v[1])}"
-    elif smt2ast.is_call(s, "cbranch"):
-        return f"return {xirs_to_py(s.v[2])} if {xirs_to_py(s.v[1])} else {xirs_to_py(s.v[3])}"
-    elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
-        return str(s)
-    elif isinstance(s, smt2ast.SExprList):
-        fn = s.v[0].v
-        args = [xirs_to_py(x) for x in s.v[1:]]
+        for i in self.let_levels[n]:
+            output_engine.close_let()
 
-        if fn in ('<', '+'): # infix
-            return f"({args[0]} {fn} {args[1]})"
+        output_engine.close_func()
+
+    def convert(self, output_engine):
+        output_engine.func = self
+
+        if output_engine.linear:
+            self.fixup_linear_calls()
+            self.dump_linear(output_engine)
         else:
-            args = ', '.join(args)
-            return f"{fn}({args})"
-    else:
-        raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
+            self.dump_nested(output_engine)
 
-def convert_to_functional(cfg, linear = False):
-    x = FunctionalCFG(cfg)
-    #print(x.rdef.rev_defns)
-    if linear:
-        x.fixup_linear_calls()
-        x.dump_linear(stmt_xlat = xirs_to_py)
-    else:
-        x.dump_nested(stmt_xlat = xirs_to_py)
 
-    print("print(_START())")
+class PyOutput(object):
+    def __init__(self):
+        self.nesting = 0
+
+    def finish(self):
+        print("print(_START())")
+
+    def open_func(self):
+        self.nesting += 1
+
+    def close_func(self):
+        self.nesting -= 1
+
+        assert self.nesting >= 0
+
+    def open_let(self):
+        # we ignore nests for let since we serialize lets in Python
+        pass
+
+    def close_let(self):
+        pass
+
+    def xlat_func_def(self, n, params):
+        assert self.nesting >= 0
+
+        ind = "  " * self.nesting
+        print(ind + "def ", n,
+              f"({', '.join(params)}): ",
+              '#', self.func.let_levels[n], self.func.captured_parameters[n])
+
+    def xlat_let(self, lstmts, level):
+        for lsi in lstmts:
+            self.xlat_stmt(lsi)
+
+    def xlat_stmt(self, s):
+        ss = self._strify_stmt(s)
+        print("  "*self.nesting + ss)
+
+    def _strify_stmt(self, s):
+        if smt2ast.is_call(s, "="):
+            return f"{s.v[1]} = {self._strify_stmt(s.v[2])}"
+        elif smt2ast.is_call(s, "branch"):
+            return f"return {self._strify_stmt(s.v[1])}"
+        elif smt2ast.is_call(s, "cbranch"):
+            return f"return {self._strify_stmt(s.v[2])} if {self._strify_stmt(s.v[1])} else {self._strify_stmt(s.v[3])}"
+        elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
+            return str(s)
+        elif isinstance(s, smt2ast.SExprList):
+            fn = s.v[0].v
+            args = [self._strify_stmt(x) for x in s.v[1:]]
+
+            if fn in ('<', '+'): # infix
+                return f"({args[0]} {fn} {args[1]})"
+            else:
+                args = ', '.join(args)
+                return f"{fn}({args})"
+        else:
+            raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
+
+def convert_ssa_to_functional(ssa_cfg, linear = False):
+    po = PyOutput()
+    po.linear = linear
+
+    fcfg = FunctionalCFG(ssa_cfg)
+    fcfg.convert(po)
+
+    po.finish()
+
+def convert_to_functional(statements):
+    cfg = get_cfg(statements)
+    convert_to_SSA(cfg)
+    convert_ssa_to_functional(cfg, args.linear)
+    return cfg
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert imperative code to functional code")
@@ -315,10 +378,5 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     statements = load_xir(args.xir)
-    cfg = get_cfg(statements)
-    convert_to_SSA(cfg)
-    convert_to_functional(cfg, args.linear)
+    cfg = convert_to_functional(statements)
     cfg.dump_dot('test.dot')
-
-    #v = create_dag(statements, args.debug)
-    #print(eliminate_xir_attr_ref(v))
