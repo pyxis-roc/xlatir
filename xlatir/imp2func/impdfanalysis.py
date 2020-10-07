@@ -61,7 +61,7 @@ class ControlFlowGraph(object):
             print("node [shape=rect]", file=f)
             for block in self.nodes:
                 label =  '\\n'.join([stmt_fn(s) for s in self.nodes[block]])
-                if label == '': label = block
+                label = f'**{block}**' + '\\n' + label
                 print(f'\t {block} [label="{label}"];', file=f)
 
             for s, e in self.edges:
@@ -343,12 +343,19 @@ def get_reads_and_writes(cfg):
             sty = stmt.v[0].v
             rw = {'reads': set(), 'writes': set()}
 
-            if sty in ('label', 'branch'):
+            if sty == 'label':
                 rw = {'reads': set(), 'writes': set()}
+            elif sty == 'branch':
+                # in SSA functional form, branches are calls...
+                rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
             elif sty == 'return':
                 rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
             elif sty == 'cbranch':
-                rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
+                cond_r = get_symbols(stmt.v[1])
+                # in SSA functional form, branches are calls...
+                br_1 = get_symbols(stmt.v[2])
+                br_2 = get_symbols(stmt.v[3])
+                rw = {'reads': cond_r | br_1 | br_2, 'writes': set()}
             elif sty == '=':
                 lhs = stmt.v[1]
                 rhs = stmt.v[2]
@@ -376,6 +383,7 @@ def get_cfg(xirstmts):
         return []
 
     labels = get_branch_targets(xirstmts)
+    #print(labels)
 
     basic_blocks = []
     bb = []
@@ -414,13 +422,16 @@ def get_cfg(xirstmts):
     cfg_edges = []
 
     for bb in basic_blocks:
-        if (len(bb) == 0) or (len(bb) > 1 and not smt2ast.is_call(bb[0], "label")):
+        if (len(bb) == 0) or (len(bb) > 0 and not smt2ast.is_call(bb[0], "label")):
             # no label, so generate one
             bb_label = f"_label_{lbl_ndx}"
             lbl_ndx += 1
-        elif (len(bb) > 1 and smt2ast.is_call(bb[0], "label")):
+        elif (len(bb) > 0 and smt2ast.is_call(bb[0], "label")):
             bb_label = bb[0].v[1].v
+        else:
+            assert False
 
+        #print(bb, bb_label)
         nodes[bb_label] = bb
 
         if connect_to_previous:
@@ -450,6 +461,8 @@ def get_cfg(xirstmts):
                 # bb didn't end in a branch, so fall through
                 connect_to_previous = True
                 prev_label = bb_label
+
+        #print(bb, nodes)
 
     # convert all stmts in basic blocks to Stmt
     for n in nodes:

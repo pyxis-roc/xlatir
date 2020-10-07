@@ -92,6 +92,7 @@ class FunctionalCFG(object):
 
         uses = self.cfg.run_idfa(Uses())
         self.captured_parameters = dict([(k, list(v)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
+
         self.rdef = self.cfg.run_idfa(ReachingDefinitions())
 
         self._bb_function_order()
@@ -112,7 +113,7 @@ class FunctionalCFG(object):
             let_stmts[n] = {}
 
             for stmtcon in bb:
-                if smt2ast.is_call(stmtcon.stmt, "="):
+                if smt2ast.is_call(stmtcon.stmt, "=") or smt2ast.is_call(stmtcon.stmt, "branch") or smt2ast.is_call(stmtcon.stmt, "cbranch"):
                     if is_phi(stmtcon.stmt):
                         v = stmtcon.stmt.v[1].v
                         formal_parameters[n].append(v)
@@ -366,6 +367,7 @@ def convert_ssa_to_functional(ssa_cfg, linear = False):
 
 def convert_to_functional(statements):
     cfg = get_cfg(statements)
+    cfg.dump_dot('test.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
     cfg.orig_names = orig_names
     convert_ssa_to_functional(cfg, args.linear)
@@ -380,4 +382,4 @@ if __name__ == "__main__":
 
     statements = load_xir(args.xir)
     cfg = convert_to_functional(statements)
-    cfg.dump_dot('test.dot')
+    #cfg.dump_dot('test.dot')

@@ -56,8 +56,8 @@ def rename(rdef):
                 v = stmt.v[2].v[1].v
                 repl = [smt2ast.Symbol(x[1]) for x in replacements if x[0] == v]
 
-                # this is an inconsistency
-                assert len(stmt.v[2].v) == len(repl) + 1, f"Missing definition for phi statement {stmt}, {repl}"
+                assert len(stmt.v[2].v) == len(repl) + 1, f"Potentially missing definition for phi statement {stmt} with replacements {repl}"
+
                 stmt.v[2].v[1:len(repl)+1] = repl
                 #print(stmtcon.stmt)
             else:
