@@ -317,13 +317,50 @@ class FunctionalCFG(object):
         else:
             self.dump_nested(output_engine)
 
+class OutputBackend(object):
+    def set_linear(self, linear):
+        raise NotImplementedError
 
-class PyOutput(object):
-    def __init__(self):
-        self.nesting = 0
+    def get_output(self):
+        raise NotImplementedError
+
+    def open_func(self):
+        raise NotImplementedError
+
+    def close_func(self):
+        raise NotImplementedError
+
+    def open_let(self):
+        raise NotImplementedError
+
+    def close_let(self):
+        raise NotImplementedError
+
+    def xlat_func_def(self, n, params):
+        raise NotImplementedError
+
+    def xlat_let(self, lstmts, level):
+        raise NotImplementedError
+
+    def xlat_stmt(self, s):
+        raise NotImplementedError
 
     def finish(self):
-        print("print(_START())")
+        raise NotImplementedError
+
+class PyOutput(OutputBackend):
+    def __init__(self):
+        self.nesting = 0
+        self.output = []
+
+    def set_linear(self, linear):
+        self.linear = linear
+
+    def finish(self):
+        self.output.append("print(_START())")
+
+    def get_output(self):
+        return '\n'.join(self.output)
 
     def open_func(self):
         self.nesting += 1
@@ -332,7 +369,7 @@ class PyOutput(object):
         self.nesting -= 1
 
         assert self.nesting >= 0
-        print("")
+        self.output.append("")
 
     def open_let(self):
         # we ignore nests for let since we serialize lets in Python
@@ -345,9 +382,7 @@ class PyOutput(object):
         assert self.nesting >= 0
 
         ind = "  " * self.nesting
-        print(ind + "def ", n,
-              f"({', '.join(params)}): ",
-              '#', self.func.let_levels[n], self.func.captured_parameters[n])
+        self.output.append(f"{ind}def {n}({', '.join(params)}): # let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}")
 
     def xlat_let(self, lstmts, level):
         for lsi in lstmts:
@@ -355,7 +390,7 @@ class PyOutput(object):
 
     def xlat_stmt(self, s):
         ss = self._strify_stmt(s)
-        print("  "*self.nesting + ss)
+        self.output.append("  "*self.nesting + ss)
 
     def _strify_stmt(self, s):
         if smt2ast.is_call(s, "="):
@@ -378,21 +413,88 @@ class PyOutput(object):
         else:
             raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
 
-def convert_ssa_to_functional(ssa_cfg, globalvars, linear = False):
-    po = PyOutput()
-    po.linear = linear
+class SMT2Output(OutputBackend):
+    def __init__(self):
+        self.nesting = 0
+        self.output = []
+        self.linear = True
+
+    def set_linear(self, linear):
+        if linear == False: print("WARNING: SMT2 backend only supports linear output")
+        self.linear = True
+
+    def get_output(self):
+        return '\n'.join(self.output)
+
+    def finish(self):
+        #print("print(_START())")
+        pass
+
+    def open_func(self):
+        self.nesting += 1
+
+    def close_func(self):
+        self.nesting -= 1
+
+        assert self.nesting >= 0
+        self.output.append(")")
+        self.output.append('')
+
+    def open_let(self):
+        self.nesting += 1
+
+    def close_let(self):
+        self.nesting -= 1
+        assert self.nesting >= 0
+
+        self.output.append(')')
+
+    def xlat_func_def(self, n, params):
+        assert self.nesting >= 0
+
+        params_types = [(p, f'{p}_type') for p in params]
+        params = " ".join([f"({p} {ptype})" for p, ptype in params_types])
+        ret_type = 'ret_type'
+
+        self.output.append(f'; let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}')
+        self.output.append(f'(define-func-rec {n} ({params}) {ret_type} ')
+
+    def xlat_let(self, lstmts, level):
+        lets = ' '.join([self._strify_stmt(ls) for ls in lstmts])
+        self.output.append(f'(let ({lets})')
+
+    def xlat_stmt(self, s):
+        ss = self._strify_stmt(s)
+        self.output.append("  "*self.nesting + ss)
+
+    def _strify_stmt(self, s):
+        if smt2ast.is_call(s, "="):
+            return f"({s.v[1]} {self._strify_stmt(s.v[2])})"
+        elif smt2ast.is_call(s, "branch"):
+            return self._strify_stmt(s.v[1])
+        elif smt2ast.is_call(s, "cbranch"):
+            return f"(ite {self._strify_stmt(s.v[1])} {self._strify_stmt(s.v[2])} {self._strify_stmt(s.v[3])})"
+        elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
+            return str(s)
+        elif isinstance(s, smt2ast.SExprList):
+            strify = ' '.join([self._strify_stmt(x) for x in s.v])
+            return f"({strify})"
+        else:
+            raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
+
+def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
+    backend.set_linear(linear)
 
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
-    fcfg.convert(po)
+    fcfg.convert(backend)
+    backend.finish()
 
-    po.finish()
-
-def convert_to_functional(statements, globalvars):
+def convert_to_functional(statements, globalvars, backend):
     cfg = get_cfg(statements)
     cfg.dump_dot('test.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
     cfg.orig_names = orig_names
-    convert_ssa_to_functional(cfg, globalvars, args.linear)
+    convert_ssa_to_functional(backend, cfg, globalvars, args.linear)
     return cfg
 
 if __name__ == "__main__":
@@ -402,8 +504,20 @@ if __name__ == "__main__":
     p.add_argument("--linear", help="Generate linear code", action="store_true")
     p.add_argument("--gv", dest="globalvars", metavar="SYMBOL",
                    action="append", help="Treat SYMBOL as a global in linear code", default=[])
+    p.add_argument("--backend", dest="backend", choices=['python', 'smt2'], default='python',
+                   help="Backend for code output")
+
     args = p.parse_args()
 
     statements = load_xir(args.xir)
-    cfg = convert_to_functional(statements, set(args.globalvars))
+
+    if args.backend == 'python':
+        backend = PyOutput()
+    elif args.backend == 'smt2':
+        backend = SMT2Output()
+    else:
+        raise NotImplementedError(f"Unsupported backend {args.backend}")
+
+    cfg = convert_to_functional(statements, set(args.globalvars), backend)
+    print(backend.get_output())
     #cfg.dump_dot('test.dot')
