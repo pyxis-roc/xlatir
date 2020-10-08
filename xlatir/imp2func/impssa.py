@@ -19,7 +19,7 @@ def replace_symbols(s, replacement):
     else:
         return s
 
-def rename(rdef):
+def rename(rdef, sep='_'):
     # rename lhs
     varndx = dict([(x, 0) for x in rdef.defns.keys()])
     defn2var = {}
@@ -34,8 +34,9 @@ def rename(rdef):
                     if isinstance(stmt.v[1], smt2ast.Symbol):
                         v = stmt.v[1].v
                         assert def_ in rdef.defns[v], f"Mismatch {def_} for variable {v}"
-                        stmt.v[1].v = v + str(varndx[v])
-                        defn2var[def_] = (v, v + str(varndx[v]))
+                        new_name = v + sep + str(varndx[v])
+                        stmt.v[1].v = new_name
+                        defn2var[def_] = (v, new_name)
                         varndx[v] += 1
                     else:
                         raise NotImplementedError(f"Don't know how to rename LHS for {stmt}")
