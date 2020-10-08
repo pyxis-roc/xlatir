@@ -80,7 +80,7 @@ def load_xir(xirf):
 class FunctionalCFG(object):
     """Convert a CFG in SSA form to a functional program."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, globalvars = set(), keep_dead_writes = False):
         self.cfg = cfg
         self.formal_parameters = {} # formal parameters for BB that contain phi functions
         self.let_levels = {} # nesting levels of let statements -- 0 is parameter
@@ -88,23 +88,44 @@ class FunctionalCFG(object):
         self.dom = self.cfg.run_idfa(Dominators())
 
         get_reads_and_writes(self.cfg)
+        if not keep_dead_writes: self._remove_dead_writes()
+        #TODO: run a copy-propagation pass
+        #TODO: eliminate non-phi containing functions that have no lets by inlining them.
         self._bb_formal_params()
 
         uses = self.cfg.run_idfa(Uses())
-        self.captured_parameters = dict([(k, list(v)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
+        self.captured_parameters = dict([(k, list(v - globalvars)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
 
         self.rdef = self.cfg.run_idfa(ReachingDefinitions())
 
         self._bb_function_order()
         self._bb_let_levels()
 
+    def _remove_dead_writes(self):
+        all_reads = set()
+        for n in self.cfg.nodes:
+            for stmtcon in self.cfg.nodes[n]:
+                all_reads |= stmtcon.rwinfo['reads']
+
+        for n in self.cfg.nodes:
+            out = []
+            for stmtcon in self.cfg.nodes[n]:
+                if smt2ast.is_call(stmtcon.stmt, '='): # write
+                    if any([v in all_reads for v in stmtcon.rwinfo['writes']]):
+                        out.append(stmtcon)
+                else:
+                    out.append(stmtcon)
+
+            self.cfg.nodes[n] = out
+
     def _bb_formal_params(self):
+        """Identify formal parameters and let-binding levels"""
+
         formal_parameters = {}
         levels = {}
         cfg = self.cfg
         let_stmts = {}
 
-        # identify formal parameters and let-binding levels
         # the levels help in nesting let bindings when only parallel lets are available
         for n in cfg.nodes:
             bb = cfg.nodes[n]
@@ -311,6 +332,7 @@ class PyOutput(object):
         self.nesting -= 1
 
         assert self.nesting >= 0
+        print("")
 
     def open_let(self):
         # we ignore nests for let since we serialize lets in Python
@@ -348,7 +370,7 @@ class PyOutput(object):
             fn = s.v[0].v
             args = [self._strify_stmt(x) for x in s.v[1:]]
 
-            if fn in ('<', '+'): # infix
+            if fn in ('<', '+', '=='): # infix
                 return f"({args[0]} {fn} {args[1]})"
             else:
                 args = ', '.join(args)
@@ -356,21 +378,21 @@ class PyOutput(object):
         else:
             raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
 
-def convert_ssa_to_functional(ssa_cfg, linear = False):
+def convert_ssa_to_functional(ssa_cfg, globalvars, linear = False):
     po = PyOutput()
     po.linear = linear
 
-    fcfg = FunctionalCFG(ssa_cfg)
+    fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(po)
 
     po.finish()
 
-def convert_to_functional(statements):
+def convert_to_functional(statements, globalvars):
     cfg = get_cfg(statements)
     cfg.dump_dot('test.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
     cfg.orig_names = orig_names
-    convert_ssa_to_functional(cfg, args.linear)
+    convert_ssa_to_functional(cfg, globalvars, args.linear)
     return cfg
 
 if __name__ == "__main__":
@@ -378,8 +400,10 @@ if __name__ == "__main__":
     p.add_argument("xir", help="Serialized XIR, SMT2-like syntax as used internally by xir2smt")
     p.add_argument("--debug", help="Enable debug trace", action="store_true")
     p.add_argument("--linear", help="Generate linear code", action="store_true")
+    p.add_argument("--gv", dest="globalvars", metavar="SYMBOL",
+                   action="append", help="Treat SYMBOL as a global in linear code", default=[])
     args = p.parse_args()
 
     statements = load_xir(args.xir)
-    cfg = convert_to_functional(statements)
+    cfg = convert_to_functional(statements, set(args.globalvars))
     #cfg.dump_dot('test.dot')
