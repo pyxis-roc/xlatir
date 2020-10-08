@@ -10,6 +10,7 @@
 
 import smt2ast
 from functools import reduce
+import toposort
 
 def is_phi(stmt):
     return smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi")
@@ -54,6 +55,12 @@ class ControlFlowGraph(object):
                 changed = idfa.xfer(n) or changed
 
         return idfa
+
+    def topo_order(self):
+        try:
+            return toposort.toposort_flatten(self.succ)
+        except toposort.CircularDependencyError as e:
+            return None
 
     def dump_dot(self, output, stmt_fn = str):
         with open(output, "w") as f:

@@ -317,6 +317,8 @@ class FunctionalCFG(object):
         else:
             self.dump_nested(output_engine)
 
+        output_engine.finish()
+
 class OutputBackend(object):
     def set_linear(self, linear):
         raise NotImplementedError
@@ -417,6 +419,8 @@ class SMT2Output(OutputBackend):
     def __init__(self):
         self.nesting = 0
         self.output = []
+        self.output_fn = {}
+        self.fn = None
         self.linear = True
 
     def set_linear(self, linear):
@@ -424,7 +428,27 @@ class SMT2Output(OutputBackend):
         self.linear = True
 
     def get_output(self):
-        return '\n'.join(self.output)
+        def _output_fn(fo):
+            n, params, ret_type = fo[0]
+            if rec:
+                out = f"(define-fun-rec {n} ({params}) {ret_type}"
+            else:
+                out = f"(define-fun {n} ({params}) {ret_type}"
+
+            return out + '\n' + '\n'.join(fo[1:])
+
+        assert len(self.output) == 0, "Function {self.fn} not closed"
+
+        order = self.func.cfg.topo_order()
+        if order is None:
+            # TODO: identify SCCs and only make them recursive...
+            rec = True
+            # TODO: identify SCCs and actually get a proper ordering ...
+            order = list(self.output_fn.keys())
+        else:
+            rec = False
+
+        return '\n'.join([_output_fn(self.output_fn[fn]) for fn in order if fn in self.output_fn])
 
     def finish(self):
         #print("print(_START())")
@@ -439,6 +463,9 @@ class SMT2Output(OutputBackend):
         assert self.nesting >= 0
         self.output.append(")")
         self.output.append('')
+        self.output_fn[self.fn] = self.output
+        self.output = []
+        self.fn = None
 
     def open_let(self):
         self.nesting += 1
@@ -447,21 +474,23 @@ class SMT2Output(OutputBackend):
         self.nesting -= 1
         assert self.nesting >= 0
 
-        self.output.append(')')
+        self.output.append('  '*self.nesting + ')')
 
     def xlat_func_def(self, n, params):
         assert self.nesting >= 0
+
+        self.fn = n
 
         params_types = [(p, f'{p}_type') for p in params]
         params = " ".join([f"({p} {ptype})" for p, ptype in params_types])
         ret_type = 'ret_type'
 
+        self.output.append((n, params, ret_type))
         self.output.append(f'; let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}')
-        self.output.append(f'(define-func-rec {n} ({params}) {ret_type} ')
 
     def xlat_let(self, lstmts, level):
         lets = ' '.join([self._strify_stmt(ls) for ls in lstmts])
-        self.output.append(f'(let ({lets})')
+        self.output.append("  "*self.nesting + f'(let ({lets})')
 
     def xlat_stmt(self, s):
         ss = self._strify_stmt(s)
@@ -477,8 +506,11 @@ class SMT2Output(OutputBackend):
         elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
             return str(s)
         elif isinstance(s, smt2ast.SExprList):
-            strify = ' '.join([self._strify_stmt(x) for x in s.v])
-            return f"({strify})"
+            if smt2ast.is_call(s, 'return'):
+                return self._strify_stmt(s.v[1])
+            else:
+                strify = ' '.join([self._strify_stmt(x) for x in s.v])
+                return f"({strify})"
         else:
             raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
 
@@ -487,7 +519,6 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
 
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(backend)
-    backend.finish()
 
 def convert_to_functional(statements, globalvars, backend):
     cfg = get_cfg(statements)
