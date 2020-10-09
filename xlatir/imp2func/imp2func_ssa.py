@@ -311,6 +311,7 @@ class FunctionalCFG(object):
     def convert(self, output_engine):
         output_engine.func = self
 
+        output_engine.start()
         if output_engine.linear:
             self.fixup_linear_calls()
             self.dump_linear(output_engine)
@@ -324,6 +325,9 @@ class OutputBackend(object):
         raise NotImplementedError
 
     def get_output(self):
+        raise NotImplementedError
+
+    def start(self):
         raise NotImplementedError
 
     def open_func(self):
@@ -357,6 +361,9 @@ class PyOutput(OutputBackend):
 
     def set_linear(self, linear):
         self.linear = linear
+
+    def start(self):
+        pass
 
     def finish(self):
         self.output.append("print(_START())")
@@ -416,12 +423,76 @@ class PyOutput(OutputBackend):
             raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
 
 class SMT2Output(OutputBackend):
-    def __init__(self):
+    def __init__(self, symtypes):
         self.nesting = 0
         self.output = []
         self.output_fn = {}
         self.fn = None
         self.linear = True
+        self.symtypes = symtypes
+
+    def _get_func_return_types(self):
+        def find(x):
+            if x in self.symtypes:
+                return x
+            elif x in self.func.cfg.orig_names:
+                return self.func.cfg.orig_names[x]
+
+            if out[x] != x:
+                return find(out[x])
+
+            return out[x]
+
+        def unify(x, y):
+            nx = find(y)
+            if nx != out[x]:
+                out[x] = nx
+                return True
+
+            return False
+
+        out = dict([(n, n) for n in self.func.cfg.nodes])
+        changed = True
+        while changed:
+            changed = False
+            for n in self.func.cfg.nodes:
+                bb = self.func.cfg.nodes[n]
+                last_stmt = bb[-1].stmt
+                if smt2ast.is_call(last_stmt, "return"):
+                    changed = unify(n, "_retval") or changed
+                elif smt2ast.is_call(last_stmt, "branch"):
+                    changed = unify(n, last_stmt.v[1].v[0].v) or changed
+                elif smt2ast.is_call(last_stmt, "cbranch"):
+                    changed = unify(n, last_stmt.v[2].v[0].v) or changed
+                    changed = unify(n, last_stmt.v[3].v[0].v) or changed
+                else:
+                    assert False, last_stmt
+
+        self.func_types = out
+
+    def start(self):
+        # infer types for retval
+        for n in self.func.cfg.nodes:
+            for stmtcon in self.func.cfg.nodes[n]:
+                stmt = stmtcon.stmt
+                if smt2ast.is_call(stmt, '='):
+                    if stmt.v[1].v.startswith('_retval_'):
+                        for r in stmtcon.rwinfo['reads']:
+                            try:
+                                self.symtypes['_retval'] = self.get_type(r)
+                                break
+                            except ValueError:
+                                continue
+
+                        if '_retval' in self.symtypes: break
+
+            if '_retval' in self.symtypes: break
+
+        # this can happen, but
+        #if '_retval' not in self.symtypes:
+
+        # TODO: infer types for functions
+        self._get_func_return_types()
 
     def set_linear(self, linear):
         if linear == False: print("WARNING: SMT2 backend only supports linear output")
@@ -476,14 +547,25 @@ class SMT2Output(OutputBackend):
 
         self.output.append('  '*self.nesting + ')')
 
+    def get_type(self, v):
+        if v in self.func.cfg.orig_names:
+            orig_name = self.func.cfg.orig_names[v]
+        else:
+            orig_name = v
+
+        if orig_name not in self.symtypes:
+            raise ValueError(f"No type for symbol '{orig_name}' found")
+
+        return self.symtypes[orig_name]
+
     def xlat_func_def(self, n, params):
         assert self.nesting >= 0
 
         self.fn = n
 
-        params_types = [(p, f'{p}_type') for p in params]
+        params_types = [(p, self.get_type(p)) for p in params]
         params = " ".join([f"({p} {ptype})" for p, ptype in params_types])
-        ret_type = 'ret_type'
+        ret_type = self.get_type(self.func_types[n])
 
         self.output.append((n, params, ret_type))
         self.output.append(f'; let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}')
@@ -503,7 +585,7 @@ class SMT2Output(OutputBackend):
             return self._strify_stmt(s.v[1])
         elif smt2ast.is_call(s, "cbranch"):
             return f"(ite {self._strify_stmt(s.v[1])} {self._strify_stmt(s.v[2])} {self._strify_stmt(s.v[3])})"
-        elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
+        elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral, smt2ast.Hexadecimal, smt2ast.Binary)):
             return str(s)
         elif isinstance(s, smt2ast.SExprList):
             if smt2ast.is_call(s, 'return'):
@@ -512,7 +594,7 @@ class SMT2Output(OutputBackend):
                 strify = ' '.join([self._strify_stmt(x) for x in s.v])
                 return f"({strify})"
         else:
-            raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
+            raise NotImplementedError(f"No translation for {s}/{type(s)} to smt2 yet")
 
 def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     backend.set_linear(linear)
@@ -528,6 +610,18 @@ def convert_to_functional(statements, globalvars, backend):
     convert_ssa_to_functional(backend, cfg, globalvars, args.linear)
     return cfg
 
+def read_types_file(tf):
+    out = {}
+    with open(tf, "r") as f:
+        for l in f:
+            ls = l.strip()
+            if not ls or (ls[0] == '#'): continue
+
+            sym, symtype = ls.split(' ', 1)
+            out[sym] = symtype
+
+    return out
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert imperative code to functional code")
     p.add_argument("xir", help="Serialized XIR, SMT2-like syntax as used internally by xir2smt")
@@ -537,6 +631,7 @@ if __name__ == "__main__":
                    action="append", help="Treat SYMBOL as a global in linear code", default=[])
     p.add_argument("--backend", dest="backend", choices=['python', 'smt2'], default='python',
                    help="Backend for code output")
+    p.add_argument("--types", dest="types", help="Type file containing name-of-symbol type-of-symbol pairs, one per line. Required for smt2.")
 
     args = p.parse_args()
 
@@ -545,7 +640,11 @@ if __name__ == "__main__":
     if args.backend == 'python':
         backend = PyOutput()
     elif args.backend == 'smt2':
-        backend = SMT2Output()
+        if not args.types:
+            print("ERROR: smt2 backend requires a types file (specify using --types)")
+            sys.exit(1)
+        symtypes = read_types_file(args.types)
+        backend = SMT2Output(symtypes)
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")
 
