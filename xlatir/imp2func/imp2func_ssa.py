@@ -166,7 +166,7 @@ class FunctionalCFG(object):
     def _bb_function_order(self):
         order = []
         visited = set()
-        wl = ['_START']
+        wl = [self.cfg.start_node]
 
         # currently breadth first
 
@@ -208,10 +208,19 @@ class FunctionalCFG(object):
             stmt = stmtcon.stmt
 
             if isinstance(stmt, smt2ast.SExprList):
-                sym = stmt.v[0].v
-                if sym not in ('=', 'branch', 'cbranch', 'label'):
+                if len(stmt.v):
+                    sym = stmt.v[0].v
+                else:
+                    sym = None
+
+                if sym is None:
+                    pass
+                elif sym not in ('=', 'branch', 'cbranch', 'label'):
                     output_engine.xlat_stmt(stmt)
                 elif sym == '=' and smt2ast.is_call(stmt.v[2], "phi"):
+                    pass
+                else:
+                    # ignore all statements
                     pass
 
         if len(self.cfg.succ[n]) == 1:
@@ -314,9 +323,9 @@ class FunctionalCFG(object):
         output_engine.start()
         if output_engine.linear:
             self.fixup_linear_calls()
-            self.dump_linear(output_engine)
+            self.dump_linear(output_engine, n = self.cfg.start_node)
         else:
-            self.dump_nested(output_engine)
+            self.dump_nested(output_engine, n = self.cfg.start_node)
 
         output_engine.finish()
 
@@ -423,13 +432,15 @@ class PyOutput(OutputBackend):
             raise NotImplementedError(f"No translation for {s}/{type(s)} to python yet")
 
 class SMT2Output(OutputBackend):
-    def __init__(self, symtypes):
+    def __init__(self, symtypes, entry_fn = None):
         self.nesting = 0
         self.output = []
         self.output_fn = {}
         self.fn = None
         self.linear = True
         self.symtypes = symtypes
+        self._entry_fn = entry_fn if entry_fn is not None else lambda n, params, ret_type: (n, params, ret_type)
+        self._xir_attr_refs = {}
 
     def _get_func_return_types(self):
         def find(x):
@@ -471,27 +482,30 @@ class SMT2Output(OutputBackend):
         self.func_types = out
 
     def start(self):
+        self._xir_attr_refs = {}
+
         # infer types for retval
         for n in self.func.cfg.nodes:
             for stmtcon in self.func.cfg.nodes[n]:
                 stmt = stmtcon.stmt
                 if smt2ast.is_call(stmt, '='):
                     if stmt.v[1].v.startswith('_retval_'):
-                        for r in stmtcon.rwinfo['reads']:
-                            try:
-                                self.symtypes['_retval'] = self.get_type(r)
-                                break
-                            except ValueError:
-                                continue
+                        if isinstance(stmt.v[2], smt2ast.Symbol):
+                            # only (= _retval symbol) not (= _retval (fn ...))
+                            for r in stmtcon.rwinfo['reads']:
+                                try:
+                                    self.symtypes['_retval'] = self.get_type(r)
+                                    break
+                                except ValueError:
+                                    continue
 
                         if '_retval' in self.symtypes: break
 
             if '_retval' in self.symtypes: break
 
-        # this can happen, but
-        #if '_retval' not in self.symtypes:
+        if '_retval' not in self.symtypes:
+            raise ValueError(f'Unable to infer type for _retval, must be supplied')
 
-        # TODO: infer types for functions
         self._get_func_return_types()
 
     def set_linear(self, linear):
@@ -502,9 +516,9 @@ class SMT2Output(OutputBackend):
         def _output_fn(fo):
             n, params, ret_type = fo[0]
             if rec:
-                out = f"(define-fun-rec {n} ({params}) {ret_type}"
+                out = f"(define-fun-rec {n} {params} {ret_type}"
             else:
-                out = f"(define-fun {n} ({params}) {ret_type}"
+                out = f"(define-fun {n} {params} {ret_type}"
 
             return out + '\n' + '\n'.join(fo[1:])
 
@@ -558,6 +572,9 @@ class SMT2Output(OutputBackend):
 
         return self.symtypes[orig_name]
 
+    def xlat_entry_fn(self, n, params, ret_type):
+        return self._entry_fn(n, params, ret_type)
+
     def xlat_func_def(self, n, params):
         assert self.nesting >= 0
 
@@ -567,12 +584,26 @@ class SMT2Output(OutputBackend):
         params = " ".join([f"({p} {ptype})" for p, ptype in params_types])
         ret_type = self.get_type(self.func_types[n])
 
-        self.output.append((n, params, ret_type))
+        if n == self.func.cfg.start_node:
+            self.output.append(self.xlat_entry_fn(n, params, ret_type))
+        else:
+            self.output.append((n, "(" + params + ")", ret_type))
+
         self.output.append(f'; let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}')
 
     def xlat_let(self, lstmts, level):
-        lets = ' '.join([self._strify_stmt(ls) for ls in lstmts])
-        self.output.append("  "*self.nesting + f'(let ({lets})')
+        lets = []
+
+        for ls in lstmts:
+            if smt2ast.is_call(ls.v[1], '_xir_attr_ref'):
+                ss = str(ls.v[1])
+                self._xir_attr_refs[ss] = ls.v[2]
+            else:
+                lets.append(f'({self._strify_stmt(ls.v[1])} {self._strify_stmt(ls.v[2])})')
+
+        if len(lets):
+            lets = ' '.join(lets)
+            self.output.append("  "*self.nesting + f'(let ({lets})')
 
     def xlat_stmt(self, s):
         ss = self._strify_stmt(s)
@@ -580,16 +611,27 @@ class SMT2Output(OutputBackend):
 
     def _strify_stmt(self, s):
         if smt2ast.is_call(s, "="):
-            return f"({s.v[1]} {self._strify_stmt(s.v[2])})"
+            return f"(= {s.v[1]} {self._strify_stmt(s.v[2])})"
         elif smt2ast.is_call(s, "branch"):
             return self._strify_stmt(s.v[1])
         elif smt2ast.is_call(s, "cbranch"):
             return f"(ite {self._strify_stmt(s.v[1])} {self._strify_stmt(s.v[2])} {self._strify_stmt(s.v[3])})"
         elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral, smt2ast.Hexadecimal, smt2ast.Binary)):
             return str(s)
+        elif isinstance(s, smt2ast.String):
+            return repr(s)
         elif isinstance(s, smt2ast.SExprList):
             if smt2ast.is_call(s, 'return'):
                 return self._strify_stmt(s.v[1])
+            elif smt2ast.is_call(s, '_xir_attr_ref'):
+                ss = str(s)
+                if ss in self._xir_attr_refs:
+                    # replace with written value
+                    return self._strify_stmt(self._xir_attr_refs[ss])
+                else:
+                    # use selector to read
+                    return self._strify_stmt(smt2ast.SExprList(smt2ast.Symbol(s.v[1].v),
+                                                               s.v[2]))
             else:
                 strify = ' '.join([self._strify_stmt(x) for x in s.v])
                 return f"({strify})"
@@ -602,12 +644,12 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(backend)
 
-def convert_to_functional(statements, globalvars, backend):
-    cfg = get_cfg(statements)
+def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = ''):
+    cfg = get_cfg(statements, name_prefix)
     cfg.dump_dot('test.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
     cfg.orig_names = orig_names
-    convert_ssa_to_functional(backend, cfg, globalvars, args.linear)
+    convert_ssa_to_functional(backend, cfg, globalvars, linear)
     return cfg
 
 def read_types_file(tf):
@@ -648,6 +690,6 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")
 
-    cfg = convert_to_functional(statements, set(args.globalvars), backend)
+    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear)
     print(backend.get_output())
     #cfg.dump_dot('test.dot')

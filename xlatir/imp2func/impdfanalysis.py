@@ -29,10 +29,13 @@ class Stmt(object):
     __repr__ = __str__
 
 class ControlFlowGraph(object):
-    def __init__(self, nodes, edges):
+    def __init__(self, nodes, edges, name_prefix = ''):
         """nodes: Dictionary of names to lists of statements
            edges: List of tuples, i.e. graph in COO form
         """
+
+        self.start_node = f'{name_prefix}_START'
+        self.exit_node = f'{name_prefix}_EXIT'
 
         self.nodes = nodes
         self.edges = edges
@@ -69,6 +72,7 @@ class ControlFlowGraph(object):
             for block in self.nodes:
                 label =  '\\n'.join([stmt_fn(s) for s in self.nodes[block]])
                 label = f'**{block}**' + '\\n' + label
+                label = label.replace('"', r'\"')
                 print(f'\t {block} [label="{label}"];', file=f)
 
             for s, e in self.edges:
@@ -333,8 +337,11 @@ def get_symbols(s):
             out.add(s.v)
         elif isinstance(s, smt2ast.SExprList):
             # assume this is a function call and get symbols from the arguments
-            for v in s.v[1:]:
-                _get_symbols(v, out)
+            if smt2ast.is_call(s, "_xir_attr_ref"):
+                out.add(str(s.v[2]))
+            else:
+                for v in s.v[1:]:
+                    _get_symbols(v, out)
 
     o = set()
     _get_symbols(s, o)
@@ -346,9 +353,15 @@ def get_reads_and_writes(cfg):
         for stmtcon in bb:
             stmt = stmtcon.stmt
 
-            assert isinstance(stmt, smt2ast.SExprList)
-            sty = stmt.v[0].v
+            assert isinstance(stmt, smt2ast.SExprList), f'{stmt} needs to be SExprList, is {type(stmt)}'
+
             rw = {'reads': set(), 'writes': set()}
+
+            if len(stmt.v) == 0:
+                stmtcon.rwinfo = rw
+                continue
+
+            sty = stmt.v[0].v
 
             if sty == 'label':
                 rw = {'reads': set(), 'writes': set()}
@@ -372,8 +385,13 @@ def get_reads_and_writes(cfg):
                     rw = {'reads': get_symbols(rhs), 'writes': get_symbols(lhs)}
                 elif isinstance(stmt.v[1], smt2ast.SExprList):
                     # (= () ...)
-                    raise NotImplementedError
-                    rw = {'reads': get_symbols(rhs), 'writes': get_symbols(lhs)}
+                    if smt2ast.is_call(stmt.v[1], "_xir_attr_ref"):
+                        lhs = stmt.v[1]
+                        rhs = stmt.v[2]
+                        # treat (_xir_attr_ref fieldname variable variable-type) as a write to variable
+                        rw = {'reads': get_symbols(rhs), 'writes': get_symbols(lhs.v[2])}
+                    else:
+                        raise NotImplementedError(f"Don't know how to handle {stmt.v[1]}")
                 else:
                     raise NotImplementedError(f"Don't support assignment {stmt}")
             else:
@@ -381,7 +399,7 @@ def get_reads_and_writes(cfg):
 
             stmtcon.rwinfo = rw
 
-def get_cfg(xirstmts):
+def get_cfg(xirstmts, name_prefix = ''):
     """Construct a CFG"""
     def add_basic_block(bb):
         if len(bb):
@@ -394,7 +412,7 @@ def get_cfg(xirstmts):
 
     basic_blocks = []
     bb = []
-    cur_label = "_START"
+    cur_label = f"{name_prefix}_START"
     clndx = 1
 
     # demarcate basic blocks
@@ -420,18 +438,19 @@ def get_cfg(xirstmts):
     if len(bb): add_basic_block(bb)
 
     # form the CFG
-    prev_label = "_START"
+    prev_label = f"{name_prefix}_START"
     lbl_ndx = 1
     connect_to_previous = True
 
-    nodes = {'_START': [], '_EXIT': [smt2ast.SExprList(*[smt2ast.Symbol("return"),
+    nodes = {f'{name_prefix}_START': [],
+             f'{name_prefix}_EXIT': [smt2ast.SExprList(*[smt2ast.Symbol("return"),
                                                          smt2ast.Symbol("_retval")])]}
     cfg_edges = []
 
     for bb in basic_blocks:
         if (len(bb) == 0) or (len(bb) > 0 and not smt2ast.is_call(bb[0], "label")):
             # no label, so generate one
-            bb_label = f"_label_{lbl_ndx}"
+            bb_label = f"{name_prefix}_label_{lbl_ndx}"
             lbl_ndx += 1
         elif (len(bb) > 0 and smt2ast.is_call(bb[0], "label")):
             bb_label = bb[0].v[1].v
@@ -459,8 +478,8 @@ def get_cfg(xirstmts):
                                              smt2ast.Symbol("_retval"),
                                              last_stmt.v[1]])
                 bb.append(smt2ast.SExprList(smt2ast.Symbol("branch"),
-                                            smt2ast.Symbol('_EXIT')))
-                cfg_edges.append((bb_label, "_EXIT"))
+                                            smt2ast.Symbol(f'{name_prefix}_EXIT')))
+                cfg_edges.append((bb_label, f"{name_prefix}_EXIT"))
             elif smt2ast.is_call(last_stmt, "cbranch"):
                 for lbl in last_stmt.v[2:]:
                     cfg_edges.append((bb_label, lbl.v))
@@ -475,4 +494,4 @@ def get_cfg(xirstmts):
     for n in nodes:
         nodes[n] = [Stmt(s) for s in nodes[n]]
 
-    return ControlFlowGraph(nodes, cfg_edges)
+    return ControlFlowGraph(nodes, cfg_edges, name_prefix)

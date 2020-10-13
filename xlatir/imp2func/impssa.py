@@ -15,7 +15,10 @@ def replace_symbols(s, replacement):
     if isinstance(s, smt2ast.Symbol) and s.v in replacement:
         return smt2ast.Symbol(replacement[s.v])
     elif isinstance(s, smt2ast.SExprList):
-        return smt2ast.SExprList(*[replace_symbols(ss, replacement) for ss in s.v])
+        if smt2ast.is_call(s, '_xir_attr_ref'):
+            return smt2ast.SExprList(s.v[0], s.v[1], replace_symbols(s.v[2], replacement), s.v[3])
+        else:
+            return smt2ast.SExprList(*[replace_symbols(ss, replacement) for ss in s.v])
     else:
         return s
 
@@ -36,6 +39,15 @@ def rename(rdef, sep='_'):
                         assert def_ in rdef.defns[v], f"Mismatch {def_} for variable {v}"
                         new_name = v + sep + str(varndx[v])
                         stmt.v[1].v = new_name
+                        defn2var[def_] = (v, new_name)
+                        varndx[v] += 1
+                    elif smt2ast.is_call(stmt.v[1], "_xir_attr_ref"):
+                        assert len(stmtcon.rwinfo['writes']) == 1, f"Multiple writes for _xir_attr_ref {stmtcon.rwinfo['writes']}"
+                        v = list(stmtcon.rwinfo['writes'])[0]
+                        assert def_ in rdef.defns[v], f"Mismatch {def_} for variable {v}"
+
+                        new_name = v + sep + str(varndx[v])
+                        stmt.v[1].v[2] = smt2ast.Symbol(new_name)
                         defn2var[def_] = (v, new_name)
                         varndx[v] += 1
                     else:
@@ -153,5 +165,6 @@ def convert_to_SSA(cfg, cvt_branches_to_functions = True):
     if cvt_branches_to_functions: branches_to_functions(cfg)
     rdef = cfg.run_idfa(ReachingDefinitions())
     renamed = rename(rdef)
+    #cfg.dump_dot('after_renaming.dot')
     return renamed
 
