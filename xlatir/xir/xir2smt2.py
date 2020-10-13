@@ -17,6 +17,7 @@ from smt2ast import *
 import copy
 import xirpeval
 from collections import namedtuple
+import imp2func_ssa
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rm': 'RTN', # negative inf
@@ -691,6 +692,8 @@ class SMT2Xlator(xirxlat.Xlator):
         self._ref_return_fixer = RefReturnFixer()
         self._tvndx = 0 # tmp variable suffixes
 
+        self.lhs_types = {}
+
     def pre_xlat_transform(self, s):
         s = self._ref_return_fixer.fix_returns(s)
 
@@ -926,6 +929,12 @@ class SMT2Xlator(xirxlat.Xlator):
         self._tvndx += 1
         return nv
 
+    def record_type(self, var, ty):
+        if self.x2x.fn.name not in self.lhs_types:
+            self.lhs_types[self.x2x.fn.name] = {}
+
+        self.lhs_types[self.x2x.fn.name][str(var)] = ty
+
     def xlat_Assign(self, lhs, rhs, node):
         if isinstance(lhs, list):
             # deconstruct a assignment by first assigning to a temporary variable
@@ -942,29 +951,40 @@ class SMT2Xlator(xirxlat.Xlator):
             rhsty = self.get_native_type(node.value._xir_type)
             tv = self._get_tmp_var()
             out = [SExprList(Symbol("="), tv, rhs)]
+
+            self.record_type(tv, rhsty.v[0])
+
             if rhsty.v[0].v not in DATA_TYPES:
-                raise NotImplementdError(f"Don't know how to unpack {rhsty.v[0]}, not in DATA_TYPES")
+                raise NotImplementedError(f"Don't know how to unpack {rhsty.v[0]}, not in DATA_TYPES")
 
             fields = DATA_TYPES[rhsty.v[0].v].fields
-            for ln, sel in zip(lhs, fields):
+            fieldtypes = DATA_TYPES[rhsty.v[0].v].fieldtypes
+
+            for ln, sel, fty in zip(lhs, fields, fieldtypes):
                 out.append(SExprList(Symbol("="), ln, SExprList(Symbol(sel), tv)))
+                self.record_type(ln, fty)
 
             return out
         else:
             if is_call(lhs, "_xir_attr_ref"):
                 out = [SExprList(Symbol("="), lhs, rhs)]
+                #TODO: lhs type is weird for this ... s32 (cc_reg/cf)
+                self.record_type(lhs, self.get_native_type(node.value._xir_type))
+
                 dt = DATA_TYPES[lhs.v[3].v]
                 var = lhs.v[2]
                 reconstruct = [Symbol(dt.constructor)]
                 for sel in dt.fields:
                     reconstruct.append(SExprList(Symbol("_xir_attr_ref"),
                                                  String(sel),
-                                                 var,
+                                                 Symbol(var.v),
                                                  Symbol(dt.name)))
 
-                out.append(SExprList(Symbol("="), var, SExprList(*reconstruct)))
+                out.append(SExprList(Symbol("="), Symbol(var.v), SExprList(*reconstruct)))
+                self.record_type(var, Symbol(dt.name))
                 return out
             else:
+                self.record_type(lhs, self._get_smt2_type(node.targets[0]))
                 return SExprList(Symbol("="), lhs, rhs)
 
     def xlat_While(self, test, body, node):
@@ -973,16 +993,30 @@ class SMT2Xlator(xirxlat.Xlator):
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         self._retval_ty = retval
 
-        expr = eliminate_xir_attr_ref(create_dag(body))
+        use_create_dag = True
 
-        #TODO: this should be done elsewhere
-        output = SExprList(Symbol("define-fun"),
-                           Symbol(name),
-                           SExprList(*params),
-                           Symbol(retval),
-                           expr)
+        if use_create_dag:
+            dag = create_dag(body, _debug_trace = False)
+            expr = eliminate_xir_attr_ref(dag)
 
-        return output
+            #TODO: this should be done elsewhere
+            output = SExprList(Symbol("define-fun"),
+                               Symbol(name),
+                               SExprList(*params),
+                               Symbol(retval),
+                               expr)
+        else:
+            #for s in body:
+            #    print(s)
+
+            self.lhs_types[name]['_retval'] = retval
+            body[-1] = SExprList(Symbol("return"), body[-1])
+            backend = imp2func_ssa.SMT2Output(self.lhs_types[name],
+                                              entry_fn = lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
+            imp2func_ssa.convert_to_functional(body, set(), backend, linear = True, name_prefix = name)
+            output = backend.get_output()
+
+        return [f"; :begin {name}", output, f"; :end {name}"]
 
     def write_output(self, output, translations, defns):
         def include_file(inc, outf):
@@ -1028,13 +1062,8 @@ class SMT2Xlator(xirxlat.Xlator):
 
 
             for t in translations:
-                if is_call(t, "define-fun"):
-                    print(f"; :begin {t.v[1]}", file=f)
-
-                print(str(t), file=f)
-
-                if is_call(t, "define-fun"):
-                    print(f"; :end {t.v[1]}", file=f)
+                for tl in t:
+                    print(str(tl), file=f)
 
                 print("\n", file=f)
 
