@@ -103,7 +103,7 @@ class SExprList(SExpr):
     __repr__ = __str__
 
 def is_call(sexpr, func):
-    return isinstance(sexpr, SExprList) and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func)
+    return isinstance(sexpr, SExprList) and (len(sexpr.v) > 0 and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func))
 
 def smt2_literal(v, ty):
     if ty == 'pred':
