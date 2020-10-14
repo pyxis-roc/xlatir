@@ -284,6 +284,9 @@ class SMT2Parser(object):
                     out.append(QuotedSymbol(match))
                 elif tkn == "KEYWORD":
                     out.append(Keyword(match[1:]))
+                elif tkn == "COMMENT":
+                    # drop comments for now
+                    pass
                 else:
                     raise NotImplementedError(f"Unknown token {tkn} '{match}'")
         except StopIteration:
