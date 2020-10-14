@@ -1013,7 +1013,13 @@ class SMT2Xlator(xirxlat.Xlator):
             body[-1] = SExprList(Symbol("return"), body[-1])
             backend = imp2func_ssa.SMT2Output(self.lhs_types[name],
                                               entry_fn = lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
-            imp2func_ssa.convert_to_functional(body, set(), backend, linear = True, name_prefix = name)
+            glb = set(list(ROUND_MODES_SMT2.values()) + ['roundNearestTiesToEven', '-oo', '+oo',
+                                                         'NaN', 'nan', '+zero', '-zero',
+                                                         'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16',
+                                                         'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
+                                                         'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
+
+            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name)
             output = backend.get_output()
 
         return [f"; :begin {name}", output, f"; :end {name}"]
