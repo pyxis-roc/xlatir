@@ -933,7 +933,7 @@ class SMT2Xlator(xirxlat.Xlator):
         if self.x2x.fn.name not in self.lhs_types:
             self.lhs_types[self.x2x.fn.name] = {}
 
-        self.lhs_types[self.x2x.fn.name][str(var)] = ty
+        self.lhs_types[self.x2x.fn.name][str(var)] = set([ty])
 
     def xlat_Assign(self, lhs, rhs, node):
         if isinstance(lhs, list):
@@ -1009,7 +1009,7 @@ class SMT2Xlator(xirxlat.Xlator):
             #for s in body:
             #    print(s)
 
-            self.lhs_types[name]['_retval'] = retval
+            self.lhs_types[name]['_retval'] = set([retval])
             body[-1] = SExprList(Symbol("return"), body[-1])
             backend = imp2func_ssa.SMT2Output(self.lhs_types[name],
                                               entry_fn = lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
