@@ -365,17 +365,25 @@ def get_reads_and_writes(cfg):
 
             if sty == 'label':
                 rw = {'reads': set(), 'writes': set()}
+            elif sty == 'type':
+                rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
             elif sty == 'branch':
                 # in SSA functional form, branches are calls...
-                rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
+                if isinstance(stmt.v[1], smt2ast.SExprList):
+                    rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
+                else:
+                    rw = {'reads': set(), 'writes': set()}
             elif sty == 'return':
                 rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
             elif sty == 'cbranch':
                 cond_r = get_symbols(stmt.v[1])
                 # in SSA functional form, branches are calls...
-                br_1 = get_symbols(stmt.v[2])
-                br_2 = get_symbols(stmt.v[3])
-                rw = {'reads': cond_r | br_1 | br_2, 'writes': set()}
+                if isinstance(stmt.v[2], smt2ast.SExprList):
+                    br_1 = get_symbols(stmt.v[2])
+                    br_2 = get_symbols(stmt.v[3])
+                    rw = {'reads': cond_r | br_1 | br_2, 'writes': set()}
+                else:
+                    rw = {'reads': cond_r, 'writes': set()}
             elif sty == '=':
                 lhs = stmt.v[1]
                 rhs = stmt.v[2]

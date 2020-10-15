@@ -333,6 +333,19 @@ class OutputBackend(object):
     def set_linear(self, linear):
         raise NotImplementedError
 
+    def get_symtypes(self):
+        out = {}
+        for n in self.func.cfg.nodes:
+            bb = self.func.cfg.nodes[n]
+            for stmtcon in bb:
+                stmt = stmtcon.stmt
+                if smt2ast.is_call(stmt, 'type'):
+                    v = str(stmt.v[1])
+                    if v not in out: out[v] = set()
+                    out[v].add(str(stmt.v[2]))
+
+        return out
+
     def get_output(self):
         raise NotImplementedError
 
@@ -483,6 +496,7 @@ class SMT2Output(OutputBackend):
 
     def start(self):
         self._xir_attr_refs = {}
+        self.symtypes.update(self.get_symtypes())
 
         # infer types for retval
         for n in self.func.cfg.nodes:
@@ -494,7 +508,7 @@ class SMT2Output(OutputBackend):
                             # only (= _retval symbol) not (= _retval (fn ...))
                             for r in stmtcon.rwinfo['reads']:
                                 try:
-                                    self.symtypes['_retval'] = self.get_type(r)
+                                    self.symtypes['_retval'] = set([self.get_type(r)])
                                     break
                                 except ValueError:
                                     continue
@@ -562,15 +576,25 @@ class SMT2Output(OutputBackend):
         self.output.append('  '*self.nesting + ')')
 
     def get_type(self, v):
-        if v in self.func.cfg.orig_names:
-            orig_name = self.func.cfg.orig_names[v]
+        # check if renamed variable is in self.symtypes (due to inline types)
+        if v not in self.symtypes:
+            # otherwise check if there is an original name
+            if v in self.func.cfg.orig_names:
+                orig_name = self.func.cfg.orig_names[v]
+            else:
+                orig_name = v
         else:
             orig_name = v
 
         if orig_name not in self.symtypes:
-            raise ValueError(f"No type for symbol '{orig_name}' found")
+            raise ValueError(f"No type for symbol '{v}'/'{orig_name}' found")
 
-        return self.symtypes[orig_name]
+        ty = self.symtypes[orig_name]
+        if len(ty) > 1:
+            print(self.symtypes)
+            raise ValueError(f"Multiple types {ty} for symbol '{v}'/'{orig_name}'")
+
+        return next(iter(ty))
 
     def xlat_entry_fn(self, n, params, ret_type):
         return self._entry_fn(n, params, ret_type)
@@ -607,11 +631,13 @@ class SMT2Output(OutputBackend):
 
     def xlat_stmt(self, s):
         ss = self._strify_stmt(s)
-        self.output.append("  "*self.nesting + ss)
+        if ss: self.output.append("  "*self.nesting + ss)
 
     def _strify_stmt(self, s):
         if smt2ast.is_call(s, "="):
             return f"(= {s.v[1]} {self._strify_stmt(s.v[2])})"
+        elif smt2ast.is_call(s, "type"):
+            return ""
         elif smt2ast.is_call(s, "branch"):
             return self._strify_stmt(s.v[1])
         elif smt2ast.is_call(s, "cbranch"):
@@ -646,11 +672,25 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
 
 def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = ''):
     cfg = get_cfg(statements, name_prefix)
-    cfg.dump_dot('test.dot')
+    #cfg.dump_dot('test.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
     cfg.orig_names = orig_names
+    #cfg.dump_dot('after-ssa.dot')
     convert_ssa_to_functional(backend, cfg, globalvars, linear)
     return cfg
+
+def read_inline_types(stmts):
+    out = {}
+    for s in stmts:
+        if smt2ast.is_call(s, 'type'):
+            v = str(s.v[1])
+            ty = str(s.v[2])
+            if v not in out:
+                out[v] = set([ty])
+            else:
+                out[v].add(ty)
+
+    return out
 
 def read_types_file(tf):
     out = {}
@@ -660,7 +700,8 @@ def read_types_file(tf):
             if not ls or (ls[0] == '#'): continue
 
             sym, symtype = ls.split(' ', 1)
-            out[sym] = symtype
+            if sym not in out: out[sym] = set()
+            out[sym].add(symtype)
 
     return out
 
@@ -682,10 +723,19 @@ if __name__ == "__main__":
     if args.backend == 'python':
         backend = PyOutput()
     elif args.backend == 'smt2':
+        symtypes = {}
         if not args.types:
-            print("ERROR: smt2 backend requires a types file (specify using --types)")
-            sys.exit(1)
-        symtypes = read_types_file(args.types)
+            for s in statements:
+                if smt2ast.is_call(s, 'type'):
+                    break
+            else:
+                print("ERROR: smt2 backend requires a types file (specify using --types) or inline types")
+                sys.exit(1)
+
+            symtypes = read_inline_types(statements)
+        else:
+            symtypes = read_types_file(args.types)
+
         backend = SMT2Output(symtypes)
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")

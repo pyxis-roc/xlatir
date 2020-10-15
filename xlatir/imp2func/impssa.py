@@ -10,6 +10,7 @@
 
 import smt2ast
 from impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi
+import functools
 
 def replace_symbols(s, replacement):
     if isinstance(s, smt2ast.Symbol) and s.v in replacement:
@@ -65,6 +66,9 @@ def rename(rdef, sep='_'):
             rd = stmtcon.rdef_in
             replacements = [defn2var[rdd] for rdd in rd]
 
+            # restrict definitions to those actually used, needed when phis are not placed for dead writes
+            replacements = [x for x in replacements if x[0] in stmtcon.rwinfo['reads']]
+
             if is_phi(stmt):
                 v = stmt.v[2].v[1].v
                 repl = [smt2ast.Symbol(x[1]) for x in replacements if x[0] == v]
@@ -73,6 +77,8 @@ def rename(rdef, sep='_'):
 
                 stmt.v[2].v[1:len(repl)+1] = repl
                 #print(stmtcon.stmt)
+            elif smt2ast.is_call(stmt, "label"):
+                pass
             else:
                 #print(replacements)
                 repl = dict(replacements)
@@ -85,7 +91,25 @@ def rename(rdef, sep='_'):
 
     return renamed
 
-def place_phi(cfg, domfrontier):
+def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
+    if no_phi_for_dead_writes:
+        # in this case, we mean writes that do not cross BB boundaries
+        # i.e., they might be used in the BB itself, but are dead beyond it.
+
+        rdef = cfg.run_idfa(ReachingDefinitions())
+        global_used_defns = set()
+        for n in cfg.nodes:
+            bb = cfg.nodes[n]
+            bb_used = set()
+            bb_defined = set()
+            for stmtcon in bb:
+                bb_defined |= stmtcon.rdef_def
+                bb_used |= stmtcon.rdef_in.intersection(functools.reduce(lambda x, y: x.union(y), [rdef.defns[x] for x in stmtcon.rwinfo['reads'] if x in rdef.defns], set()))
+
+            global_used_defns |= bb_used - bb_defined
+    else:
+        global_used_defns = None
+
     placed_phi = dict()
     writes = dict([(k, set()) for k in cfg.nodes])
 
@@ -93,7 +117,11 @@ def place_phi(cfg, domfrontier):
     for n in cfg.nodes:
         w = set()
         for stmtcon in cfg.nodes[n]:
-            w = w | stmtcon.rwinfo['writes']
+            if global_used_defns is not None:
+                if len(global_used_defns.intersection(stmtcon.rdef_def)):
+                    w = w | stmtcon.rwinfo['writes']
+            else:
+                w = w | stmtcon.rwinfo['writes']
 
         writes[n] = w
 
