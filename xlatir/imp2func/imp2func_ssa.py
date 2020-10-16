@@ -388,7 +388,8 @@ class PyOutput(OutputBackend):
         pass
 
     def finish(self):
-        self.output.append("print(_START())")
+        #self.output.append("print(_START())")
+        pass
 
     def get_output(self):
         return '\n'.join(self.output)
@@ -421,17 +422,21 @@ class PyOutput(OutputBackend):
 
     def xlat_stmt(self, s):
         ss = self._strify_stmt(s)
-        self.output.append("  "*self.nesting + ss)
+        if ss: self.output.append("  "*self.nesting + ss)
 
     def _strify_stmt(self, s):
         if smt2ast.is_call(s, "="):
             return f"{s.v[1]} = {self._strify_stmt(s.v[2])}"
+        elif smt2ast.is_call(s, 'type'):
+            return ''
         elif smt2ast.is_call(s, "branch"):
             return f"return {self._strify_stmt(s.v[1])}"
         elif smt2ast.is_call(s, "cbranch"):
             return f"return {self._strify_stmt(s.v[2])} if {self._strify_stmt(s.v[1])} else {self._strify_stmt(s.v[3])}"
         elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral)):
             return str(s)
+        elif isinstance(s, smt2ast.Binary):
+            return f'0b' + str(s)[2:]
         elif isinstance(s, smt2ast.SExprList):
             fn = s.v[0].v
             args = [self._strify_stmt(x) for x in s.v[1:]]
@@ -721,6 +726,7 @@ if __name__ == "__main__":
     p.add_argument("--backend", dest="backend", choices=['python', 'smt2'], default='python',
                    help="Backend for code output")
     p.add_argument("--types", dest="types", help="Type file containing name-of-symbol type-of-symbol pairs, one per line. Required for smt2.")
+    p.add_argument("--prefix", dest="name_prefix", help="Name prefix.", default='')
 
     args = p.parse_args()
 
@@ -746,6 +752,6 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")
 
-    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear)
+    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear, args.name_prefix)
     print(backend.get_output())
     #cfg.dump_dot('test.dot')
