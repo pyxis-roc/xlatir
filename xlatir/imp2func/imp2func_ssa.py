@@ -671,6 +671,12 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg.convert(backend)
 
 def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = ''):
+    if len(statements):
+        if smt2ast.is_call(statements[0], "global"):
+            inline_globals = set([str(s) for s in statements[0].v[1:]])
+            statements = statements[1:]
+            globalvars |= inline_globals
+
     cfg = get_cfg(statements, name_prefix)
     #cfg.dump_dot('test.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
