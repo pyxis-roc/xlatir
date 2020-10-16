@@ -330,8 +330,14 @@ class FunctionalCFG(object):
         output_engine.finish()
 
 class OutputBackend(object):
+    param_order = {}
+
     def set_linear(self, linear):
         raise NotImplementedError
+
+    def set_param_order(self, param_order):
+        self.param_order = dict([(p, i) for i, p in enumerate(param_order)])
+        assert len(self.param_order) == len(param_order), f"Duplicates in param_order"
 
     def get_symtypes(self):
         out = {}
@@ -414,6 +420,9 @@ class PyOutput(OutputBackend):
         assert self.nesting >= 0
 
         ind = "  " * self.nesting
+        if n == self.func.cfg.start_node:
+            params = sorted(params, key = lambda x: self.param_order.get(x, len(self.param_order)))
+
         self.output.append(f"{ind}def {n}({', '.join(params)}): # let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}")
 
     def xlat_let(self, lstmts, level):
@@ -609,6 +618,9 @@ class SMT2Output(OutputBackend):
 
         self.fn = n
 
+        if n == self.func.cfg.start_node:
+            params = sorted(params, key = lambda x: self.param_order.get(x, len(self.param_order)))
+
         params_types = [(p, self.get_type(p)) for p in params]
         params = " ".join([f"({p} {ptype})" for p, ptype in params_types])
         ret_type = self.get_type(self.func_types[n])
@@ -676,11 +688,15 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg.convert(backend)
 
 def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = ''):
-    if len(statements):
-        if smt2ast.is_call(statements[0], "global"):
-            inline_globals = set([str(s) for s in statements[0].v[1:]])
-            statements = statements[1:]
-            globalvars |= inline_globals
+    if len(statements) and smt2ast.is_call(statements[0], "global"):
+        inline_globals = set([str(s) for s in statements[0].v[1:]])
+        statements = statements[1:]
+        globalvars |= inline_globals
+
+    if len(statements) and smt2ast.is_call(statements[0], "param"):
+        param_order = [str(s) for s in statements[0].v[1:]]
+        statements = statements[1:]
+        backend.set_param_order(param_order)
 
     cfg = get_cfg(statements, name_prefix)
     #cfg.dump_dot('test.dot')
