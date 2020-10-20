@@ -18,57 +18,6 @@ import itertools
 from impdfanalysis import *
 from impssa import convert_to_SSA
 
-# this is out-of-date
-"""
-# Syntax of the XIR Serialized SMT2-like Syntax.
-
-## Basics
-
-One imperative statement per line. Usually this is an assignment statement:
-
-(= symbol value)
-
-The last statement is treated as the return value, and the expression
-corresponding to that will be returned.
-
-symbol is an SMT2 symbol.
-
-value is any SMT2 expression (like a function call).
-
-## Handling deconstruction
-
-To handle assignments like:
-
-```
-a, b = f()
-```
-
-Convert them into:
-
-(= tmp (f))
-(= a (first tmp))
-(= b (second tmp))
-
-## Handling datatype assignments (TOVERIFY)
-
-To handle something like this:
-
-flags.carry = add(a, b)
-
-where flags is a structure containing two fields/selectors `carry` and
-`overflow` and has the type `FlagsType` and constructor `mk-flags`.
-
-Write:
-
-```
-(= (_xir_attr_ref carry flags FlagsType) (add a b))
-(= flags (mk-flags (_xir_attr_ref carry flags FlagsType) (_xir_attr_ref overflow flags FlagsType)))
-```
-
-The first line notes the assignment to the field, and the second
-reconstructs `flags` using the new values.
-"""
-
 def load_xir(xirf):
     p = smt2ast.SMT2Parser()
     with open(xirf, "r") as f:
