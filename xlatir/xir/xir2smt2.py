@@ -984,7 +984,11 @@ class SMT2Xlator(xirxlat.Xlator):
                 self.record_type(var, Symbol(dt.name))
                 return out
             else:
-                self.record_type(lhs, self._get_smt2_type(node.targets[0]))
+                if isinstance(node, ast.Assign):
+                    self.record_type(lhs, self._get_smt2_type(node.targets[0]))
+                else:
+                    self.record_type(lhs, self._get_smt2_type(node.target))
+
                 return SExprList(Symbol("="), lhs, rhs)
 
     def xlat_While(self, test, body, node):

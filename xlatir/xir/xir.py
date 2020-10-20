@@ -316,6 +316,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
         for a in node.args.args:
             t = self.get_or_gen_ty_var(a.arg)
             a._xir_type = t
+            if a.annotation is not None:
+                if a.annotation.id == 'cc_reg_ref':
+                    aty = TyPtr(TyConstant('cc_reg'))
+                else:
+                    aty = TyConstant(a.annotation.id)
+                self.equations.append(TyEqn(t, aty))
 
         ret = self.get_or_gen_ty_var(f"fn_{node.name}_retval")
         fnty = TyApp(ret, [a._xir_type for a in node.args.args])
@@ -816,6 +822,17 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(lhs, rhs))
         # no return because this is a statement
+
+    def visit_AnnAssign(self, node):
+        assert node.simple == 1 # TODO
+
+        lhs = self.visit(node.target)
+        lhsty = TyConstant(node.annotation.id)
+        self.equations.append(TyEqn(lhs, lhsty))
+
+        if node.value is not None:
+            rhs = self.visit(node.value)
+            self.equations.append(TyEqn(lhs, rhs))
 
     def visit_Assert(self, node):
         # assert nodes are not type checked

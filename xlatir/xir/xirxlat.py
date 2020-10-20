@@ -328,6 +328,15 @@ class XIRToX(ast.NodeVisitor):
     def visit_Pass(self, node):
         return self.X.xlat_Pass(node)
 
+    def visit_AnnAssign(self, node):
+        assert node.simple == 1, "Not supported"
+
+        if node.value is not None:
+            return self.X.xlat_Assign(self.visit(node.target), self.visit(node.value), node)
+        else:
+            # handle just a type 'declaration'; x : u32
+            return self.X.xlat_Pass(ast.Pass())
+
     def visit_Assign(self, node):
         assert len(node.targets) == 1, "Not supported"
 
