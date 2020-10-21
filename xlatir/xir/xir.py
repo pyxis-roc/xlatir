@@ -312,15 +312,22 @@ class TypeEqnGenerator(ast.NodeVisitor):
         for s in node.body:
             self.visit(s)
 
+    def anno_to_type(self, anno):
+        if anno == 'pred': # TODO: width?
+            ty = TyConstant("bool")
+        elif anno == 'cc_reg_ref':
+            ty = TyPtr(TyConstant("cc_reg"))
+        else:
+            ty = TyConstant(anno)
+
+        return ty
+
     def visit_FunctionDef(self, node):
         for a in node.args.args:
             t = self.get_or_gen_ty_var(a.arg)
             a._xir_type = t
             if a.annotation is not None:
-                if a.annotation.id == 'cc_reg_ref':
-                    aty = TyPtr(TyConstant('cc_reg'))
-                else:
-                    aty = TyConstant(a.annotation.id)
+                aty = self.anno_to_type(a.annotation.id)
                 self.equations.append(TyEqn(t, aty))
 
         ret = self.get_or_gen_ty_var(f"fn_{node.name}_retval")
@@ -827,7 +834,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         assert node.simple == 1 # TODO
 
         lhs = self.visit(node.target)
-        lhsty = TyConstant(node.annotation.id)
+        lhsty = self.anno_to_type(node.annotation.id)
         self.equations.append(TyEqn(lhs, lhsty))
 
         if node.value is not None:
