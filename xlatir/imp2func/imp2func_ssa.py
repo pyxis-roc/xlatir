@@ -395,13 +395,16 @@ class PyOutput(OutputBackend):
             return str(s)
         elif isinstance(s, smt2ast.Binary):
             return f'0b' + str(s)[2:]
+        elif isinstance(s, smt2ast.Hexadecimal):
+            return f'0x' + str(s)[2:]
         elif isinstance(s, smt2ast.SExprList):
-            fn = s.v[0].v
+            fn = self._strify_stmt(s.v[0])
             args = [self._strify_stmt(x) for x in s.v[1:]]
 
             if fn in ('<', '+', '=='): # infix
                 return f"({args[0]} {fn} {args[1]})"
             else:
+                # TODO: add translations for SMT2 internal functions to Python?
                 args = ', '.join(args)
                 return f"{fn}({args})"
         else:
@@ -442,7 +445,7 @@ class SMT2Output(OutputBackend):
         changed = True
         while changed:
             changed = False
-            for n in self.func.cfg.nodes:
+            for n in self.func.order:
                 bb = self.func.cfg.nodes[n]
                 last_stmt = bb[-1].stmt
                 if smt2ast.is_call(last_stmt, "return"):
