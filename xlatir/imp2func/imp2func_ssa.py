@@ -415,7 +415,7 @@ class SMT2Output(OutputBackend):
         self.fn = None
         self.linear = True
         self.symtypes = symtypes
-        self._entry_fn = entry_fn if entry_fn is not None else lambda n, params, ret_type: (n, params, ret_type)
+        self._entry_fn = entry_fn if entry_fn is not None else lambda n, params, ret_type: (n, "(" + str(params) + ")", ret_type)
         self._xir_attr_refs = {}
 
     def _get_func_return_types(self):
