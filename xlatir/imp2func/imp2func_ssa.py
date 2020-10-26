@@ -639,7 +639,7 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(backend)
 
-def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = ''):
+def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False):
     if len(statements) and smt2ast.is_call(statements[0], "global"):
         inline_globals = set([str(s) for s in statements[0].v[1:]])
         statements = statements[1:]
@@ -651,10 +651,10 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
         backend.set_param_order(param_order)
 
     cfg = get_cfg(statements, name_prefix)
-    #cfg.dump_dot('test.dot')
+    if dump_cfg: cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True)
     cfg.orig_names = orig_names
-    #cfg.dump_dot('after-ssa.dot')
+    if dump_cfg: cfg.dump_dot(f'cfg-after-ssa{"_" if name_prefix else ""}{name_prefix}.dot')
     convert_ssa_to_functional(backend, cfg, globalvars, linear)
     return cfg
 
@@ -695,6 +695,7 @@ if __name__ == "__main__":
                    help="Backend for code output")
     p.add_argument("--types", dest="types", help="Type file containing name-of-symbol type-of-symbol pairs, one per line. Required for smt2.")
     p.add_argument("--prefix", dest="name_prefix", help="Name prefix.", default='')
+    p.add_argument("--dump-cfg", dest="dump_cfg", help="Dump CFG as dot files.", action='store_true')
 
     args = p.parse_args()
 
