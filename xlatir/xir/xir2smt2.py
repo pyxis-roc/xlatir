@@ -132,9 +132,13 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('DIV', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.div"),
                                                                      Symbol("roundNearestTiesToEven"),
                                                                      x, y),
+                   ('COPYSIGN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("copysign_f32"), x, y),
+                   ('COPYSIGN', 'f64', 'f64'): lambda x, y: SExprList(Symbol("copysign_f64"), x, y),
+
                    ('RCP_ROUND', 'f32', 'str'): lambda x, m: RCP('f32', x, m),
                    ('RCP_ROUND', 'f64', 'str'): lambda x, m: RCP('f64', x, m),
                    ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
+                   ('RCP', 'f64'): lambda x: RCP('f64', x, Symbol('rn')),
 
                    ('REM', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvurem"), x, y),
                    # TODO: investigate since this could be bvsmod and is machine-specific
@@ -385,6 +389,7 @@ class SMT2lib(object):
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
     NOT = _do_fnop_builtin
+    COPYSIGN = _do_fnop
     booleanOp_xor = _do_fnop_builtin
 
     ADD_ROUND = _do_fnop_builtin
