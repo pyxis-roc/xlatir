@@ -721,6 +721,6 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")
 
-    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear, args.name_prefix)
+    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear, args.name_prefix, dump_cfg = args.dump_cfg)
     print(backend.get_output())
     #cfg.dump_dot('test.dot')
