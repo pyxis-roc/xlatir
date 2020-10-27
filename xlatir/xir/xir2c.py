@@ -311,12 +311,19 @@ class Clib(object):
     compare_geu = _do_compare_unordered
 
     def _do_compare(self, n, fnty, args, node):
+        is_float = (fnty[1] == 'float' and fnty[2] == 'float') or (fnty[1] == 'double' and fnty[2] == 'double')
         if fnty not in XIR_TO_C_OPS:
             fnty = (fnty[0], '*', '*')
 
         assert fnty in XIR_TO_C_OPS, f"Missing operator translation {fnty}"
 
-        return f"({args[0]} {XIR_TO_C_OPS[fnty]} {args[1]})"
+        if is_float:
+            #TODO: use C99 float comparisons?
+            a1 = args[0]
+            a2 = args[1]
+            return f"(!(isnan({a1}) || isnan({a2}))) && (({a1}) {XIR_TO_C_OPS[fnty]} ({a2}))"
+        else:
+            return f"({args[0]} {XIR_TO_C_OPS[fnty]} {args[1]})"
 
     compare_eq = _do_compare
     compare_ne = _do_compare
