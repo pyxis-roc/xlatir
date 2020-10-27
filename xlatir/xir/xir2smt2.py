@@ -1091,10 +1091,28 @@ class RefReturnFixer(ast.NodeVisitor):
        parameter to also return that parameter."""
 
     REF_TYPES = set(["ConditionCodeRegisterRef"])
+    REF_ANNOTATIONS = set(['cc_reg_ref'])
 
     def visit_Return(self, node):
         self._returns.append(node)
 
+    def _is_anno_ref(self, annotation):
+        if annotation is not None and isinstance(annotation, ast.Name):
+            return annotation.id in self.REF_ANNOTATIONS
+
+    def visit_FunctionDef(self, node):
+        for a in node.args.args:
+            if self._is_anno_ref(a.annotation):
+                self._ref_args.append(ast.Name(a.arg, ast.Load()))
+
+        self.generic_visit(node)
+
+    #def visit_AnnAssign(self, node):
+    #    if node.simple == 1:
+    #        if self._is_anno_ref(a.annotation):
+    #            self._ref_args.append(a.target)
+
+    # this is deprecated
     def visit_Assign(self, node):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             if isinstance(node.value, ast.Call):
