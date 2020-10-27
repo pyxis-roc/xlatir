@@ -290,6 +290,7 @@ class OutputBackend(object):
 
     def get_symtypes(self):
         out = {}
+        phi = []
         for n in self.func.cfg.nodes:
             bb = self.func.cfg.nodes[n]
             for stmtcon in bb:
@@ -298,6 +299,15 @@ class OutputBackend(object):
                     v = str(stmt.v[1])
                     if v not in out: out[v] = set()
                     out[v].add(str(stmt.v[2]))
+                elif is_phi(stmt):
+                    phi.append(stmt)
+
+        for pstmt in phi:
+            v = str(pstmt.v[1])
+            phicall = pstmt.v[2]
+            ty = reduce(lambda x, y: x.union(y), [out[av.v] for av in phicall.v[2:] if av.v in out])
+            out[v] = set(ty)
+            assert len(out[v]) == 1, f"phi variable {v} has multiple types {out[v]}"
 
         return out
 
