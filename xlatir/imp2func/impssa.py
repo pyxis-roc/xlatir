@@ -190,7 +190,10 @@ def convert_to_SSA(cfg, cvt_branches_to_functions = True):
     dom = cfg.run_idfa(Dominators())
     #dom.dump_idom_dot("idom.dot")
     place_phi(cfg, dom.frontier)
-    if cvt_branches_to_functions: branches_to_functions(cfg)
+    if cvt_branches_to_functions:
+        branches_to_functions(cfg)
+        get_reads_and_writes(cfg)
+
     rdef = cfg.run_idfa(ReachingDefinitions())
     renamed = rename(rdef)
     #cfg.dump_dot('after_renaming.dot')
