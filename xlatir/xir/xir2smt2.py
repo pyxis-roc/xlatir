@@ -221,8 +221,12 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('compare_eq', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.eq'), x, y),
                    ('compare_ne', '*', '*'): lambda x, y: SExprList(Symbol("not"),
                                                                     SExprList(Symbol('='), x, y)),
-                   ('compare_ne', 'float', 'float'): lambda x, y: SExprList(Symbol("not"),
-                                                                    SExprList(Symbol('fp.eq'), x, y)),
+                   ('compare_ne', 'float', 'float'): lambda x, y: SExprList(
+                       Symbol("and"),
+                       SExprList(Symbol("not"), SExprList(Symbol("or"),
+                                                          SExprList(Symbol("fp.isNaN"), x),
+                                                          SExprList(Symbol("fp.isNaN"), y))),
+                                 SExprList(Symbol("not"), SExprList(Symbol('fp.eq'), x, y))),
 
                    # the unordered versions use the same as below
                    ('compare_lt', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvult'), x, y),
