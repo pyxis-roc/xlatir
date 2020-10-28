@@ -291,7 +291,7 @@ Returns `expr` as the value of the code.
 
 The type of `expr` will be inferred, especially if `expr` is a symbol,
 but this is not always possible. In this case, specify the type using
-`(type _retval typeexpr)`.
+`(type _retval typeexpr)` *once* at the top of the input.
 
 The symbol `_retval` is reserved for use by `imp2`.
 
