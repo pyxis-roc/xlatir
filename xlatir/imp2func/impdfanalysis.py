@@ -11,6 +11,7 @@
 import smt2ast
 from functools import reduce
 import toposort
+import sys
 
 def is_phi(stmt):
     return smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi")
@@ -64,6 +65,30 @@ class ControlFlowGraph(object):
             return toposort.toposort_flatten(self.succ)
         except toposort.CircularDependencyError as e:
             return None
+
+    def check_structure(self):
+        # unreachable
+
+        # find blocks reachable from start
+
+        reachable = set()
+        wl = [self.start_node]
+        while len(wl):
+            n = wl.pop()
+            reachable.add(n)
+            for c in self.succ[n]:
+                if c not in reachable: wl.append(c)
+
+        unreachable = set(self.nodes.keys()) - reachable
+        for n in unreachable:
+            for s in self.succ[n]:
+                if s in reachable:
+                    print(f"ERROR: Node {n} is unreachable, but connects to reachable node {s}", file=sys.stderr)
+                    print(f"Contents of {n}", file=sys.stderr)
+                    for stmtcon in self.nodes[n]:
+                        print("\t", stmtcon.stmt, file=sys.stderr)
+
+                    # TODO: remove n -> s connections!
 
     def dump_dot(self, output, stmt_fn = str):
         with open(output, "w") as f:

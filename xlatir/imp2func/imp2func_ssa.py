@@ -661,6 +661,7 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
         backend.set_param_order(param_order)
 
     cfg = get_cfg(statements, name_prefix)
+    cfg.check_structure()
     if dump_cfg: cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = dump_cfg)
     cfg.orig_names = orig_names
