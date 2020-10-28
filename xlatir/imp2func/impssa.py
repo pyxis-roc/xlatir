@@ -185,11 +185,13 @@ def branches_to_functions(cfg):
 
             stmtcon.stmt = stmt
 
-def convert_to_SSA(cfg, cvt_branches_to_functions = True):
+def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False):
     get_reads_and_writes(cfg)
     dom = cfg.run_idfa(Dominators())
     #dom.dump_idom_dot("idom.dot")
     place_phi(cfg, dom.frontier)
+    if dump_cfg: cfg.dump_dot('cfg-phi.dot')
+
     if cvt_branches_to_functions:
         branches_to_functions(cfg)
         get_reads_and_writes(cfg)
