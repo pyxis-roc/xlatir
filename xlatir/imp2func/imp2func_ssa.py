@@ -304,9 +304,13 @@ class OutputBackend(object):
 
         for pstmt in phi:
             v = str(pstmt.v[1])
+            if v in self.func.cfg.orig_names and self.func.cfg.orig_names[v] == '_retval':
+                continue
+
             phicall = pstmt.v[2]
-            ty = reduce(lambda x, y: x.union(y), [out[av.v] for av in phicall.v[2:] if av.v in out])
+            ty = reduce(lambda x, y: x.union(y), [out[av.v] for av in phicall.v[2:] if av.v in out], [])
             out[v] = set(ty)
+            assert len(out[v]) > 0, f"phi variable {v} has no types"
             assert len(out[v]) == 1, f"phi variable {v} has multiple types {out[v]}"
 
         return out
@@ -649,7 +653,7 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(backend)
 
-def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False):
+def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False, prune_unreachable = False):
     if len(statements) and smt2ast.is_call(statements[0], "global"):
         inline_globals = set([str(s) for s in statements[0].v[1:]])
         statements = statements[1:]
@@ -661,7 +665,7 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
         backend.set_param_order(param_order)
 
     cfg = get_cfg(statements, name_prefix)
-    cfg.check_structure()
+    cfg.check_structure(prune_unreachable = prune_unreachable)
     if dump_cfg: cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = dump_cfg)
     cfg.orig_names = orig_names
@@ -707,6 +711,7 @@ if __name__ == "__main__":
     p.add_argument("--types", dest="types", help="Type file containing name-of-symbol type-of-symbol pairs, one per line. Required for smt2.")
     p.add_argument("--prefix", dest="name_prefix", help="Name prefix.", default='')
     p.add_argument("--dump-cfg", dest="dump_cfg", help="Dump CFG as dot files.", action='store_true')
+    p.add_argument("--prune-unreachable", dest="prune_unreachable", help="Remove unreachable nodes from CFG.", action='store_true')
 
     args = p.parse_args()
 
@@ -732,6 +737,6 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")
 
-    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear, args.name_prefix, dump_cfg = args.dump_cfg)
+    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear, args.name_prefix, dump_cfg = args.dump_cfg, prune_unreachable = args.prune_unreachable)
     print(backend.get_output())
     #cfg.dump_dot('test.dot')

@@ -66,11 +66,7 @@ class ControlFlowGraph(object):
         except toposort.CircularDependencyError as e:
             return None
 
-    def check_structure(self):
-        # unreachable
-
-        # find blocks reachable from start
-
+    def check_structure(self, prune_unreachable = False):
         reachable = set()
         wl = [self.start_node]
         while len(wl):
@@ -88,7 +84,20 @@ class ControlFlowGraph(object):
                     for stmtcon in self.nodes[n]:
                         print("\t", stmtcon.stmt, file=sys.stderr)
 
-                    # TODO: remove n -> s connections!
+                    if prune_unreachable:
+                        self.pred[s].remove(n)
+
+            if prune_unreachable:
+                print(f"NOTE: Removing unreachable node {n} and all its edges")
+
+                del self.pred[n]
+                del self.succ[n]
+                del self.nodes[n]
+
+        self.edges = [(u, v) for (u, v) in self.edges if u not in unreachable]
+
+        # TODO: check loops?
+
 
     def dump_dot(self, output, stmt_fn = str):
         with open(output, "w") as f:
@@ -432,8 +441,7 @@ def get_reads_and_writes(cfg):
 
             stmtcon.rwinfo = rw
 
-def get_cfg(xirstmts, name_prefix = ''):
-    """Construct a CFG"""
+def bb_builder(xirstmts):
     def add_basic_block(bb):
         if len(bb):
             basic_blocks.append(bb)
@@ -441,12 +449,9 @@ def get_cfg(xirstmts, name_prefix = ''):
         return []
 
     labels = get_branch_targets(xirstmts)
-    #print(labels)
 
     basic_blocks = []
     bb = []
-    cur_label = f"{name_prefix}_START"
-    clndx = 1
 
     # demarcate basic blocks
     for s in xirstmts:
@@ -469,6 +474,60 @@ def get_cfg(xirstmts, name_prefix = ''):
             bb.append(s)
 
     if len(bb): add_basic_block(bb)
+
+    return basic_blocks
+
+def bb_builder_2(xirstmts):
+    break_after = set()
+    last_stmt = None
+    labels = get_branch_targets(xirstmts)
+    basic_blocks = []
+    for i, s in enumerate(xirstmts):
+        if smt2ast.is_call(s, "label") and s.v[1].v in labels:
+            if i > 0: break_after.add(i - 1)
+        elif smt2ast.is_call(s, "branch") or smt2ast.is_call(s, "return"):
+            break_after.add(i) # ends here (except if next statement is type and this is return)
+        elif smt2ast.is_call(s, "cbranch"):
+            # start at a label if possible
+            if smt2ast.is_call(last_stmt, "label"):
+                # label, cbranch form
+                if str(last_stmt.v[1]) not in labels:
+                    if i > 2: break_after.add(i - 2) # start block at previous label
+
+                break_after.add(i) # end block at cbranch
+            else:
+                if i > 1: break_after.add(i - 1 ) # start block at this cbranch
+                break_after.append(i) # end block at this cbranch
+        # elif smt2ast.is_call(s, "type"):
+        #     if smt2ast.is_call(last_stmt, "return") and str(s.v[1]) == "_retval":
+        #         break_after.remove(i - 1)
+        #         break_after.add(i)
+
+        last_stmt = s
+
+
+    break_after.add(len(xirstmts) - 1)
+
+    bb = []
+    for i, s in enumerate(xirstmts):
+        bb.append(s)
+        if i in break_after:
+            print((i, s), bb)
+            basic_blocks.append(bb)
+            bb = []
+
+    assert len(bb) == 0
+
+    return basic_blocks
+
+def get_cfg(xirstmts, name_prefix = ''):
+    """Construct a CFG"""
+
+    basic_blocks = bb_builder_2(xirstmts)
+    if False:
+        for bb in basic_blocks:
+            print("\n".join([str(s) for s in bb]))
+            print("\n")
 
     # form the CFG
     prev_label = f"{name_prefix}_START"
@@ -503,11 +562,16 @@ def get_cfg(xirstmts, name_prefix = ''):
             connect_to_previous = False
 
         if len(bb):
-            last_stmt = bb[-1]
+            last_stmt_ndx = -1
+            #if smt2ast.is_call(bb[last_stmt_ndx], "type") and bb[last_stmt_ndx].v[1].v == "_retval":
+            #    last_stmt_ndx = -2
+
+            last_stmt = bb[last_stmt_ndx]
+
             if smt2ast.is_call(last_stmt, "branch"):
                 cfg_edges.append((bb_label, last_stmt.v[1].v))
             elif smt2ast.is_call(last_stmt, "return"):
-                bb[-1] = smt2ast.SExprList(*[smt2ast.Symbol("="),
+                bb[last_stmt_ndx] = smt2ast.SExprList(*[smt2ast.Symbol("="),
                                              smt2ast.Symbol("_retval"),
                                              last_stmt.v[1]])
                 bb.append(smt2ast.SExprList(smt2ast.Symbol("branch"),
