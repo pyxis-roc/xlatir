@@ -455,6 +455,8 @@ class SMT2Output(OutputBackend):
 
             return False
 
+        # if this turns into an infinite loop, it indicates the
+        # presence of a loop that does not lead to _EXIT
         out = dict([(n, n) for n in self.func.cfg.nodes])
         changed = True
         while changed:
@@ -462,6 +464,7 @@ class SMT2Output(OutputBackend):
             for n in self.func.order:
                 bb = self.func.cfg.nodes[n]
                 last_stmt = bb[-1].stmt
+
                 if smt2ast.is_call(last_stmt, "return"):
                     changed = unify(n, "_retval") or changed
                 elif smt2ast.is_call(last_stmt, "branch"):
@@ -666,6 +669,8 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
 
     cfg = get_cfg(statements, name_prefix)
     cfg.check_structure(prune_unreachable = prune_unreachable)
+    assert not cfg.check_non_exit(), f"CFG contains nodes that cannot reach exit. Can't process such CFGs."
+
     if dump_cfg: cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = dump_cfg)
     cfg.orig_names = orig_names

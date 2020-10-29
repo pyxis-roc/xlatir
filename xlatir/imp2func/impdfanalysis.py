@@ -98,6 +98,28 @@ class ControlFlowGraph(object):
 
         # TODO: check loops?
 
+    check_unreachable = check_structure
+
+    def check_non_exit(self, prune_non_exit = False):
+        """Check for nodes that can be reached, but cannot reach EXIT. Must be
+           executed after check_unreachable for relevant results."""
+
+        reachable = set()
+        wl = [self.exit_node]
+        while len(wl):
+            n = wl.pop()
+            reachable.add(n)
+            for c in self.pred[n]:
+                if c not in reachable: wl.append(c)
+
+        non_exit_nodes = set(self.nodes.keys() - reachable)
+        if len(non_exit_nodes):
+            print(f"ERROR: Nodes {non_exit_nodes} do not reach {self.exit_node}")
+
+        if prune_non_exit:
+            raise NotImplementedError("Removing non-exit nodes not supported yet")
+
+        return len(non_exit_nodes) > 0
 
     def dump_dot(self, output, stmt_fn = str):
         with open(output, "w") as f:
@@ -262,6 +284,38 @@ class Dominators(IDFA):
             for n, x in self.idom.items():
                 print(f"{x} -> {n};", file=f)
             print("}", file=f)
+
+class PostDominators(Dominators):
+    def xfer(self, node):
+        input_facts = [self.dominators[succ] for succ in self.cfg.succ[node]]
+
+        doms = IDFA.meet_intersection(input_facts)
+        doms.add(node)
+
+        #print(node, cfg.pred[node], input_facts, doms)
+
+        if doms != self.dominators[node]:
+            self.dominators[node] = doms
+            return True
+
+        return False
+
+    @property
+    def dominated(self):
+        if self._dominated is None:
+            dominated = dict([(k, set()) for k in self.dominators.keys()])
+
+            for n in self.dominators:
+                for dom in self.dominators[n]:
+                    dominated[dom].add(n)
+
+            self._dominated = dominated
+
+        return self._dominated
+
+    @property
+    def frontier(self):
+        raise NotImplementedError
 
 class ReachingDefinitions(IDFA):
     def initialize(self, cfg):
@@ -512,7 +566,6 @@ def bb_builder_2(xirstmts):
     for i, s in enumerate(xirstmts):
         bb.append(s)
         if i in break_after:
-            print((i, s), bb)
             basic_blocks.append(bb)
             bb = []
 
