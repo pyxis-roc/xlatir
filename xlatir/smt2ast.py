@@ -204,7 +204,7 @@ def from_smt2_literal(value, ty):
             raise NotImplementedError(f"Can't handle {total}-bit float literals (exp: {expw} significand: {sw})")
 
         floatv = struct.unpack(flt_fmt_str, struct.pack(int_fmt_str, intv))[0]
-        print(intv, value, floatv, floatv.hex())
+        #print(intv, value, floatv, floatv.hex())
         return floatv
 
     raise NotImplementedError(f"from_smt2_literal: Can't handle sexpr {value}")
