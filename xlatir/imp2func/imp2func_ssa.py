@@ -656,7 +656,7 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(backend)
 
-def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False, prune_unreachable = False):
+def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False, prune_unreachable = False, error_on_non_exit_nodes = False):
     if len(statements) and smt2ast.is_call(statements[0], "global"):
         inline_globals = set([str(s) for s in statements[0].v[1:]])
         statements = statements[1:]
@@ -669,7 +669,12 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
 
     cfg = get_cfg(statements, name_prefix)
     cfg.check_structure(prune_unreachable = prune_unreachable)
-    assert not cfg.check_non_exit(), f"CFG contains nodes that cannot reach exit. Can't process such CFGs."
+
+    if cfg.check_non_exit(True):
+        print("WARNING: CFG contains nodes that cannot reach exit. Nodes removed and CFG patched. This may not be what you want!")
+        if error_on_non_exit_nodes:
+            print("ERROR: Exiting on presence of non-exit nodes as requested")
+            return None
 
     if dump_cfg: cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
     orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = dump_cfg)
@@ -717,6 +722,7 @@ if __name__ == "__main__":
     p.add_argument("--prefix", dest="name_prefix", help="Name prefix.", default='')
     p.add_argument("--dump-cfg", dest="dump_cfg", help="Dump CFG as dot files.", action='store_true')
     p.add_argument("--prune-unreachable", dest="prune_unreachable", help="Remove unreachable nodes from CFG.", action='store_true')
+    p.add_argument("--non-exit-error", help="Stop if non-exit nodes are present.", action='store_true')
 
     args = p.parse_args()
 
@@ -742,6 +748,11 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(f"Unsupported backend {args.backend}")
 
-    cfg = convert_to_functional(statements, set(args.globalvars), backend, args.linear, args.name_prefix, dump_cfg = args.dump_cfg, prune_unreachable = args.prune_unreachable)
-    print(backend.get_output())
-    #cfg.dump_dot('test.dot')
+    cfg = convert_to_functional(statements, set(args.globalvars), backend,
+                                args.linear, args.name_prefix,
+                                dump_cfg = args.dump_cfg,
+                                prune_unreachable = args.prune_unreachable,
+                                error_on_non_exit_nodes = args.non_exit_error)
+    if cfg:
+        print(backend.get_output())
+

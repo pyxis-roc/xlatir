@@ -12,6 +12,7 @@ import smt2ast
 from functools import reduce
 import toposort
 import sys
+import itertools
 
 def is_phi(stmt):
     return smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi")
@@ -84,21 +85,31 @@ class ControlFlowGraph(object):
                     for stmtcon in self.nodes[n]:
                         print("\t", stmtcon.stmt, file=sys.stderr)
 
-                    if prune_unreachable:
-                        self.pred[s].remove(n)
-
-            if prune_unreachable:
-                print(f"NOTE: Removing unreachable node {n} and all its edges")
-
-                del self.pred[n]
-                del self.succ[n]
-                del self.nodes[n]
-
-        self.edges = [(u, v) for (u, v) in self.edges if u not in unreachable]
+        if prune_unreachable:
+            print(f"NOTE: Removing unreachable nodes {unreachable}")
+            self.remove_nodes(unreachable)
 
         # TODO: check loops?
 
     check_unreachable = check_structure
+
+    def remove_nodes(self, nodes):
+        nodes = set(nodes)
+
+        for n in nodes:
+            for neighbour in self.pred[n]:
+                if neighbour not in nodes:
+                    self.succ[neighbour].remove(n)
+
+            for neighbour in self.succ[n]:
+                if neighbour not in nodes:
+                    self.pred[neighbour].remove(n)
+
+            del self.pred[n]
+            del self.succ[n]
+            del self.nodes[n]
+
+        self.edges = [(u, v) for (u, v) in self.edges if not (u in nodes or v in nodes)]
 
     def check_non_exit(self, prune_non_exit = False):
         """Check for nodes that can be reached, but cannot reach EXIT. Must be
@@ -117,7 +128,23 @@ class ControlFlowGraph(object):
             print(f"ERROR: Nodes {non_exit_nodes} do not reach {self.exit_node}")
 
         if prune_non_exit:
-            raise NotImplementedError("Removing non-exit nodes not supported yet")
+            bridge_nodes = set()
+            for n in non_exit_nodes:
+                for neighbour in itertools.chain(self.pred[n], self.succ[n]):
+                    if neighbour not in non_exit_nodes:
+                        # connected to a part of the reachable CFG
+                        bridge_nodes.add(neighbour)
+                        break
+
+            self.remove_nodes(non_exit_nodes)
+
+            for bn in bridge_nodes:
+                assert len(self.succ[bn]) > 0, f"Bridge node {bn} has zero successors"
+                last_stmt = self.nodes[bn][-1].stmt
+                assert smt2ast.is_call(last_stmt, "cbranch"), f"Bridge node {bn} does not end in cbranch"
+                dst = [x for x in last_stmt.v[2:] if str(x) not in non_exit_nodes]
+                assert len(dst) == 1, f"Bridge node {bn} does not connect to a node that reaches exit, current connections: {dst}"
+                self.nodes[bn][-1].stmt = smt2ast.SExprList(smt2ast.Symbol("branch"), dst[0])
 
         return len(non_exit_nodes) > 0
 
@@ -455,6 +482,9 @@ def get_reads_and_writes(cfg):
                 rw = {'reads': set(), 'writes': set()}
             elif sty == 'type':
                 rw = {'reads': get_symbols(stmt.v[1]), 'writes': set()}
+                # hack
+                if '_retval' in rw['reads']:
+                    rw['reads'] = set()
             elif sty == 'branch':
                 # in SSA functional form, branches are calls...
                 if isinstance(stmt.v[1], smt2ast.SExprList):
