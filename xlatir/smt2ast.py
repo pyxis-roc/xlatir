@@ -105,7 +105,7 @@ class SExprList(SExpr):
 def is_call(sexpr, func):
     return isinstance(sexpr, SExprList) and (len(sexpr.v) > 0 and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func))
 
-def smt2_literal(v, ty):
+def smt2_literal(v, ty, fp_as_bv=False):
     if ty == 'pred':
         assert v == 1 or v == 0, f"Wrong value for pred: {v}"
         return Binary(v, 1)
@@ -136,6 +136,8 @@ def smt2_literal(v, ty):
 
         b = struct.unpack(f'{int_fmt_str}', struct.pack(f'{flt_fmt_str}', v))[0]
 
+        if fp_as_bv:
+            return Hexadecimal(b, 8 if ty == "f32" else 16)
         s = 0
         out = []
         for w in reversed(bit_fmt):
