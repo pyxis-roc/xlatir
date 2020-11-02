@@ -182,6 +182,9 @@ def from_smt2_literal(value, ty):
             return -0.0
         elif value.v[1].v == "NaN": # unfortunately smtlib doesn't handle negative NaN?
             return float("nan")
+        elif value.v[1].v.startswith("bv"):
+            # Handle smtlib (_ bv[num] [width]) syntax
+            return int(value.v[1].v[2:])
         else:
             raise NotImplementedError(f"Can't handle _ [{value}]")
 
