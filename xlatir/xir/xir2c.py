@@ -44,9 +44,21 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('DIV', '*', '*'): '/',
                 ('REM', '*', '*'): '%',
 
+                ('SHR', 'uint16_t', 'uint32_t'): 'SHR',
+                ('SHR', 'uint32_t', 'uint32_t'): 'SHR',
+                ('SHR', 'uint64_t', 'uint32_t'): 'SHR',
                 ('SHR', '*', '*'): '>>',
+
+                ('SAR', 'int16_t', 'uint32_t'): 'SHR',
+                ('SAR', 'int32_t', 'uint32_t'): 'SHR',
+                ('SAR', 'int64_t', 'uint32_t'): 'SHR',
                 ('SAR', '*', '*'): '>>',
+
+                ('SHL', 'uint32_t', 'uint32_t'): 'SHL',
+                ('SHL', 'uint64_t', 'uint32_t'): 'SHL',
+                ('SHL', 'uint16_t', 'uint32_t'): 'SHL',
                 ('SHL', '*', '*'): '<<',
+
 
                 ('GT', '*', '*'): '>',
                 ('LT', '*', '*'): '<',
@@ -267,6 +279,24 @@ class Clib(object):
 
         return f"({args[0]} {XIR_TO_C_OPS[opkey]} {args[1]})"
 
+    def _do_shift_op(self, n, fnty, args, node):
+        arglen = len(fnty) - 1
+        assert arglen == 2, f"Not supported {n}/{fnty} for infix op"
+
+        if fnty not in XIR_TO_C_OPS:
+            opkey = tuple([n] + ['*'] * arglen) # contains arity info
+        else:
+            opkey = fnty
+
+        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        op = XIR_TO_C_OPS[opkey]
+        if op in ('SHL', 'SHR'):
+            return f"{op}({args[0]}, {args[1]})"
+        else:
+            assert op in ('<<', '>>'), f"Unrecognized infix shift operator {op}"
+            return f"({args[0]} {op} {args[1]})"
+
     GTE = _do_infix_op
     GT = _do_infix_op
     LT = _do_infix_op
@@ -277,9 +307,9 @@ class Clib(object):
     OR = _do_infix_op
     AND = _do_infix_op
     XOR = _do_infix_op
-    SHR = _do_infix_op
-    SAR = _do_infix_op
-    SHL = _do_infix_op
+    SHR = _do_shift_op
+    SAR = _do_shift_op
+    SHL = _do_shift_op
 
     ADD = _do_infix_op
     SUB = _do_infix_op
@@ -492,6 +522,8 @@ class CXlator(xirxlat.Xlator):
             return str(n) + "UL"
         elif nty == 'int64_t':
             return str(n) + "L"
+        elif nty == 'uint32_t':
+            return str(n) + "U"
         else:
             return str(n)
 
