@@ -114,7 +114,7 @@ class TyApp(TyTerm):
         self.args = args
 
     def __str__(self):
-        return f"TyApp({self.ret}, [{', '.join([str(x) for x in self.args])}]"
+        return f"TyApp({self.ret}, [{', '.join([str(x) for x in self.args])}])"
 
     __repr__ = __str__
 
