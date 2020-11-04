@@ -629,8 +629,11 @@ class CXlator(xirxlat.Xlator):
             lhs_type = self._get_c_type(node.targets[0]._xir_type)
             assert isinstance(node.targets[0], ast.Subscript) and lhs_type == "BIT_T"
             var, index = lhs
+            bstype = self._get_c_type(node.targets[0].value._xir_type)
+            bssuffix = "UL" if bstype == 'bitstring64_t' else ''
             # index is evaluated twice ...
-            return f"{var} = ({var} & ~(1 << {index})) | (({rhs}) << ({index}))"
+
+            return f"{var} = ({var} & ~(1{bssuffix} << {index})) | (({rhs}) << ({index}))"
         else:
             # yes, this will pass lists through and fail to compile.
             return f"{lhs} = {rhs}"
