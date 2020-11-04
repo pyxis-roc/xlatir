@@ -592,7 +592,8 @@ class CXlator(xirxlat.Xlator):
     def xlat_Subscript(self, var, varty, index, indexty, node):
         if varty.startswith('bitstring'):
             if isinstance(node.ctx, ast.Load):
-                return f"((({var} & (1 << {index})) == (1 << {index})))" # return 1 or 0
+                suffix = 'UL' if varty == 'bitstring64_t' else ''
+                return f"((({var} & (1{suffix} << {index})) == (1{suffix} << {index})))" # return 1 or 0
             else:
                 return (var, index)
         else:
