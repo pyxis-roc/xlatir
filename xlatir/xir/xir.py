@@ -80,7 +80,7 @@ MACHINE_SPECIFIC_FNS = set(["MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigne
                             "MACHINE_SPECIFIC_execute_rem_divide_by_neg",
                             "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer"])
 
-ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'EXP2', 'RCP', 'RSQRT', 'SINE', 'COSINE', 'COPYSIGN']) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS | MACHINE_SPECIFIC_FNS
+ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'DIV_FULL', 'DIV_APPROX', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'EXP2', 'RCP', 'RSQRT', 'SINE', 'COSINE', 'COPYSIGN']) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS | MACHINE_SPECIFIC_FNS
 
 BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT'])
 COMPARE_FNS = set(['GT', 'LT', 'LTE', 'NOTEQ', 'GTE', 'EQ'])

@@ -221,11 +221,12 @@ class EvalIf(ast.NodeVisitor):
 
     def visit_If(self, node):
         test = astunparse.unparse(node.test)
+        logger.debug(f"Test is {test}")
         try:
             d = {'NOTEQ': utils.NOTEQ, 'EQ': utils.EQ}
             d.update(self.values)
             val = eval(test, d)
-
+            logger.debug(f"Evaluation returned {val}")
             if val:
                 node.test = ast.NameConstant(value=True)
             else:
