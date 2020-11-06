@@ -67,8 +67,8 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('GTE', '*', '*'): '>=',
                 ('EQ', '*', '*'): '==',
 
-                ('MIN', 'float', 'float'): 'fminf',
-                ('MAX', 'float', 'float'): 'fmaxf',
+                ('MIN', 'float', 'float'): 'fminf_ptx',
+                ('MAX', 'float', 'float'): 'fmaxf_ptx',
                 ('LOG2', 'float'): 'LOG2',
                 ('LOG2', 'double'): 'LOG2',
                 ('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
