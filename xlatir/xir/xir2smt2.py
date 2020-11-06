@@ -187,8 +187,8 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)),
 
-                   ('MIN', 'float', 'float'): 'fminf',
-                   ('MAX', 'float', 'float'): 'fmaxf',
+                   ('MIN', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.min"), x, y),
+                   ('MAX', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.max"), x, y),
 
                    ('FTZ', 'f32'): lambda x: SExprList(Symbol('FTZ_f32'), x),
                    ('FTZ', 'f64'): lambda x: SExprList(Symbol('FTZ_f64'), x),
@@ -199,7 +199,12 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                            SExprList(Symbol("bvslt"), x, y), x, y),
                    #('MIN', 'double', 'double'): 'fmin',
                    #('MAX', 'double', 'double'): 'fmax',
-                   ('MAX', '*', '*'): 'MAX',
+
+                   ('MAX', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
+                                                                           SExprList(Symbol("bvult"), x, y), y, x),
+                   ('MAX', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
+                                                                           SExprList(Symbol("bvslt"), x, y), y, x),
+
 
                    ('min', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
                                                                            SExprList(Symbol("bvult"), x, y), x, y),
@@ -384,7 +389,7 @@ class SMT2lib(object):
 
     POW = _do_fnop
     MIN = _do_fnop_builtin
-    MAX = _nie
+    MAX = _do_fnop_builtin
     set_memory = _nie
     FTZ = _do_fnop
     #logical_op3 = _nie
