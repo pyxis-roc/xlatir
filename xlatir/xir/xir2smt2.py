@@ -187,8 +187,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)),
 
-                   ('MIN', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.min"), x, y),
-                   ('MAX', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.max"), x, y),
+                   ('MIN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MIN_f32"), x, y),
+                   ('MAX', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MAX_f32"), x, y),
+
+                   ('MIN', 'f64', 'f64'): lambda x, y: SExprList(Symbol("MIN_f64"), x, y),
+                   ('MAX', 'f64', 'f64'): lambda x, y: SExprList(Symbol("MAX_f64"), x, y),
 
                    ('FTZ', 'f32'): lambda x: SExprList(Symbol('FTZ_f32'), x),
                    ('FTZ', 'f64'): lambda x: SExprList(Symbol('FTZ_f64'), x),
@@ -387,9 +390,15 @@ class SMT2lib(object):
         op = self._get_op(fnty, builtin = False)
         return op(*args[:arglen])
 
+    def _do_min_max(self, n, fnty, args, node):
+        if self._normalize_types(fnty[1]) == 'float':
+            return self._do_fnop(n, fnty, args, node)
+        else:
+            return self._do_fnop_builtin(n, fnty, args, node)
+
     POW = _do_fnop
-    MIN = _do_fnop_builtin
-    MAX = _do_fnop_builtin
+    MIN = _do_min_max
+    MAX = _do_min_max
     set_memory = _nie
     FTZ = _do_fnop
     #logical_op3 = _nie
