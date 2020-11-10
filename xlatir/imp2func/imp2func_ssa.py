@@ -308,7 +308,7 @@ class OutputBackend(object):
                 continue
 
             phicall = pstmt.v[2]
-            ty = reduce(lambda x, y: x.union(y), [out[av.v] for av in phicall.v[2:] if av.v in out], [])
+            ty = reduce(lambda x, y: x.union(y), [out[av.v] for av in phicall.v[2:] if av.v in out], set())
             out[v] = set(ty)
             assert len(out[v]) > 0, f"phi variable {v} has no types"
             assert len(out[v]) == 1, f"phi variable {v} has multiple types {out[v]}"
