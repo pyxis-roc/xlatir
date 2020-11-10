@@ -1063,9 +1063,10 @@ class SMT2Xlator(xirxlat.Xlator):
 
             print(textwrap.dedent("""\
             ; :begin global
-            (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
-            (declare-datatypes (T1) ((CCRegister (mk-ccreg (cf T1)))))
-
+            ; (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
+            (declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )
+            ; (declare-datatypes (T1) ((CCRegister (mk-ccreg (cf T1)))))
+            (declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))
             (define-sort u8 () (_ BitVec 8))
             (define-sort b1 () (_ BitVec 1))
             (define-sort carryflag () b1)
