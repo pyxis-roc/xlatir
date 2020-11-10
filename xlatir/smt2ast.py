@@ -171,6 +171,18 @@ def from_smt2_literal(value, ty):
     if is_call(value, "mk-ccreg"):
         return from_smt2_literal(value.v[1], "b1")
 
+    if len(value.v) and isinstance(value.v[0], SExprList) and is_call(value.v[0], "as"):
+        # TODO: rewrite as a constructor ...
+        cons = value.v[1]
+        values = []
+        if isinstance(ty, (list, tuple)): # TODO: examine 'as' to determine how to deal with arguments
+            for v, t in zip(value.v[1:], ty):
+                values.append(from_smt2_literal(v, t))
+
+            return tuple(values)
+        else:
+            return from_smt2_literal(value.v[1], ty)
+
     if is_call(value, "_"):
         if value.v[1].v == "-oo":
             return float("-inf")
