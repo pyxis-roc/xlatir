@@ -17,6 +17,10 @@ import sys
 import itertools
 from impdfanalysis import *
 from impssa import convert_to_SSA
+import logging
+import warnings
+
+logger = logging.getLogger(__name__)
 
 def load_xir(xirf):
     p = smt2ast.SMT2Parser()
@@ -51,6 +55,7 @@ class FunctionalCFG(object):
         self._bb_let_levels()
 
     def _remove_dead_writes(self):
+
         all_reads = set()
         for n in self.cfg.nodes:
             for stmtcon in self.cfg.nodes[n]:
@@ -62,6 +67,8 @@ class FunctionalCFG(object):
                 if smt2ast.is_call(stmtcon.stmt, '='): # write
                     if any([v in all_reads for v in stmtcon.rwinfo['writes']]):
                         out.append(stmtcon)
+                    else:
+                        logger.debug(f'Removing dead write {stmtcon.stmt}')
                 else:
                     out.append(stmtcon)
 
@@ -127,6 +134,7 @@ class FunctionalCFG(object):
             wl.extend(list(self.cfg.succ[n]))
 
         self.order = order
+        logger.debug(f'_bb_function_order is {self.order}')
 
     def _bb_let_levels(self):
         self.let_levels = {}
@@ -434,6 +442,7 @@ class SMT2Output(OutputBackend):
         self.symtypes = symtypes
         self._entry_fn = entry_fn if entry_fn is not None else lambda n, params, ret_type: (n, "(" + str(params) + ")", ret_type)
         self._xir_attr_refs = {}
+        logger.debug(f'Initial symtypes: {symtypes}')
 
     def _get_func_return_types(self):
         def find(x):
@@ -476,6 +485,7 @@ class SMT2Output(OutputBackend):
                     assert False, last_stmt
 
         self.func_types = out
+        logger.debug(f'Func_types: {out}')
 
     def start(self):
         self._xir_attr_refs = {}
@@ -503,10 +513,12 @@ class SMT2Output(OutputBackend):
         if '_retval' not in self.symtypes:
             raise ValueError(f'Unable to infer type for _retval, must be supplied')
 
+        logger.debug(f'_retval type is {self.symtypes["_retval"]}')
         self._get_func_return_types()
 
     def set_linear(self, linear):
-        if linear == False: print("WARNING: SMT2 backend only supports linear output")
+        if linear == False:
+            warnings.warn("SMT2 backend only supports linear output, ignoring linear=False")
         self.linear = True
 
     def get_output(self):
@@ -523,11 +535,13 @@ class SMT2Output(OutputBackend):
 
         order = self.func.cfg.topo_order()
         if order is None:
+            logger.warning('Function contains loops, code generation is likely to be incorrect')
             # TODO: identify SCCs and only make them recursive...
             rec = True
             # TODO: identify SCCs and actually get a proper ordering ...
             order = list(self.output_fn.keys())
         else:
+            logger.debug(f'Topological order is {order}')
             rec = False
 
         return '\n'.join([_output_fn(self.output_fn[fn]) for fn in order if fn in self.output_fn])
@@ -574,7 +588,7 @@ class SMT2Output(OutputBackend):
 
         ty = self.symtypes[orig_name]
         if len(ty) > 1:
-            print(self.symtypes)
+            logger.debug(f'Symtypes: {self.symtypes}')
             raise ValueError(f"Multiple types {ty} for symbol '{v}'/'{orig_name}'")
 
         return next(iter(ty))
@@ -598,6 +612,8 @@ class SMT2Output(OutputBackend):
             self.output.append(self.xlat_entry_fn(n, params, ret_type))
         else:
             self.output.append((n, "(" + params + ")", ret_type))
+
+        # TODO: don't use captured_params for start node, allowing them to be undefined externally.
 
         self.output.append(f'; let_levels={self.func.let_levels[n]}, captured_params={self.func.captured_parameters[n]}')
 
@@ -662,24 +678,38 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
         statements = statements[1:]
         globalvars |= inline_globals
 
+    logger.debug(f'Global variables: {globalvars}')
+
     if len(statements) and smt2ast.is_call(statements[0], "param"):
         param_order = [str(s) for s in statements[0].v[1:]]
         statements = statements[1:]
+        logger.debug(f'Setting param order: {param_order}')
         backend.set_param_order(param_order)
 
+    logger.debug(f'========================= BUILDING CFG')
     cfg = get_cfg(statements, name_prefix)
     cfg.check_structure(prune_unreachable = prune_unreachable)
 
     if cfg.check_non_exit(True):
-        print("WARNING: CFG contains nodes that cannot reach exit. Nodes removed and CFG patched. This may not be what you want!")
+        logger.warning("CFG contains nodes that cannot reach exit. Nodes removed and CFG patched. This may not be what you want!")
         if error_on_non_exit_nodes:
-            print("ERROR: Exiting on presence of non-exit nodes as requested")
+            logger.error("Exiting on presence of non-exit nodes as requested")
             return None
 
-    if dump_cfg: cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
-    orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = dump_cfg)
+    if dump_cfg:
+        logging.debug(f'Dumping initial CFG to cfg{"_" if name_prefix else ""}{name_prefix}.dot')
+        cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
+
+    logger.debug(f'========================= CONVERTING TO SSA')
+    orig_names = convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = dump_cfg, name_prefix = name_prefix)
+    logger.debug(f'Original names after renaming {orig_names}')
     cfg.orig_names = orig_names
-    if dump_cfg: cfg.dump_dot(f'cfg-after-ssa{"_" if name_prefix else ""}{name_prefix}.dot')
+
+    if dump_cfg:
+        logging.debug(f'Dumping SSA CFG to cfg-after-ssa{"_" if name_prefix else ""}{name_prefix}.dot')
+        cfg.dump_dot(f'cfg-after-ssa{"_" if name_prefix else ""}{name_prefix}.dot')
+
+    logger.debug(f'========================= CONVERTING TO FUNCTIONAL')
     convert_ssa_to_functional(backend, cfg, globalvars, linear)
     return cfg
 
@@ -693,7 +723,7 @@ def read_inline_types(stmts):
                 out[v] = set([ty])
             else:
                 out[v].add(ty)
-
+    logger.debug(f'Inline types: {out}')
     return out
 
 def read_types_file(tf):
@@ -706,6 +736,8 @@ def read_types_file(tf):
             sym, symtype = ls.split(' ', 1)
             if sym not in out: out[sym] = set()
             out[sym].add(symtype)
+
+    logger.debug(f'Types from file {tf}: {out}')
 
     return out
 
@@ -725,6 +757,11 @@ if __name__ == "__main__":
     p.add_argument("--non-exit-error", help="Stop if non-exit nodes are present.", action='store_true')
 
     args = p.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig()
 
     statements = load_xir(args.xir)
 

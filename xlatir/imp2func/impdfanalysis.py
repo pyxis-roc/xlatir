@@ -13,6 +13,9 @@ from functools import reduce
 import toposort
 import sys
 import itertools
+import logging
+
+logger = logging.getLogger(__name__)
 
 def is_phi(stmt):
     return smt2ast.is_call(stmt, "=") and smt2ast.is_call(stmt.v[2], "phi")
@@ -77,16 +80,17 @@ class ControlFlowGraph(object):
                 if c not in reachable: wl.append(c)
 
         unreachable = set(self.nodes.keys()) - reachable
+        logger.debug(f'Unreachable nodes {unreachable}')
         for n in unreachable:
             for s in self.succ[n]:
                 if s in reachable:
-                    print(f"ERROR: Node {n} is unreachable, but connects to reachable node {s}", file=sys.stderr)
-                    print(f"Contents of {n}", file=sys.stderr)
+                    logger.error(f"Node {n} is unreachable, but connects to reachable node {s}")
+                    logger.error(f"Contents of {n}")
                     for stmtcon in self.nodes[n]:
-                        print("\t", stmtcon.stmt, file=sys.stderr)
+                        logger.error(f"\t{stmtcon.stmt}")
 
         if prune_unreachable:
-            print(f"NOTE: Removing unreachable nodes {unreachable}")
+            logger.info(f"Removing unreachable nodes {unreachable}")
             self.remove_nodes(unreachable)
 
         # TODO: check loops?
@@ -125,7 +129,7 @@ class ControlFlowGraph(object):
 
         non_exit_nodes = set(self.nodes.keys() - reachable)
         if len(non_exit_nodes):
-            print(f"ERROR: Nodes {non_exit_nodes} do not reach {self.exit_node}")
+            logger.error(f"Nodes {non_exit_nodes} do not reach {self.exit_node}")
 
         if prune_non_exit:
             bridge_nodes = set()
@@ -136,8 +140,11 @@ class ControlFlowGraph(object):
                         bridge_nodes.add(neighbour)
                         break
 
+            logger.info(f'Removing non-exiting nodes {non_exit_nodes}')
+
             self.remove_nodes(non_exit_nodes)
 
+            logger.info(f'Patching up bridge nodes {bridge_nodes}')
             for bn in bridge_nodes:
                 assert len(self.succ[bn]) > 0, f"Bridge node {bn} has zero successors"
                 last_stmt = self.nodes[bn][-1].stmt
@@ -444,6 +451,7 @@ def get_branch_targets(xirstmts):
             labels.add(s.v[2].v)
             labels.add(s.v[3].v)
 
+    logger.debug(f'Targeted branches: {labels}')
     return labels
 
 def get_symbols(s):
@@ -523,8 +531,10 @@ def get_reads_and_writes(cfg):
             else:
                 raise NotImplementedError(f"Don't recognize top-level {stmt}")
 
+            logger.debug(f'Read/Writes for {stmtcon.stmt}: {rw}')
             stmtcon.rwinfo = rw
 
+# deprecated, do not use.
 def bb_builder(xirstmts):
     def add_basic_block(bb):
         if len(bb):
@@ -608,9 +618,10 @@ def get_cfg(xirstmts, name_prefix = ''):
 
     basic_blocks = bb_builder_2(xirstmts)
     if False:
+        logger.debug('Basic blocks')
         for bb in basic_blocks:
-            print("\n".join([str(s) for s in bb]))
-            print("\n")
+            logger.debug("\n".join([str(s) for s in bb]))
+            logger.debug("\n")
 
     # form the CFG
     prev_label = f"{name_prefix}_START"
@@ -626,6 +637,7 @@ def get_cfg(xirstmts, name_prefix = ''):
         if (len(bb) == 0) or (len(bb) > 0 and not smt2ast.is_call(bb[0], "label")):
             # no label, so generate one
             bb_label = f"{name_prefix}_label_{lbl_ndx}"
+            logger.debug(f'Generating label {bb_label}')
             lbl_ndx += 1
         elif (len(bb) > 0 and smt2ast.is_call(bb[0], "label")):
             bb_label = bb[0].v[1].v
@@ -636,6 +648,7 @@ def get_cfg(xirstmts, name_prefix = ''):
         nodes[bb_label] = bb
 
         if connect_to_previous:
+            logger.debug(f'Connecting {bb_label} implicitly to previous {prev_label} (no explicit branch found at end)')
             cfg_edges.append((prev_label, bb_label))
 
             # add an explicit branch

@@ -11,6 +11,9 @@
 import smt2ast
 from impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi
 import functools
+import logging
+
+logger = logging.getLogger(__name__)
 
 def replace_symbols(s, replacement):
     if isinstance(s, smt2ast.Symbol) and s.v in replacement:
@@ -95,7 +98,7 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
     if no_phi_for_dead_writes:
         # in this case, we mean writes that do not cross BB boundaries
         # i.e., they might be used in the BB itself, but are dead beyond it.
-
+        logger.debug(f'Not placing phi functions for dead definitions')
         rdef = cfg.run_idfa(ReachingDefinitions())
         global_used_defns = set()
         for n in cfg.nodes:
@@ -110,6 +113,8 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
     else:
         global_used_defns = None
 
+    logger.debug(f'Global used definitions: {global_used_defns}')
+
     placed_phi = dict()
     writes = dict([(k, set()) for k in cfg.nodes])
 
@@ -117,13 +122,21 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
     for n in cfg.nodes:
         w = set()
         for stmtcon in cfg.nodes[n]:
+            if len(stmtcon.rwinfo['writes']) == 0: continue
+
             if global_used_defns is not None:
                 if len(global_used_defns.intersection(stmtcon.rdef_def)):
+                    # note there will only be one write...
+                    assert len(stmtcon.rwinfo['writes']) <= 1
                     w = w | stmtcon.rwinfo['writes']
+                else:
+                    logger.debug(f"Write to {stmtcon.rwinfo['writes']} is dead")
             else:
                 w = w | stmtcon.rwinfo['writes']
 
         writes[n] = w
+
+    logger.debug(f'Writes per BB: {writes}')
 
     placed = True
     while placed:
@@ -138,10 +151,12 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
                         placed_phi[dfn] = set()
 
                     if w not in placed_phi[dfn]:
+                        logger.debug('Placing phi for {w} in node {n} in its dominance frontier node {dfn}')
                         placed_phi[dfn].add(w)
                         writes[dfn].add(w)
                         placed = True
 
+    logger.debug(f'placed_phi = {placed_phi}')
     for n, phiv in placed_phi.items():
         bb = cfg.nodes[n]
         for v in phiv:
@@ -185,19 +200,27 @@ def branches_to_functions(cfg):
 
             stmtcon.stmt = stmt
 
-def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False):
+def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False, name_prefix = ''):
     get_reads_and_writes(cfg)
     dom = cfg.run_idfa(Dominators())
-    #dom.dump_idom_dot("idom.dot")
     place_phi(cfg, dom.frontier)
-    if dump_cfg: cfg.dump_dot('cfg-phi.dot')
+
+    if name_prefix != '': name_prefix = '_' + name_prefix
+
+    if dump_cfg:
+        logger.debug(f'Dumping CFG after phi placement to cfg-phi{name_prefix}.dot')
+        cfg.dump_dot('cfg-phi.dot')
 
     if cvt_branches_to_functions:
+        logger.debug(f'Converting branches to function calls')
         branches_to_functions(cfg)
         get_reads_and_writes(cfg)
 
     rdef = cfg.run_idfa(ReachingDefinitions())
     renamed = rename(rdef)
-    #cfg.dump_dot('after_renaming.dot')
+    if dump_cfg:
+        logger.debug(f'Dumping CFG after renaming to cfg-renaming{name_prefix}.dot')
+        cfg.dump_dot('cfg-renaming{name_prefix}.dot')
+
     return renamed
 
