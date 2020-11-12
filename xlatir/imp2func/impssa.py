@@ -209,7 +209,7 @@ def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False, name
 
     if dump_cfg:
         logger.debug(f'Dumping CFG after phi placement to cfg-phi{name_prefix}.dot')
-        cfg.dump_dot('cfg-phi.dot')
+        cfg.dump_dot(f'cfg-phi{name_prefix}.dot')
 
     if cvt_branches_to_functions:
         logger.debug(f'Converting branches to function calls')
@@ -220,7 +220,7 @@ def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False, name
     renamed = rename(rdef)
     if dump_cfg:
         logger.debug(f'Dumping CFG after renaming to cfg-renaming{name_prefix}.dot')
-        cfg.dump_dot('cfg-renaming{name_prefix}.dot')
+        cfg.dump_dot(f'cfg-renaming{name_prefix}.dot')
 
     return renamed
 
