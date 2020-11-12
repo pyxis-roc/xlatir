@@ -171,6 +171,9 @@ def from_smt2_literal(value, ty):
     if is_call(value, "mk-ccreg"):
         return from_smt2_literal(value.v[1], "b1")
 
+    if is_call(value, "mkTuple"):
+        return tuple([from_smt2_literal(v, t) for v, t in zip(value.v[1:], ty)])
+
     if len(value.v) and isinstance(value.v[0], SExprList) and is_call(value.v[0], "as"):
         # TODO: rewrite as a constructor ...
         cons = value.v[1]
