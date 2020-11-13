@@ -714,7 +714,8 @@ class SMT2Xlator(xirxlat.Xlator):
         self._array_fn = ArrayFn()
         self._ref_return_fixer = RefReturnFixer()
         self._tvndx = 0 # tmp variable suffixes
-
+        self._use_imp2 = False
+        self._label = 0
         self.lhs_types = {}
 
     def pre_xlat_transform(self, s):
@@ -735,6 +736,10 @@ class SMT2Xlator(xirxlat.Xlator):
         s = dearrayify(s)
 
         return s
+
+    def get_label_suffix(self):
+        self._label += 1
+        return self._label
 
     def _get_smt2_type(self, node, declname = None):
         if isinstance(node, ast.AST):
@@ -897,8 +902,50 @@ class SMT2Xlator(xirxlat.Xlator):
 
         return SExprList(Symbol("ite"), test, body, orelse)
 
+    def _cast_to_bool(self, expr, ty):
+        if not isinstance(ty, TyConstant):
+            if isinstance(ty, TyApp):
+                ty = ty.ret
+                assert isinstance(ty, TyConstant), f"Return type for {expr} is not TyConstant {ty}"
+            else:
+                raise NotImplementedError(f"Unknown type for condition: {ty}")
+
+        if ty.value[0] in ('b', 'u', 's'):
+            # integer
+            width = int(ty.value[1:])
+            falsevalue = Hexadecimal(0, width = width // 4)
+        else:
+            raise NotImplementedError(f"Don't know what false values look like for {ty}")
+
+        return SExprList(Symbol("not"), SExprList(Symbol("="), falsevalue, expr))
+
     def xlat_If(self, test, body, orelse, node):
-        raise NotImplemented("Don't support If loops in SMT2 yet")
+        l = self.get_label_suffix()
+        # cbranch (cond) truepart falsepart
+        # truepart ends with branch to part after
+        # falsepart ends with branch to part after
+        self._use_imp2 = True
+
+        cond = self._cast_to_bool(test, self.x2x._get_type(node.test._xir_type))
+        true_label = f"if_{l}_true"
+        false_label = f"if_{l}_false"
+        next_label = f"if_{l}_end" if len(orelse) else false_label
+
+        out = [SExprList(Symbol("cbranch"), cond,
+                         Symbol(true_label),
+                         Symbol(false_label)),
+
+               SExprList(Symbol("label"), Symbol(true_label))]
+
+        out.extend(body)
+        out.append(SExprList(Symbol("branch"), Symbol(next_label)))
+        out.append(SExprList(Symbol("label"), Symbol(false_label)))
+        out.extend(orelse)
+        if len(orelse):
+            out.append(SExprList(Symbol("branch"), Symbol(next_label)))
+
+        return out
+        raise NotImplemented("Don't support If in SMT2 yet")
 
     def xlat_Break(self, node):
         raise NotImplemented("Don't support Break loops in SMT2 yet")
@@ -1020,7 +1067,7 @@ class SMT2Xlator(xirxlat.Xlator):
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         self._retval_ty = retval
 
-        use_create_dag = True
+        use_create_dag = not self._use_imp2
 
         if use_create_dag:
             dag = create_dag(body, _debug_trace = False)
@@ -1033,8 +1080,8 @@ class SMT2Xlator(xirxlat.Xlator):
                                Symbol(retval),
                                expr)
         else:
-            #for s in body:
-            #    print(s)
+            for pty in params:
+                self.record_type(pty.v[0], pty.v[1])
 
             self.lhs_types[name]['_retval'] = set([retval])
             body[-1] = SExprList(Symbol("return"), body[-1])
@@ -1046,7 +1093,7 @@ class SMT2Xlator(xirxlat.Xlator):
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
 
-            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name)
+            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = True)
             output = backend.get_output()
 
         return [f"; :begin {name}", output, f"; :end {name}"]

@@ -16,6 +16,7 @@ import os
 import xirxlat
 import xir2c
 import xir2smt2
+import logging
 
 if __name__ == "__main__":
     import argparse
@@ -26,11 +27,15 @@ if __name__ == "__main__":
     p.add_argument("output", help="Output file for main output (headers may be produced)" )
     p.add_argument('ptxinsn', nargs="*", help="PTX instruction in underscore form (e.g. add_u16)")
     p.add_argument('-i', dest="interactive", action="store_true", help="Interactive, fail immediately")
+    p.add_argument('-d', dest="debug", action="store_true", help="Enable debugging logs")
 
     args = p.parse_args()
 
     gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
     translator = xirxlat.XIRToX()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     if args.language == "c":
         translator.X = xir2c.CXlator(translator)

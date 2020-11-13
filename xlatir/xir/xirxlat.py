@@ -386,9 +386,11 @@ class XIRToX(ast.NodeVisitor):
         body = accumulate_body([self.visit(s) for s in node.body if not isinstance(s, ast.Assert)])
         decls = [(v, t) for (v, t) in self.fn._xir_decls.items() if t is not None]
 
+        out = self.X.xlat_FunctionDef(func, args, retval, decls, body, node)
+
         self.fn = None
 
-        return self.X.xlat_FunctionDef(func, args, retval, decls, body, node)
+        return out
 
     def visit_Assert(self, node):
         return None
