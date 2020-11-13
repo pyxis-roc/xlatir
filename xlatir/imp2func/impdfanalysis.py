@@ -591,7 +591,7 @@ def bb_builder_2(xirstmts):
                 break_after.add(i) # end block at cbranch
             else:
                 if i > 1: break_after.add(i - 1 ) # start block at this cbranch
-                break_after.append(i) # end block at this cbranch
+                break_after.add(i) # end block at this cbranch
         # elif smt2ast.is_call(s, "type"):
         #     if smt2ast.is_call(last_stmt, "return") and str(s.v[1]) == "_retval":
         #         break_after.remove(i - 1)

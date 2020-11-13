@@ -297,6 +297,22 @@ class OutputBackend(object):
         assert len(self.param_order) == len(param_order), f"Duplicates in param_order"
 
     def get_symtypes(self):
+        def _has_type(v):
+            if v in out: return True
+            if v in self.symtypes: return True
+
+            if v in self.func.cfg.orig_names and self.func.cfg.orig_names[v] in self.symtypes: return True
+
+            return False
+
+        def _get_type(v):
+            if v in out: return out[v]
+            if v in self.symtypes: return self.symtypes[v]
+            if v in self.func.cfg.orig_names and self.func.cfg.orig_names[v] in self.symtypes:
+                return self.symtypes[self.func.cfg.orig_names[v]]
+            
+            raise ValueError(f"{v} must be in out or symtypes")
+
         out = {}
         phi = []
         for n in self.func.cfg.nodes:
@@ -316,7 +332,7 @@ class OutputBackend(object):
                 continue
 
             phicall = pstmt.v[2]
-            ty = reduce(lambda x, y: x.union(y), [out[av.v] for av in phicall.v[2:] if av.v in out], set())
+            ty = reduce(lambda x, y: x.union(y), [_get_type(av.v) for av in phicall.v[2:] if _has_type(av.v)], set())
             out[v] = set(ty)
             assert len(out[v]) > 0, f"phi variable {v} has no types"
             assert len(out[v]) == 1, f"phi variable {v} has multiple types {out[v]}"

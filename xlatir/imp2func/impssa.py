@@ -130,7 +130,7 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
                     assert len(stmtcon.rwinfo['writes']) <= 1
                     w = w | stmtcon.rwinfo['writes']
                 else:
-                    logger.debug(f"Write to {stmtcon.rwinfo['writes']} is dead")
+                    logger.debug(f"Write to {stmtcon.rwinfo['writes']} is dead beyond BB")
             else:
                 w = w | stmtcon.rwinfo['writes']
 
@@ -151,7 +151,7 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
                         placed_phi[dfn] = set()
 
                     if w not in placed_phi[dfn]:
-                        logger.debug('Placing phi for {w} in node {n} in its dominance frontier node {dfn}')
+                        logger.debug(f'Placing phi for {w} in node {n} in its dominance frontier node {dfn}')
                         placed_phi[dfn].add(w)
                         writes[dfn].add(w)
                         placed = True
