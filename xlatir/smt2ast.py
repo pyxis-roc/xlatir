@@ -56,6 +56,12 @@ class Binary(SExpr):
 
     __repr__ = __str__
 
+def shortest_bv(value, width):
+    if width % 4 == 0:
+        return Hexadecimal(value, width // 4)
+    else:
+        return Binary(value, width)
+
 class String(SExpr):
     def __init__(self, v):
         self.v = v
@@ -124,7 +130,7 @@ def smt2_literal(v, ty, fp_as_bv=False):
             while v < 0:
                 v += 2**width
 
-        return Hexadecimal(v, width=width//4)
+        return shortest_bv(v, width)
     elif ty in ('f32', 'f64'):
         xlat = {'f32': (1, 8, 23),
                 'f64': (1, 11, 52)}
