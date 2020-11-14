@@ -449,6 +449,7 @@ class Uses(IDFA):
 
 def get_branch_targets(xirstmts):
     """Get all labels that are targets of branches"""
+    encountered_labels = set()
     labels = set()
     for s in xirstmts:
         if smt2ast.is_call(s, "branch"):
@@ -456,6 +457,10 @@ def get_branch_targets(xirstmts):
         elif smt2ast.is_call(s, "cbranch"):
             labels.add(s.v[2].v)
             labels.add(s.v[3].v)
+        elif smt2ast.is_call(s, "label"):
+            l = str(s.v[1])
+            assert l not in encountered_labels, f"Duplicate label {l}"
+            encountered_labels.add(l)
 
     logger.debug(f'Targeted branches: {labels}')
     return labels
