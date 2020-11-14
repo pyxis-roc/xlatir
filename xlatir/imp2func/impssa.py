@@ -94,7 +94,46 @@ def rename(rdef, sep='_'):
 
     return renamed
 
-def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
+
+def identify_dead_writes_for_phi(cfg, dom):
+    rdef = cfg.run_idfa(ReachingDefinitions())
+    # for each defn, construct a defn -> BB use map
+    def2bb = {}
+    def2use = {}
+    for n in cfg.nodes:
+        bb = cfg.nodes[n]
+        bb_used = set()
+        bb_defined = set()
+        for stmtcon in bb:
+            bb_defined |= stmtcon.rdef_def
+            bb_used |= stmtcon.rdef_in.intersection(functools.reduce(lambda x, y: x.union(y), [rdef.defns[x] for x in stmtcon.rwinfo['reads'] if x in rdef.defns], set()))
+
+        for d in bb_defined:
+            def2bb[d] = n
+
+        # those we use from outside the BB
+        for d in bb_used - bb_defined:
+            if d not in def2use: def2use[d] = set()
+            def2use[d].add(n)
+
+    global_used_defns = set()
+    for d in def2bb:
+        if d not in def2use: continue # never used beyond basic block
+        n = def2bb[d]
+        uses = def2use[d]
+
+        # does node n dominate all the uses?
+        for bb in uses:
+            if n not in dom.dominators[bb]:
+                # d reaches a node that is not dominated by n, so a phi function is needed
+                global_used_defns.add(d)
+                break
+
+    return global_used_defns
+
+def place_phi(cfg, dom, no_phi_for_dead_writes = True):
+    domfrontier = dom.frontier
+
     if no_phi_for_dead_writes:
         # in this case, we mean writes that do not cross BB boundaries
         # i.e., they might be used in the BB itself, but are dead beyond it.
@@ -110,10 +149,17 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
                 bb_used |= stmtcon.rdef_in.intersection(functools.reduce(lambda x, y: x.union(y), [rdef.defns[x] for x in stmtcon.rwinfo['reads'] if x in rdef.defns], set()))
 
             global_used_defns |= bb_used - bb_defined
+
+        global_used_defns_new = identify_dead_writes_for_phi(cfg, dom)
     else:
         global_used_defns = None
+        global_used_defns_new = None
 
     logger.debug(f'Global used definitions: {global_used_defns}')
+    logger.debug(f'Global used definitions new: {global_used_defns_new}')
+
+    #TODO: keep the old code around for compat
+    global_used_defns = global_used_defns_new
 
     placed_phi = dict()
     writes = dict([(k, set()) for k in cfg.nodes])
@@ -130,7 +176,7 @@ def place_phi(cfg, domfrontier, no_phi_for_dead_writes = True):
                     assert len(stmtcon.rwinfo['writes']) <= 1
                     w = w | stmtcon.rwinfo['writes']
                 else:
-                    logger.debug(f"Write to {stmtcon.rwinfo['writes']} is dead beyond BB")
+                    logger.debug(f"Write to {stmtcon.rwinfo['writes']}/{stmtcon.rdef_def} is dead beyond BB {n}")
             else:
                 w = w | stmtcon.rwinfo['writes']
 
@@ -203,7 +249,7 @@ def branches_to_functions(cfg):
 def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False, name_prefix = ''):
     get_reads_and_writes(cfg)
     dom = cfg.run_idfa(Dominators())
-    place_phi(cfg, dom.frontier)
+    place_phi(cfg, dom)
 
     if name_prefix != '': name_prefix = '_' + name_prefix
 
