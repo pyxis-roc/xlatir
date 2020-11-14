@@ -100,6 +100,29 @@ TYPE_DECLS = {'MULWIDE': {('u16', 'u16'): 'u32',
                           ('s64', 's64'): 's128',
                           }}
 
+class HandleXIRHints(ast.NodeTransformer):
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id.startswith('_xir_'):
+            n = node.func.id
+            if n == '_xir_unroll':
+                assert isinstance(node.args[0], ast.Num), node.args[0]
+                self._unroll_factor = node.args[0].n
+                return ast.Pass()
+            else:
+                raise NotImplementedError(f"Unknown XIR hint: {n}")
+
+        return node
+
+    def visit_While(self, node):
+        if self._unroll_factor is not None:
+            node._xir_unroll_factor = self._unroll_factor
+            self._unroll_factor = None
+
+        return node
+
+    def handle_hints(self, node):
+        self._unroll_factor = None
+        self.visit(node)
 
 class RewritePythonisms(ast.NodeTransformer):
     desugar_boolean_xor = True
