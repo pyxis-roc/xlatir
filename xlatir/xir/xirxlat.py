@@ -265,8 +265,8 @@ class XIRToX(ast.NodeVisitor):
 
     def visit_If(self, node):
         return self.X.xlat_If(self.visit(node.test),
-                              [self.visit(x) for x in node.body],
-                              [self.visit(x) for x in node.orelse],
+                              accumulate_body([self.visit(x) for x in node.body]),
+                              accumulate_body([self.visit(x) for x in node.orelse]),
                               node)
 
     def visit_Break(self, node):
