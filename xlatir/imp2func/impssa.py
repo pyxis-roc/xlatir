@@ -116,6 +116,9 @@ def identify_dead_writes_for_phi(cfg, dom):
             if d not in def2use: def2use[d] = set()
             def2use[d].add(n)
 
+    logger.debug(f'def2bb {def2bb}')
+    logger.debug(f'def2use {def2use}')
+
     global_used_defns = set()
     for d in def2bb:
         if d not in def2use: continue # never used beyond basic block
@@ -130,6 +133,39 @@ def identify_dead_writes_for_phi(cfg, dom):
                 break
 
     return global_used_defns
+
+def remove_dead_phi(cfg, dom):
+    rdef = cfg.run_idfa(ReachingDefinitions())
+
+    used_definitions = set()
+    for n in cfg.nodes:
+        bb = cfg.nodes[n]
+        bb_used = set()
+        bb_defined = set()
+        for stmtcon in bb:
+            bb_defined |= stmtcon.rdef_def
+            bb_used |= stmtcon.rdef_in.intersection(functools.reduce(lambda x, y: x.union(y), [rdef.defns[x] for x in stmtcon.rwinfo['reads'] if x in rdef.defns], set()))
+
+        used_definitions |= bb_used
+
+    logger.debug(f'used_definitions: {used_definitions}')
+
+    removed = False
+    for n in cfg.nodes:
+        bb = cfg.nodes[n]
+
+        out = []
+        for stmtcon in bb:
+            if is_phi(stmtcon.stmt):
+                if stmtcon.rdef_def.intersection(used_definitions) == set():
+                    removed = True
+                    continue
+
+            out.append(stmtcon)
+
+        cfg.nodes[n] = out
+
+    return removed
 
 def place_phi(cfg, dom, no_phi_for_dead_writes = True):
     domfrontier = dom.frontier
@@ -151,6 +187,7 @@ def place_phi(cfg, dom, no_phi_for_dead_writes = True):
             global_used_defns |= bb_used - bb_defined
 
         global_used_defns_new = identify_dead_writes_for_phi(cfg, dom)
+        logger.debug(f'def->var {rdef.rev_defns}')
     else:
         global_used_defns = None
         global_used_defns_new = None
@@ -199,7 +236,7 @@ def place_phi(cfg, dom, no_phi_for_dead_writes = True):
                     if w not in placed_phi[dfn]:
                         logger.debug(f'Placing phi for {w} in node {n} in its dominance frontier node {dfn}')
                         placed_phi[dfn].add(w)
-                        writes[dfn].add(w)
+                        writes[dfn].add(w) #TODO: adding a write to the DF is only useful if there is a consumer otherwise it's a dead phi
                         placed = True
 
     logger.debug(f'placed_phi = {placed_phi}')
@@ -212,6 +249,11 @@ def place_phi(cfg, dom, no_phi_for_dead_writes = True):
                                                                   smt2ast.Symbol(v))))
             bb.insert(0, phistmt)
             phistmt.rwinfo = {'reads': set([v]), 'writes': set([v])}
+
+    if no_phi_for_dead_writes:
+        while remove_dead_phi(cfg, dom):
+            pass
+
 
 def branches_to_functions(cfg):
     def fixup_branch(stmt, *indices):

@@ -29,7 +29,13 @@ class Stmt(object):
         self.stmt = stmt
 
     def __str__(self):
-        return f"Stmt(stmt={repr(self.stmt)})"
+        attrs = ['rdef_def', 'rwinfo']
+        out = [f'stmt={repr(self.stmt)}']
+        for a in attrs:
+            if hasattr(self, a):
+                out.append(f'{a}={getattr(self, a)}')
+
+        return f"Stmt({', '.join(out)})"
 
     __repr__ = __str__
 
