@@ -66,8 +66,17 @@ def rename(rdef, sep='_'):
         for i in range(len(bb)):
             stmtcon = bb[i]
             stmt = stmtcon.stmt
-            rd = stmtcon.rdef_in
-            replacements = [defn2var[rdd] for rdd in rd]
+
+            if not is_phi(stmt):
+                rd = stmtcon.rdef_in
+                replacements = [defn2var[rdd] for rdd in rd]
+            else:
+                # when there are more than > 2 pred, we get definitions from each path
+                # otherwise we'll get complaints of missing definitions for a phi statement
+                replacements = []
+                for pred in rdef.cfg.pred[n]:
+                    rd = rdef.cfg.nodes[pred][-1].rdef_out
+                    replacements.extend([defn2var[rdd] for rdd in rd])
 
             # restrict definitions to those actually used, needed when phis are not placed for dead writes
             replacements = [x for x in replacements if x[0] in stmtcon.rwinfo['reads']]
@@ -243,10 +252,10 @@ def place_phi(cfg, dom, no_phi_for_dead_writes = True):
     for n, phiv in placed_phi.items():
         bb = cfg.nodes[n]
         for v in phiv:
+            incoming = [smt2ast.Symbol(v) for i in range(len(cfg.pred[n]))]
             phistmt = Stmt(smt2ast.SExprList(smt2ast.Symbol('='), smt2ast.Symbol(v),
                                                 smt2ast.SExprList(smt2ast.Symbol('phi'),
-                                                                  smt2ast.Symbol(v),
-                                                                  smt2ast.Symbol(v))))
+                                                                  *incoming)))
             bb.insert(0, phistmt)
             phistmt.rwinfo = {'reads': set([v]), 'writes': set([v])}
 
