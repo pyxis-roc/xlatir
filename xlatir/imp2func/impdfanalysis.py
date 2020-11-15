@@ -29,7 +29,7 @@ class Stmt(object):
         self.stmt = stmt
 
     def __str__(self):
-        attrs = ['rdef_def', 'rwinfo']
+        attrs = ['rdef_def', 'rwinfo', 'rdef_in', 'rdef_out']
         out = [f'stmt={repr(self.stmt)}']
         for a in attrs:
             if hasattr(self, a):
@@ -466,7 +466,10 @@ def get_branch_targets(xirstmts):
     return labels
 
 def get_symbols(s):
-    def _get_symbols(s, out=set()):
+    def _get_symbols(s, out=None):
+        if out is None:
+            out = set()
+
         if isinstance(s, (smt2ast.Symbol, smt2ast.QuotedSymbol)):
             out.add(s.v)
         elif isinstance(s, smt2ast.SExprList):

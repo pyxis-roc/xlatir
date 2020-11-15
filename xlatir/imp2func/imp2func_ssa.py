@@ -33,7 +33,7 @@ def load_xir(xirf):
 class FunctionalCFG(object):
     """Convert a CFG in SSA form to a functional program."""
 
-    def __init__(self, cfg, globalvars = set(), keep_dead_writes = False):
+    def __init__(self, cfg, globalvars = None, keep_dead_writes = False):
         self.cfg = cfg
         self.formal_parameters = {} # formal parameters for BB that contain phi functions
         self.let_levels = {} # nesting levels of let statements -- 0 is parameter
@@ -47,6 +47,7 @@ class FunctionalCFG(object):
         self._bb_formal_params()
 
         uses = self.cfg.run_idfa(Uses())
+        if globalvars is None: globalvars = set()
         self.captured_parameters = dict([(k, list(v - globalvars)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
 
         self.rdef = self.cfg.run_idfa(ReachingDefinitions())
@@ -198,7 +199,10 @@ class FunctionalCFG(object):
         else:
             raise NotImplementedError(f"Don't support more than 2 successors for node {n}")
 
-    def dump_nested(self, output_engine, n = "_START", indent = 0, visited = set()):
+    def dump_nested(self, output_engine, n = "_START", indent = 0, visited = None):
+        if visited is None:
+            visited = set()
+
         if n in visited:
             return
 
@@ -246,7 +250,10 @@ class FunctionalCFG(object):
                 elif smt2ast.is_call(stmt, "cbranch"):
                     _fixup(stmt.v[2], stmt.v[3])
 
-    def dump_linear(self, output_engine, n = "_START", visited = set()):
+    def dump_linear(self, output_engine, n = "_START", visited = None):
+        if visited is None:
+            visited = set()
+
         # define functions
         if n in self.dom.domtree:
             # nodes that don't dominate other nodes won't be found in dominator tree
@@ -310,7 +317,7 @@ class OutputBackend(object):
             if v in self.symtypes: return self.symtypes[v]
             if v in self.func.cfg.orig_names and self.func.cfg.orig_names[v] in self.symtypes:
                 return self.symtypes[self.func.cfg.orig_names[v]]
-            
+
             raise ValueError(f"{v} must be in out or symtypes")
 
         out = {}
