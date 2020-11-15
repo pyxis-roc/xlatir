@@ -18,6 +18,7 @@ import copy
 import xirpeval
 from collections import namedtuple
 import imp2func_ssa
+#import astunparse
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rm': 'RTN', # negative inf
@@ -48,6 +49,9 @@ FIELDS_TO_DT = dict([(dt.fieldtypes, Symbol(dt.name)) for dt in DATA_TYPES_LIST]
 
 def bool_to_pred(x):
     return SExprList(Symbol("bool_to_pred"), x)
+
+def pred_to_bool(x):
+    return SExprList(Symbol("pred_to_bool"), x)
 
 def generic_round(fn, nargs):
     if nargs == 1:
@@ -176,14 +180,19 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('LT', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvslt'), x, y)),
                    ('LT', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.lt'), x, y)),
 
-                   ('NOTEQ', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList("=", x, y))),
-                   ('NOTEQ', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList("=", x, y))),
-                   ('NOTEQ', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList("fp.eq", x, y))),
+                   ('NOTEQ', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
+                   ('NOTEQ', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
+                   ('NOTEQ', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("fp.eq"), x, y))),
 
 
                    ('GTE', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvuge'), x, y)),
                    ('GTE', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsge'), x, y)),
                    ('GTE', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.geq'), x, y)),
+
+                   ('LTE', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvule'), x, y)),
+                   ('LTE', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsle'), x, y)),
+                   ('LTE', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.leq'), x, y)),
+
 
                    ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)),
 
@@ -481,7 +490,7 @@ class SMT2lib(object):
     GTE = _do_fnop_builtin
     GT = _do_fnop_builtin
     LT = _do_fnop_builtin
-    LTE = _nie
+    LTE = _do_fnop_builtin
     EQ = _do_fnop_builtin
     NOTEQ = _do_fnop_builtin
 
@@ -719,6 +728,7 @@ class SMT2Xlator(xirxlat.Xlator):
         self.lhs_types = {}
 
     def pre_xlat_transform(self, s):
+        self.use_imp2 = False
         s = self._ref_return_fixer.fix_returns(s)
 
         self._if_exp_recognizer.visit(s)
@@ -734,12 +744,18 @@ class SMT2Xlator(xirxlat.Xlator):
         s = self._array_fn.convert(s, 'extractAndSignExt_2', 1, 2, 'na_extractAndSignExt_2')
 
         s = dearrayify(s)
+        BreakTarget().add_info(s)
+        s = UnrollWhileLoop().visit(s)
 
         return s
 
-    def get_label_suffix(self):
+    def get_label_prefix(self, suffix = ''):
         self._label += 1
-        return self._label
+        if self.x2x.fn:
+            if suffix: suffix = '_' + suffix
+            return f'{self.x2x.fn.name}_{self._label}{suffix}'
+        else:
+            return f'{suffix}{self._label}'
 
     def _get_smt2_type(self, node, declname = None):
         if isinstance(node, ast.AST):
@@ -779,6 +795,15 @@ class SMT2Xlator(xirxlat.Xlator):
                 return FIELDS_TO_DT[field_types_key]
             else:
                 raise NotImplementedError(f"Type is TyProduct, but {field_types_key} not found in FIELDS_TO_DT")
+
+        if isinstance(t, TyArray):
+            elt_type = self._get_smt2_type(t.elt)
+            assert len(t.sizes) == 1, f"Unsupported non-1D arrays: {t.sizes}"
+            if str(elt_type) == "b1":
+                # bitstrings
+                return SExprList(Symbol("_"), Symbol("BitVec"), Decimal(t.sizes[0]))
+            else:
+                raise NotImplementedError(f"Don't support {elt_type} arrays in smt2")
 
         if not isinstance(t, TyConstant):
             if isinstance(t, TyVarLiteral):
@@ -903,24 +928,80 @@ class SMT2Xlator(xirxlat.Xlator):
         return SExprList(Symbol("ite"), test, body, orelse)
 
     def _cast_to_bool(self, expr, ty):
+        tyorig = ty
         if not isinstance(ty, TyConstant):
             if isinstance(ty, TyApp):
+                tyorig = ty
                 ty = ty.ret
                 assert isinstance(ty, TyConstant), f"Return type for {expr} is not TyConstant {ty}"
             else:
                 raise NotImplementedError(f"Unknown type for condition: {ty}")
 
+        #print(expr, ty, tyorig)
+
+        if ty.value == 'bool':
+            if is_call(expr, "bool_to_pred"):
+                expr = expr.v[1]
+
+            if is_call(expr, "bvand") or is_call(expr, "bvor"):
+                return pred_to_bool(expr)
+
+            return expr
+
         if ty.value[0] in ('b', 'u', 's'):
             # integer
             width = int(ty.value[1:])
+            assert (width % 4) == 0
             falsevalue = Hexadecimal(0, width = width // 4)
         else:
             raise NotImplementedError(f"Don't know what false values look like for {ty}")
 
         return SExprList(Symbol("not"), SExprList(Symbol("="), falsevalue, expr))
 
+    def xlat_Subscript(self, var, varty, index, indexty, node):
+        #TODO: if index a literal, we can simply use extract
+
+        # (bool_to_pred (bvgt (bvand var (bvshl 1 index) ) 0)) for load
+        # (bvand var (bvnot bit)) for store
+        if is_call(varty, "_") and str(varty.v[1]) == 'BitVec':
+            width = varty.v[2].v
+            zero = shortest_bv(0, width)
+
+            if indexty.v[0] in ('b', 'u', 's'): # TODO: make a predicate for this
+                indexwidth = int(indexty.v[1:])
+                one = shortest_bv(1, width)
+                if indexwidth < width:
+                    index = SExprList(SExprList(Symbol("_"),
+                                                Symbol("zero_extend"),
+                                                Decimal(width - indexwidth)),
+                                      index)
+                elif indexwidth > width:
+                    #TODO: this could be problematic...
+                    index = SExprList(SExprList(Symbol("_"),
+                                                Symbol("extract"),
+                                                Decimal(width-1),
+                                                Decimal(0)),
+                                      index)
+            else:
+                raise NotImplementedError(f'Unknown index type {indexty} in subscript')
+
+            bit = SExprList(Symbol("bvshl"), one, index)
+
+            if isinstance(node.ctx, ast.Load):
+                out = bool_to_pred(SExprList(Symbol("not"),
+                                             SExprList(Symbol("="), zero,
+                                                       SExprList(Symbol("bvand"), var, bit))))
+            else:
+                out = (copy.deepcopy(var),
+                       copy.deepcopy(index),
+                       SExprList(Symbol("bvand"), var, SExprList(Symbol("bvnot"),
+                                                                 bit)))
+            return out
+        else:
+            raise NotImplementedError(f"Don't support {varty} for subscripts")
+
     def xlat_If(self, test, body, orelse, node):
-        l = self.get_label_suffix()
+        l = self.get_label_prefix("if")
         # cbranch (cond) truepart falsepart
         # truepart ends with branch to part after
         # falsepart ends with branch to part after
@@ -928,8 +1009,13 @@ class SMT2Xlator(xirxlat.Xlator):
 
         cond = self._cast_to_bool(test, self.x2x._get_type(node.test._xir_type))
         true_label = f"if_{l}_true"
-        false_label = f"if_{l}_false"
-        next_label = f"if_{l}_end" if len(orelse) else false_label
+
+        if hasattr(node, '_xir_loop_id'):
+            next_label = self._get_break_label(node._xir_loop_id)
+        else:
+            next_label = f"if_{l}_end"
+
+        false_label = f"if_{l}_false" if len(orelse) else next_label
 
         out = [SExprList(Symbol("cbranch"), cond,
                          Symbol(true_label),
@@ -938,17 +1024,35 @@ class SMT2Xlator(xirxlat.Xlator):
                SExprList(Symbol("label"), Symbol(true_label))]
 
         out.extend(body)
-        out.append(SExprList(Symbol("branch"), Symbol(next_label)))
-        out.append(SExprList(Symbol("label"), Symbol(false_label)))
-        out.extend(orelse)
-        if len(orelse):
+
+        # if last statement is a break, don't add additional branch
+        if len(body) and not is_call(body[-1], "branch"):
             out.append(SExprList(Symbol("branch"), Symbol(next_label)))
 
+        out.append(SExprList(Symbol("label"), Symbol(false_label)))
+        out.extend(orelse)
+
+        if len(orelse):
+            if not is_call(orelse[-1], "branch"):
+                out.append(SExprList(Symbol("branch"), Symbol(next_label)))
+
+        if false_label != next_label:
+            out.append(SExprList(Symbol("label"), Symbol(next_label)))
+
         return out
-        raise NotImplemented("Don't support If in SMT2 yet")
+        #raise NotImplemented("Don't support If in SMT2 yet")
+
+    def _get_break_label(self, loop_id):
+        if self.x2x.fn:
+            lbl = f'{self.x2x.fn.name}_loop_break_{loop_id}'
+        else:
+            lbl = f'loop_break_{loop_id}'
+
+        return lbl
 
     def xlat_Break(self, node):
-        raise NotImplemented("Don't support Break loops in SMT2 yet")
+        return SExprList(Symbol("branch"), Symbol(self._get_break_label(node._xir_loop_id)))
+        #raise NotImplemented("Don't support Break loops in SMT2 yet")
 
     def xlat_float_val(self, v, vty):
         assert vty.v in ('f32', 'f64'), f"Unsupported float constant type {vty}"
@@ -985,8 +1089,11 @@ class SMT2Xlator(xirxlat.Xlator):
         return bool_to_pred(fn)
 
     def xlat_Call(self, fn, fnty, args, node):
-        arglen = len(fnty) - 1
-        return SExprList(Symbol(fn), *args[:arglen])
+        if fn == 'BITSTRING' or fn == 'FROM_BITSTRING':
+            return args[0]
+        else:
+            arglen = len(fnty) - 1
+            return SExprList(Symbol(fn), *args[:arglen])
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
@@ -1004,6 +1111,26 @@ class SMT2Xlator(xirxlat.Xlator):
             self.lhs_types[self.x2x.fn.name] = {}
 
         self.lhs_types[self.x2x.fn.name][str(var)] = set([ty])
+
+    def _handle_bitstring_assign(self, lhs, rhs, node):
+        assert len(node.targets) == 1
+        assert isinstance(lhs, tuple)
+
+        var, index, lhsexpr = lhs
+        if isinstance(node, ast.Assign):
+            lhsty = self.get_native_type(node.targets[0].value._xir_type)
+        else:
+            lhsty = self.get_native_type(node.targets.value._xir_type)
+
+        width = lhsty.v[2].v
+        rhsexpr = SExprList(SExprList(Symbol("_"), Symbol("zero_extend"), Decimal(width - 1)),
+                            rhs)
+
+        rhsexpr = SExprList(Symbol("bvshl"), rhsexpr, index)
+
+        return SExprList(Symbol("="), var, SExprList(Symbol("bvor"),
+                                                     lhsexpr,
+                                                     rhsexpr))
 
     def xlat_Assign(self, lhs, rhs, node):
         if isinstance(lhs, list):
@@ -1035,6 +1162,8 @@ class SMT2Xlator(xirxlat.Xlator):
                 self.record_type(ln, fty)
 
             return out
+        elif isinstance(lhs, tuple):
+            return self._handle_bitstring_assign(lhs, rhs, node)
         else:
             if is_call(lhs, "_xir_attr_ref"):
                 out = [SExprList(Symbol("="), lhs, rhs)]
@@ -1055,9 +1184,15 @@ class SMT2Xlator(xirxlat.Xlator):
                 return out
             else:
                 if isinstance(node, ast.Assign):
-                    self.record_type(lhs, self._get_smt2_type(node.targets[0]))
+                    pylhs = node.targets[0]
+                    lhsty = self._get_smt2_type(node.targets[0])
+                    self.record_type(lhs, lhsty)
                 else:
-                    self.record_type(lhs, self._get_smt2_type(node.target))
+                    # AugAssign
+                    pylhs = node.target
+                    lhsty = self._get_smt2_type(node.target)
+
+                self.record_type(lhs, lhsty)
 
                 return SExprList(Symbol("="), lhs, rhs)
 
@@ -1092,7 +1227,7 @@ class SMT2Xlator(xirxlat.Xlator):
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16',
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
-
+            #print("\n".join([str(s) for s in body]))
             imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = True)
             output = backend.get_output()
 
@@ -1196,6 +1331,31 @@ class RefReturnFixer(ast.NodeVisitor):
                 r.value = ast.Tuple(elts=[r.value] + self._ref_args, ctx = ast.Load())
 
         return node
+
+class BreakTarget(ast.NodeVisitor):
+    """Add branch metadata to break statements"""
+
+    def visit_While(self, node):
+        self.loop_id += 1
+        myid = self.loop_id
+        self.loops.append(myid)
+        self.breaks.append(False)
+        self.generic_visit(node)
+
+        self.loops.pop()
+        has_break = self.breaks.pop()
+        if has_break:
+            node._xir_loop_id = myid
+
+    def visit_Break(self, node):
+        self.breaks[-1] = True
+        node._xir_loop_id = self.loops[-1]
+
+    def add_info(self, node):
+        self.loop_id = 0
+        self.breaks = []
+        self.loops = []
+        self.visit(node)
 
 class IfExpRecognizer(ast.NodeVisitor):
     def visit_If(self, node):
@@ -1324,6 +1484,31 @@ class ArrayFn(ast.NodeTransformer):
         self._array_fn_rename = array_fn_rename
 
         return self.visit(node)
+
+class UnrollWhileLoop(ast.NodeTransformer):
+    def visit_While(self, node):
+        if not hasattr(node, '_xir_unroll_factor'):
+            return node
+
+        test = self.visit(node.test)
+        body = [self.visit(s) for s in node.body]
+
+        if len(node.orelse) > 0:
+            raise NotImplementedError(f"Don't know how to unroll While loops with orelse {node.orelse}")
+
+        unroll_factor = node._xir_unroll_factor
+        unrolled = ast.If(test, body, [])
+        orig = unrolled
+
+        for i in range(unroll_factor - 1):
+            body = unrolled.body
+            body.append(copy.deepcopy(unrolled))
+            unrolled = body[-1]
+
+        if hasattr(node, '_xir_loop_id'):
+            orig._xir_loop_id = node._xir_loop_id
+
+        return orig
 
 def dearrayify(s):
     # we need this here because we convert array functions to

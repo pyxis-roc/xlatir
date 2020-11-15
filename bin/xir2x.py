@@ -17,6 +17,7 @@ import xirxlat
 import xir2c
 import xir2smt2
 import logging
+import sys
 
 if __name__ == "__main__":
     import argparse
@@ -41,6 +42,7 @@ if __name__ == "__main__":
         translator.X = xir2c.CXlator(translator)
     elif args.language == "smt2":
         translator.X = xir2smt2.SMT2Xlator(translator)
+        sys.setrecursionlimit(2500)
     else:
         assert False, f"Unrecognized language {args.language}"
 
