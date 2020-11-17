@@ -778,6 +778,7 @@ if __name__ == "__main__":
     p.add_argument("--dump-cfg", dest="dump_cfg", help="Dump CFG as dot files.", action='store_true')
     p.add_argument("--prune-unreachable", dest="prune_unreachable", help="Remove unreachable nodes from CFG.", action='store_true')
     p.add_argument("--non-exit-error", help="Stop if non-exit nodes are present.", action='store_true')
+    p.add_argument("--prologue", metavar="FILE", help="Print the contents of FILE before output")
 
     args = p.parse_args()
 
@@ -814,5 +815,9 @@ if __name__ == "__main__":
                                 prune_unreachable = args.prune_unreachable,
                                 error_on_non_exit_nodes = args.non_exit_error)
     if cfg:
+        if args.prologue:
+            with open(args.prologue, "r") as f:
+                print(f.read())
+                
         print(backend.get_output())
 
