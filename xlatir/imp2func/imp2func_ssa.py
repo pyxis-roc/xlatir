@@ -818,6 +818,6 @@ if __name__ == "__main__":
         if args.prologue:
             with open(args.prologue, "r") as f:
                 print(f.read())
-                
+
         print(backend.get_output())
 
