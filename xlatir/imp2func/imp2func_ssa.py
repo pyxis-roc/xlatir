@@ -47,6 +47,10 @@ class FunctionalCFG(object):
         self._bb_formal_params()
 
         uses = self.cfg.run_idfa(Uses())
+
+        for n in uses.captured_parameters:
+            logger.debug(f'Captured parameters for {n}: {uses.captured_parameters[n]}')
+
         if globalvars is None: globalvars = set()
         self.captured_parameters = dict([(k, list(v - globalvars)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
 
@@ -546,7 +550,7 @@ class SMT2Output(OutputBackend):
 
     def get_output(self):
         def _output_fn(fo):
-            n, params, ret_type = fo[0]
+            n, params, ret_type, _ = fo[0]
             if rec:
                 out = f"(define-fun-rec {n} {params} {ret_type}"
             else:
@@ -585,6 +589,28 @@ class SMT2Output(OutputBackend):
         self.output_fn[self.fn] = self.output
         self.output = []
         self.fn = None
+
+    def check_call_types(self, call):
+        fn = str(call.v[0])
+        if fn in self.output_fn:
+            _, _, _, param_types = self.output_fn[fn][0]
+            #print(param_types, file=sys.stderr)
+            #print(call, file=sys.stderr)
+            for arg, paramnty in zip(call.v[1:], param_types):
+                if isinstance(arg, smt2ast.Symbol):
+                    try:
+                        param_name, paramty = paramnty
+                        argty = self.get_type(str(arg))
+                    except ValueError:
+                        logger.debug(f"Couldn't get type for {arg}, ignoring")
+                        continue
+
+                    if paramty != argty:
+                        logger.error(f"Type mismatch in call {call} to function {fn} (in function {self.fn}), parameter {param_name} has type {paramty}, but argument {arg} has type {argty}")
+
+                        assert paramty == argty, f'Type mismatch in call'
+
+            #print(fn, self.output_fn[fn][0], file=sys.stderr)
 
     def open_let(self):
         self.nesting += 1
@@ -632,9 +658,11 @@ class SMT2Output(OutputBackend):
         ret_type = self.get_type(self.func_types[n])
 
         if n == self.func.cfg.start_node:
-            self.output.append(self.xlat_entry_fn(n, params, ret_type))
+            t = list(self.xlat_entry_fn(n, params, ret_type))
+            t.append(params_types)
+            self.output.append(tuple(t))
         else:
-            self.output.append((n, "(" + params + ")", ret_type))
+            self.output.append((n, "(" + params + ")", ret_type, params_types))
 
         # TODO: don't use captured_params for start node, allowing them to be undefined externally.
 
@@ -659,14 +687,28 @@ class SMT2Output(OutputBackend):
         if ss: self.output.append("  "*self.nesting + ss)
 
     def _strify_stmt(self, s):
+        def _nullary_strip(calls):
+            out = []
+            for x in calls:
+                if isinstance(x, smt2ast.SExprList) and len(x.v) == 1:
+                    out.append(x.v[0]) # turn (x) -> x
+                else:
+                    out.append(x)
+
+            return out
+
         if smt2ast.is_call(s, "="):
             return f"(= {s.v[1]} {self._strify_stmt(s.v[2])})"
         elif smt2ast.is_call(s, "type"):
             return ""
         elif smt2ast.is_call(s, "branch"):
-            return self._strify_stmt(s.v[1])
+            self.check_call_types(s.v[1])
+            return self._strify_stmt(_nullary_strip([s.v[1]])[0])
         elif smt2ast.is_call(s, "cbranch"):
-            return f"(ite {self._strify_stmt(s.v[1])} {self._strify_stmt(s.v[2])} {self._strify_stmt(s.v[3])})"
+            self.check_call_types(s.v[2])
+            self.check_call_types(s.v[3])
+            fc = _nullary_strip([s.v[2], s.v[3]])
+            return f"(ite {self._strify_stmt(s.v[1])} {self._strify_stmt(fc[0])} {self._strify_stmt(fc[1])})"
         elif isinstance(s, (smt2ast.Symbol, smt2ast.Decimal, smt2ast.Numeral, smt2ast.Hexadecimal, smt2ast.Binary)):
             return str(s)
         elif isinstance(s, smt2ast.String):
