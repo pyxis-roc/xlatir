@@ -121,6 +121,12 @@ class ControlFlowGraph(object):
 
         self.edges = [(u, v) for (u, v) in self.edges if not (u in nodes or v in nodes)]
 
+    def add_edge(self, src, dst):
+        if dst not in self.succ[src]:
+            self.succ[src].add(dst)
+            self.pred[dst].add(src)
+            self.edges.append((src, dst))
+
     def check_non_exit(self, prune_non_exit = False):
         """Check for nodes that can be reached, but cannot reach EXIT. Must be
            executed after check_unreachable for relevant results."""
@@ -702,3 +708,55 @@ def get_cfg(xirstmts, name_prefix = ''):
         nodes[n] = [Stmt(s) for s in nodes[n]]
 
     return ControlFlowGraph(nodes, cfg_edges, name_prefix)
+
+def remove_branch_cascades(cfg):
+    # identify basic blocks that only do have a label and a branch
+    def find(x):
+        if x not in targets:
+            return x
+
+        tgt = find(targets[x])
+        targets[x] = tgt
+        return tgt
+
+    targets = {}
+    labels_to_nodes = {}
+
+    for n in cfg.nodes:
+        bb = cfg.nodes[n]
+        if smt2ast.is_call(bb[-1].stmt, 'branch'):
+            if len(bb) == 2 and smt2ast.is_call(bb[0].stmt, 'label'):
+                lbl = str(bb[0].stmt.v[1])
+                tgt = str(bb[-1].stmt.v[1])
+                labels_to_nodes[lbl] = n
+                targets[lbl] = tgt
+
+    # find the final target branch for each branch only node
+    # assumes no loops! else infinite loop
+    changed = True
+    while changed:
+        changed = False
+
+        for t in targets:
+            ot = targets[t]
+            nt = find(t)
+            changed = changed or (ot != nt)
+
+    # patch up branches to nodes that are being removed
+    for n in cfg.nodes:
+        if n in targets: continue
+        bb = cfg.nodes[n]
+        stmt = bb[-1].stmt
+        if smt2ast.is_call(stmt, 'branch') or smt2ast.is_call(stmt, 'cbranch'):
+            for x in range(1, len(stmt.v)):
+                lbl = str(stmt.v[x])
+                if lbl in targets:
+                    tgt = targets[lbl]
+                    stmt.v[x] = smt2ast.Symbol(tgt)
+                    cfg.add_edge(n, tgt)
+        else:
+            if n != cfg.exit_node:
+                raise NotImplementedError(f"Need a branch or cbranch at end of basic block {bb}")
+
+    # remove branch-only nodes
+    cfg.remove_nodes([labels_to_nodes[x] for x in targets])

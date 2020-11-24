@@ -761,6 +761,9 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
             logger.error("Exiting on presence of non-exit nodes as requested")
             return None
 
+    if True:
+        remove_branch_cascades(cfg)
+        
     if dump_cfg:
         logging.debug(f'Dumping initial CFG to cfg{"_" if name_prefix else ""}{name_prefix}.dot')
         cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
