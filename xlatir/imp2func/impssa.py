@@ -251,13 +251,17 @@ def place_phi(cfg, dom, no_phi_for_dead_writes = True):
     logger.debug(f'placed_phi = {placed_phi}')
     for n, phiv in placed_phi.items():
         bb = cfg.nodes[n]
-        for v in phiv:
+        phistmts = []
+
+        for v in sorted(phiv): # make argument order deterministic
             incoming = [smt2ast.Symbol(v) for i in range(len(cfg.pred[n]))]
             phistmt = Stmt(smt2ast.SExprList(smt2ast.Symbol('='), smt2ast.Symbol(v),
                                                 smt2ast.SExprList(smt2ast.Symbol('phi'),
                                                                   *incoming)))
-            bb.insert(0, phistmt)
+            phistmts.append(phistmt)
             phistmt.rwinfo = {'reads': set([v]), 'writes': set([v])}
+
+        bb[0:0] = phistmts
 
     if no_phi_for_dead_writes:
         while remove_dead_phi(cfg, dom):

@@ -52,7 +52,7 @@ class FunctionalCFG(object):
             logger.debug(f'Captured parameters for {n}: {uses.captured_parameters[n]}')
 
         if globalvars is None: globalvars = set()
-        self.captured_parameters = dict([(k, list(v - globalvars)) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
+        self.captured_parameters = dict([(k, sorted(list(v - globalvars))) for k, v in uses.captured_parameters.items()]) # parameters that a BB reads from an enclosing scope
 
         self.rdef = self.cfg.run_idfa(ReachingDefinitions())
 
