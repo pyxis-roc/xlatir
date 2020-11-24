@@ -728,7 +728,7 @@ class SMT2Xlator(xirxlat.Xlator):
         self.lhs_types = {}
 
     def pre_xlat_transform(self, s):
-        self.use_imp2 = False
+        self._use_imp2 = False
         s = self._ref_return_fixer.fix_returns(s)
 
         self._if_exp_recognizer.visit(s)
@@ -1228,8 +1228,10 @@ class SMT2Xlator(xirxlat.Xlator):
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
             #print("\n".join([str(s) for s in body]))
-            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = True)
+            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = False)
             output = backend.get_output()
+
+        self._use_imp2 = False
 
         return [f"; :begin {name}", output, f"; :end {name}"]
 
