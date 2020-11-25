@@ -105,15 +105,21 @@ class HandleXIRHints(ast.NodeTransformer):
         if isinstance(node.func, ast.Name) and node.func.id.startswith('_xir_'):
             n = node.func.id
             if n == '_xir_unroll':
-                assert isinstance(node.args[0], ast.Num), node.args[0]
-                self._unroll_factor = node.args[0].n
-                return ast.Pass()
+                assert len(node.args) == 2, f"_xir_unroll requires two arguments"
+                assert isinstance(node.args[1], ast.Num), f"_xir_unroll second argument must be a numeric literal, not {node.args[1]}"
+
+                # left over from when _xir_unroll was a standalone hint
+                self._unroll_factor = node.args[1].n
+                return node.args[0]
             else:
                 raise NotImplementedError(f"Unknown XIR hint: {n}")
 
         return node
 
     def visit_While(self, node):
+        # should be okay since we never transform this node
+        self.generic_visit(node)
+
         if self._unroll_factor is not None:
             node._xir_unroll_factor = self._unroll_factor
             self._unroll_factor = None
