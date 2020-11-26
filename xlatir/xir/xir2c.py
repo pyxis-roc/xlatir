@@ -90,8 +90,8 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('COPYSIGN', 'float'): 'COPYSIGN',
                 ('COPYSIGN', 'double'): 'COPYSIGN',
 
-                ('MIN', 'double', 'double'): 'fmin',
-                ('MAX', 'double', 'double'): 'fmax',
+                ('MIN', 'double', 'double'): 'fmin_ptx',
+                ('MAX', 'double', 'double'): 'fmax_ptx',
                 ('MAX', '*', '*'): 'MAX',
                 ('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
                 ('MIN', '*', '*'): 'MIN',
