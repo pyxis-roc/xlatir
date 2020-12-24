@@ -12,11 +12,11 @@
 
 
 import argparse
-import smt2ast
+from .. import smt2ast
 import sys
 import itertools
-from impdfanalysis import *
-from impssa import convert_to_SSA
+from .impdfanalysis import *
+from .impssa import convert_to_SSA
 import logging
 import warnings
 

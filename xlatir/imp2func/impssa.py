@@ -8,8 +8,8 @@
 #
 # Copyright (C) 2020, University of Rochester
 
-import smt2ast
-from impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi
+from .. import smt2ast
+from .impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi
 import functools
 import logging
 

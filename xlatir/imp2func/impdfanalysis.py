@@ -8,7 +8,7 @@
 #
 # Copyright (C) 2020, University of Rochester
 
-import smt2ast
+from .. import smt2ast
 from functools import reduce
 import toposort
 import sys
