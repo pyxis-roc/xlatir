@@ -22,7 +22,8 @@ parameters. Notably, some backends (e.g. SMT2-LIB) do not support the
 nested form and will always produce linear form.
 
 The `imp2` package can be used from the command-line or through its
-API. However, as of this release, a Python package is not provided.
+API. This document contains information on using it from the
+command-line. An API description will be provided later.
 
 # Example Usage
 
