@@ -9,6 +9,10 @@
 #
 # from xlatxir.xir.anno import *
 
+import ast
+
+XIR_IGNORE = 'xirignore'
+
 def xirmacro(f):
     """Indicate that a function is an XIR macro.
 
@@ -34,3 +38,10 @@ def xirignore(f):
     """Indicate that the function should be ignored during translation."""
 
     return f
+
+def has_anno(f, anno: str):
+    for d in f.decorator_list:
+        if isinstance(d, ast.Name) and d.id == anno:
+            return True
+
+    return False
