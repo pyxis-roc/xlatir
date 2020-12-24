@@ -13,11 +13,12 @@ from xirtyping import *
 import textwrap
 import os
 import struct
-from smt2ast import *
+#from smt2ast import *
+from xlatir.smt2ast import *
 import copy
 import xirpeval
 from collections import namedtuple
-import imp2func_ssa
+from xlatir.imp2func import imp2func_ssa
 #import astunparse
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
@@ -1219,6 +1220,7 @@ class SMT2Xlator(xirxlat.Xlator):
                 self.record_type(pty.v[0], pty.v[1])
 
             self.lhs_types[name]['_retval'] = set([retval])
+            #body.insert(0, SExprList(Symbol("param"), *[pty.v[0] for pty in params]))
             body[-1] = SExprList(Symbol("return"), body[-1])
             backend = imp2func_ssa.SMT2Output(self.lhs_types[name],
                                               entry_fn = lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
@@ -1227,8 +1229,8 @@ class SMT2Xlator(xirxlat.Xlator):
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16',
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
                                                          'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
-            #print("\n".join([str(s) for s in body]))
-            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = False)
+            print("\n".join([str(s) for s in body]))
+            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = True)
             output = backend.get_output()
 
         self._use_imp2 = False

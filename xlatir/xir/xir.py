@@ -296,13 +296,14 @@ class RewritePythonisms(ast.NodeTransformer):
         return node
 
 class TypeEqnGenerator(ast.NodeVisitor):
-    def __init__(self):
+    def __init__(self, user_decls = None):
         self.type_variables = {}
         self.equations = []
         self.call_types = [] # track function call and argument types
         self.ret = 0
         self.literal_index = 0
         self.fn = None
+        self.declarations = {} if user_decls is None else user_decls
 
     def generate_type_variable(self, name, literal=None):
         assert name not in self.type_variables
@@ -825,6 +826,16 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                                     [arraysz])])))
             _set_fn_node_type(node, fnt)
             return ret
+        elif fn in self.declarations:
+            declty = self.declarations[fn]
+            if isinstance(declty, TyApp):
+                declty = PolyTyDef([], self.declarations[fn].copy())
+            else:
+                raise NotImplementedError(f'Do not handle declaration type {declty}')
+
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, declty)
+            _set_fn_node_type(node, fnt)
+            return ret
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
         self.ret += 1
@@ -883,11 +894,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(test, TyConstant('bool')))
 
-def infer_types(insn_sem, type_decls = None):
+def infer_types(insn_sem, type_decls = None, user_decls = None):
     # generate type equations
     print(astunparse.unparse(insn_sem))
     print(ast.dump(insn_sem))
-    eqg = TypeEqnGenerator()
+    eqg = TypeEqnGenerator(user_decls = user_decls)
     eqg.visit(insn_sem)
     reps = {}
     #print(eqg.type_variables)

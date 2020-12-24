@@ -12,6 +12,7 @@ import xir
 import ast
 import extract_ex_semantics
 from xirtyping import *
+import xirtyping
 import os
 import xirxlat
 import xir2c
@@ -29,7 +30,7 @@ if __name__ == "__main__":
     p.add_argument('ptxinsn', nargs="*", help="PTX instruction in underscore form (e.g. add_u16)")
     p.add_argument('-i', dest="interactive", action="store_true", help="Interactive, fail immediately")
     p.add_argument('-d', dest="debug", action="store_true", help="Enable debugging logs")
-
+    p.add_argument('--noptx', action='store_true', help="Do not assume PTX conventions")
     args = p.parse_args()
 
     gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
@@ -46,8 +47,22 @@ if __name__ == "__main__":
     else:
         assert False, f"Unrecognized language {args.language}"
 
-    if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
-        args.ptxinsn = [k[len("execute_"):] for k in semantics]
+    usrdecls = None
+    if args.noptx:
+        import xlatir.xir.usrlib as usrlib
+        import xlatir.xir.anno as xiranno
+
+        usrdecls = {}
+        d2t = usrlib.Decl2Type(xirtyping)
+        for f in semantics:
+            if usrlib.is_xir_declaration(semantics[f]):
+                usrdecls[f] = d2t.from_FunctionDef(semantics[f])
+            else:
+                if not xiranno.has_anno(semantics[f], xiranno.XIR_IGNORE):
+                    args.ptxinsn.append(f)
+    else:
+        if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
+            args.ptxinsn = [k[len("execute_"):] for k in semantics if k.startswith("execute_")]
 
     out = []
     defns = []
@@ -59,13 +74,18 @@ if __name__ == "__main__":
     rp.desugar_boolean_xor = translator.X.desugar_boolean_xor
     for pi in args.ptxinsn:
         print("==>", pi)
-        sem = semantics["execute_" + pi]
+
+        if args.noptx:
+            sem = semantics[pi]
+        else:
+            sem = semantics["execute_" + pi]
+
         xh.handle_hints(sem)
         rp.visit(sem)
         sem = translator.X.pre_xlat_transform(sem)
 
         try:
-            ty = xir.infer_types(sem, xir.TYPE_DECLS)
+            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls)
         except AssertionError as e:
             if not args.interactive:
                 tyerrors.append((pi, e))
