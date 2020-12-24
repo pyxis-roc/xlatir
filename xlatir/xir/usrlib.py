@@ -11,7 +11,6 @@
 
 
 import ast
-from .typing import *
 
 XIR_DECL_ANNO = 'xirdecl'
 
@@ -42,11 +41,13 @@ def load_xir_declarations(srcfile):
 
 class Decl2Type(object):
     TypeConstants = set(['u32', 'b32', 'f32', 's32'])
+    def __init__(self, typing):
+        self.typing = typing # hack, for now
 
     def py_type_expr_to_xirtype(self, expr):
         if isinstance(expr, ast.Name):
             if expr.id in self.TypeConstants:
-                return TyConstant(expr.id)
+                return self.typing.TyConstant(expr.id)
             else:
                 raise SyntaxError(f'Unknown type constant {expr.id}')
         else:
@@ -67,7 +68,5 @@ class Decl2Type(object):
             else:
                 raise SyntaxError(f'All arguments must be annotated with types')
 
-            print(a.arg, a.annotation)
-
-        return TyApp(ret, arg_types)
+        return self.typing.TyApp(ret, arg_types)
 
