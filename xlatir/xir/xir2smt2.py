@@ -134,6 +134,10 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 
                    ('DIV', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvudiv"), x, y),
                    ('DIV', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsdiv"), x, y),
+
+                   ('IDIV', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvudiv"), x, y),
+                   ('IDIV', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsdiv"), x, y),
+
                    ('DIV', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.div"),
                                                                      Symbol("roundNearestTiesToEven"),
                                                                      x, y),
@@ -148,6 +152,10 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('REM', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvurem"), x, y),
                    # TODO: investigate since this could be bvsmod and is machine-specific
                    ('REM', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsrem"), x, y),
+
+                   ('MOD', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvurem"), x, y),
+                   # TODO: investigate since this could be bvsmod and is machine-specific
+                   ('MOD', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsrem"), x, y),
 
                    ("MACHINE_SPECIFIC_execute_rem_divide_by_neg", "signed", "signed"): lambda x, y: SExprList(Symbol("bvsrem"), x, SExprList(Symbol("bvneg"), y)), # this is probably the same as bvsrem?
 
@@ -343,6 +351,12 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ("zext_64", 'b32'): lambda x: SExprList(SExprList(Symbol('_'),
                                                                      Symbol('zero_extend'),
                                                                      Decimal(32)), x),
+                   ("zext_64", 'u32'): lambda x: SExprList(SExprList(Symbol('_'),
+                                                                     Symbol('zero_extend'),
+                                                                     Decimal(32)), x),
+                   ("zext_64", 'u16'): lambda x: SExprList(SExprList(Symbol('_'),
+                                                                     Symbol('zero_extend'),
+                                                                     Decimal(48)), x),
 
                    ("sext_16", 'b16'): lambda x: x,
                    ("sext_16", 'u16'): lambda x: x,
@@ -508,7 +522,9 @@ class SMT2lib(object):
     SUB = _do_fnop_builtin
     MUL = _do_fnop_builtin
     DIV = _do_fnop_builtin
+    IDIV = _do_fnop_builtin
     REM = _do_fnop_builtin
+    MOD = _do_fnop_builtin
 
     zext_64 = _do_fnop
     truncate_16 = _do_fnop_builtin
@@ -1237,7 +1253,7 @@ class SMT2Xlator(xirxlat.Xlator):
 
         return [f"; :begin {name}", output, f"; :end {name}"]
 
-    def write_output(self, output, translations, defns):
+    def write_output(self, output, translations, defns, ptx = True):
         def include_file(inc, outf):
             with open(os.path.join(os.path.dirname(__file__), inc), "r") as incl:
                 print(f"; begin-include {inc}", file=outf)
@@ -1444,6 +1460,17 @@ class ArrayFn(ast.NodeTransformer):
 
         return node
 
+    def _make_num(self, v):
+        # 3.8+
+        if hasattr(ast, 'Constant'):
+            o = ast.Constant(v)
+            if not hasattr(o, 'kind'):
+                o.kind = None # 3.8 bug?
+        else:
+            o = ast.Num(v)
+
+        return o
+
     def visit_FunctionDef(self, node):
         self._converted = False
         self._arrays = set()
@@ -1453,7 +1480,7 @@ class ArrayFn(ast.NodeTransformer):
             # assists dearrayification
             out = []
             for v, sz in self._arrays:
-                initializer = ast.List([ast.Num(0)]*sz, ast.Load())
+                initializer = ast.List([self._make_num(0)]*sz, ast.Load())
                 node.body.insert(0, ast.Assign([ast.Name(v, ast.Store())], initializer))
 
         return node
@@ -1469,10 +1496,10 @@ class ArrayFn(ast.NodeTransformer):
             for i in range(self._array_sz):
                 call = copy.deepcopy(node)
                 call.func.id = self._array_fn_rename
-                call.args[self._array_arg_idx] = ast.Num(i)
+                call.args[self._array_arg_idx] = self._make_num(i)
 
                 out.append(ast.Assign([ast.Subscript(node.args[self._array_arg_idx],
-                                                    ast.Index(ast.Num(i)),
+                                                    ast.Index(self._make_num(i)),
                                                     ast.Store())],
                                       call))
 

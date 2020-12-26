@@ -581,7 +581,19 @@ class TypeEqnGenerator(ast.NodeVisitor):
         fn_name_ty = self.visit(node.func)
         fn = node.func.id if isinstance(node.func, ast.Name) else None
 
-        if fn == 'set_sign_bitWidth':
+        if fn in self.declarations:
+            declty = self.declarations[fn]
+            if isinstance(declty, TyApp):
+                declty = PolyTyDef([], self.declarations[fn].copy())
+            elif isinstance(declty, PolyTyDef):
+                declty = self.declarations[fn]
+            else:
+                raise NotImplementedError(f'Do not handle declaration type {declty}')
+
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, declty)
+            _set_fn_node_type(node, fnt)
+            return ret
+        elif fn == 'set_sign_bitWidth':
             v, fullty = _get_ty_from_fn_call(node.args[0], node.args[1],
                                              node.args[2], node.args[3])
 
@@ -824,16 +836,6 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                      TyApp(TyConstant(f'b{arraysz}'),
                                                                            [TyArray(TyConstant('b1'),
                                                                                     [arraysz])])))
-            _set_fn_node_type(node, fnt)
-            return ret
-        elif fn in self.declarations:
-            declty = self.declarations[fn]
-            if isinstance(declty, TyApp):
-                declty = PolyTyDef([], self.declarations[fn].copy())
-            else:
-                raise NotImplementedError(f'Do not handle declaration type {declty}')
-
-            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, declty)
             _set_fn_node_type(node, fnt)
             return ret
 

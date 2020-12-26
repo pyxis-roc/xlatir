@@ -42,7 +42,9 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('SUB', '*', '*'): '-',
                 ('MUL', '*', '*'): '*',
                 ('DIV', '*', '*'): '/',
+                ('IDIV', '*', '*'): '/',
                 ('REM', '*', '*'): '%',
+                ('MOD', '*', '*'): '%',
 
                 ('SHR', 'uint16_t', 'uint32_t'): 'SHR',
                 ('SHR', 'uint32_t', 'uint32_t'): 'SHR',
@@ -316,7 +318,9 @@ class Clib(object):
     SUB = _do_infix_op
     MUL = _do_infix_op
     DIV = _do_infix_op
+    IDIV = _do_infix_op
     REM = _do_infix_op
+    MOD = _do_infix_op
 
     def _do_compare_unordered(self, n, fnty, args, node):
         assert n[-1] == 'u' # unordered
@@ -671,8 +675,11 @@ class CXlator(xirxlat.Xlator):
 
         return output
 
-    def write_output(self, output, translations, defns):
-        write_output(output, translations, defns)
+    def write_output(self, output, translations, defns, ptx = True):
+        if ptx:
+            write_output_ptx(output, translations, defns)
+        else:
+            write_output_general(output, translations, defns)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',
@@ -738,7 +745,7 @@ debug_exclude = set(['execute_ld_param_u64',
 
 ]) # temporary
 
-def write_output(outfile, translations, defns):
+def write_output_ptx(outfile, translations, defns):
     header = os.path.basename(outfile)[:-2] + ".h"
     print(f"Writing {outfile}")
     with open(outfile, "w") as f:
@@ -761,6 +768,24 @@ def write_output(outfile, translations, defns):
         f.write('\n')
         f.write("\n".join(defns))
 
+def write_output_general(outfile, translations, defns):
+    # non-ptx write_output
+    header = os.path.basename(outfile)[:-2] + ".h"
+    print(f"Writing {outfile}")
+    with open(outfile, "w") as f:
+        f.write("#include <stdlib.h>\n")
+        f.write("#include <stdint.h>\n")
+        f.write("#include <math.h>\n")
+        f.write(f'#include "{header}"\n')
+        f.write("\n\n".join(translations))
+
+    print(f"Writing {header}")
+    with open(os.path.join(os.path.dirname(outfile), header), "w") as f:
+        f.write("#include <stdlib.h>\n\n")
+        f.write("#include <stdint.h>\n\n")
+        f.write("#include <math.h>\n\n")
+        f.write('\n')
+        f.write("\n".join(defns))
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert XIR semantics to C")

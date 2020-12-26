@@ -19,6 +19,33 @@ import xir2c
 import xir2smt2
 import logging
 import sys
+import warnings
+
+def load_usrlib_declarations(semantics, libs):
+    import xlatir.xir.usrlib as usrlib
+    import xlatir.xir.anno as xiranno
+
+    usrdecls = {}
+    d2t = usrlib.Decl2Type(xirtyping)
+    for f in semantics:
+        if usrlib.is_xir_declaration(semantics[f]):
+            usrdecls[f] = d2t.from_FunctionDef(semantics[f])
+        else:
+            if not xiranno.has_anno(semantics[f], xiranno.XIR_IGNORE):
+                args.ptxinsn.append(f)
+
+    for l in libs:
+        for d in usrlib.load_xir_declarations(l):
+            if isinstance(d, ast.FunctionDef):
+                f = d.name
+                if f in usrdecls:
+                    warnings.warn(f"{l}:{d.line}: Duplicate declaration for {f}")
+
+                usrdecls[f] = d2t.from_FunctionDef(d)
+            elif isinstance(d, ast.Assign): # only type declaration assignments
+                d2t.add_type_decl(d)
+
+    return usrdecls
 
 if __name__ == "__main__":
     import argparse
@@ -31,6 +58,7 @@ if __name__ == "__main__":
     p.add_argument('-i', dest="interactive", action="store_true", help="Interactive, fail immediately")
     p.add_argument('-d', dest="debug", action="store_true", help="Enable debugging logs")
     p.add_argument('--noptx', action='store_true', help="Do not assume PTX conventions")
+    p.add_argument('-l', metavar='LIBFILE', dest='lib', action='append', help="Use LIB (full filename) as a source of user-defined declarations", default=[])
     args = p.parse_args()
 
     gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
@@ -49,17 +77,7 @@ if __name__ == "__main__":
 
     usrdecls = None
     if args.noptx:
-        import xlatir.xir.usrlib as usrlib
-        import xlatir.xir.anno as xiranno
-
-        usrdecls = {}
-        d2t = usrlib.Decl2Type(xirtyping)
-        for f in semantics:
-            if usrlib.is_xir_declaration(semantics[f]):
-                usrdecls[f] = d2t.from_FunctionDef(semantics[f])
-            else:
-                if not xiranno.has_anno(semantics[f], xiranno.XIR_IGNORE):
-                    args.ptxinsn.append(f)
+        usrdecls = load_usrlib_declarations(semantics, args.lib)
     else:
         if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
             args.ptxinsn = [k[len("execute_"):] for k in semantics if k.startswith("execute_")]
@@ -111,7 +129,7 @@ if __name__ == "__main__":
 
         defns.extend(translator.defns)
 
-    translator.X.write_output(args.output, out, defns)
+    translator.X.write_output(args.output, out, defns, ptx=not args.noptx)
 
     if len(tyerrors): print("*** TYPE ERRORS")
     for x, e in tyerrors:
