@@ -18,6 +18,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert XIR/Python code to XIR/Imp")
     p.add_argument("pyfile", help="Python-syntax XIR file")
     p.add_argument("--xm", dest="expand_macros", help="Expand macros", action="store_true")
+    p.add_argument("-o", metavar="FILE", dest="output", help="Output file")
 
     args = p.parse_args()
 
@@ -40,4 +41,9 @@ if __name__ == "__main__":
         am = ApplyMacros()
         xir = am.apply(macros, mxirast)
 
-    print(astunparse.unparse(xir))
+    output = astunparse.unparse(xir)
+    if args.output:
+        with open(args.output, 'w') as f:
+            f.write(output)
+    else:
+        print(output)
