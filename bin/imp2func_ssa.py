@@ -14,6 +14,7 @@
 import argparse
 from xlatir import smt2ast
 from xlatir.imp2func.imp2func_ssa import *
+from xlatir.imp2func.passmgr import *
 import sys
 import itertools
 import logging
@@ -44,37 +45,34 @@ if __name__ == "__main__":
     else:
         logging.basicConfig()
 
-    statements = load_xir(args.xir)
+    i2f_cfg = I2FConfig(linear = args.linear,
+                        name_prefix = args.name_prefix,
+                        dump_cfg = args.dump_cfg,
+                        debug = args.debug,
+                        loglevel = logging.WARNING if not args.debug else logging.DEBUG)
 
-    if args.backend == 'python':
-        backend = PyOutput()
-    elif args.backend == 'smt2':
-        symtypes = {}
-        if not args.types:
-            for s in statements:
-                if smt2ast.is_call(s, 'type'):
-                    break
-            else:
-                print("ERROR: smt2 backend requires a types file (specify using --types) or inline types")
-                sys.exit(1)
+    i2f_cfg.prune_unreachable = args.prune_unreachable
+    i2f_cfg.error_on_non_exit_nodes = args.non_exit_error
 
-            symtypes = read_inline_types(statements)
-        else:
-            symtypes = read_types_file(args.types)
+    pm = PassManager(i2f_cfg)
+    pm.ctx.typed_backend = args.backend == 'smt2'
 
-        backend = SMT2Output(symtypes)
+    pm.add(XIRFileLoaderPass(args.xir))
+    if not args.types:
+        pm.add(InlineTypesPass())
     else:
-        raise NotImplementedError(f"Unsupported backend {args.backend}")
+        pm.add(TypesFilePass(args.types))
 
-    cfg = convert_to_functional(statements, set(args.globalvars), backend,
-                                args.linear, args.name_prefix,
-                                dump_cfg = args.dump_cfg,
-                                prune_unreachable = args.prune_unreachable,
-                                error_on_non_exit_nodes = args.non_exit_error)
-    if cfg:
-        if args.prologue:
-            with open(args.prologue, "r") as f:
-                print(f.read())
+    pm.add(InitBackendPass(args.backend))
 
-        print(backend.get_output())
+    pm.add(LegacyConvertToFunctionalPass(args.globalvars))
 
+    pm.add(SetStdOutPass())
+    if args.prologue:
+        with open(args.prologue, "r") as f:
+            pm.add(PrologueOutputPass(f.read()))
+
+    pm.add(BackendOutputPass())
+
+    if not pm.run_all():
+        sys.exit(1)

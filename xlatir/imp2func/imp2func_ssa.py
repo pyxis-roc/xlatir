@@ -19,6 +19,7 @@ from .impdfanalysis import *
 from .impssa import convert_to_SSA
 import logging
 import warnings
+from .passmgr import PassManager, InterPassContext, Pass
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,16 @@ def load_xir(xirf):
         statements = p.parse(code)
 
         return statements
+
+class XIRFileLoaderPass(Pass):
+    def __init__(self, fname):
+        self.fname = fname
+
+    def run(self, ctx):
+        ctx.filename = self.fname
+        stmts = load_xir(self.fname)
+        ctx.statements = stmts
+        return True
 
 class FunctionalCFG(object):
     """Convert a CFG in SSA form to a functional program."""
@@ -737,6 +748,24 @@ def convert_ssa_to_functional(backend, ssa_cfg, globalvars, linear = False):
     fcfg = FunctionalCFG(ssa_cfg, globalvars)
     fcfg.convert(backend)
 
+class LegacyConvertToFunctionalPass(Pass):
+    """Invokes a canned set of routines. Do not use."""
+
+    def __init__(self, globalvars):
+        self.gv = set(globalvars)
+
+    def run(self, ctx):
+        cfg = convert_to_functional(ctx.statements,
+                                    self.gv,
+                                    ctx.backend,
+                                    linear=ctx.config.linear,
+                                    name_prefix=ctx.config.name_prefix,
+                                    dump_cfg=ctx.config.dump_cfg,
+                                    prune_unreachable=ctx.config.prune_unreachable,
+                                    error_on_non_exit_nodes = ctx.config.error_on_non_exit_nodes)
+        ctx.cfg = cfg
+        return cfg is not None
+
 def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False, prune_unreachable = False, error_on_non_exit_nodes = False):
     if len(statements) and smt2ast.is_call(statements[0], "global"):
         inline_globals = set([str(s) for s in statements[0].v[1:]])
@@ -763,7 +792,7 @@ def convert_to_functional(statements, globalvars, backend, linear = False, name_
 
     if True:
         remove_branch_cascades(cfg)
-        
+
     if dump_cfg:
         logging.debug(f'Dumping initial CFG to cfg{"_" if name_prefix else ""}{name_prefix}.dot')
         cfg.dump_dot(f'cfg{"_" if name_prefix else ""}{name_prefix}.dot')
@@ -794,6 +823,19 @@ def read_inline_types(stmts):
     logger.debug(f'Inline types: {out}')
     return out
 
+class InlineTypesPass(Pass):
+    def run(self, ctx):
+        for s in ctx.statements:
+            if smt2ast.is_call(s, 'type'):
+                break
+        else:
+            if ctx.typed_backend:
+                logger.error("{ctx.backend} bacend requires a types file (specify using --types) or inline types")
+                return False
+
+        ctx.types = read_inline_types(ctx.statements)
+        return True
+
 def read_types_file(tf):
     out = {}
     with open(tf, "r") as f:
@@ -808,6 +850,50 @@ def read_types_file(tf):
     logger.debug(f'Types from file {tf}: {out}')
 
     return out
+
+class TypesFilePass(Pass):
+    def __init__(self, typesfile):
+        self.typesfile = typesfile
+
+    def run(self, ctx):
+        ctx.types = read_types_file(self.typesfile)
+        return True
+
+class SetStdOutPass(Pass):
+    def __init__(self):
+        pass
+
+    def run(self, ctx):
+        import sys
+        ctx.output = sys.stdout
+        return True
+
+class PrologueOutputPass(Pass):
+    def __init__(self, prologue):
+        self.prologue = prologue
+
+    def run(self, ctx):
+        print(self.prologue, file=ctx.output)
+        return True
+
+class BackendOutputPass(Pass):
+    def run(self, ctx):
+        print(ctx.backend.get_output(), file=ctx.output)
+        return True
+
+class InitBackendPass(Pass):
+    def __init__(self, backend):
+        self.backend = backend
+
+    def run(self, ctx):
+        if self.backend == 'python':
+            ctx.backend = PyOutput()
+        elif self.backend == 'smt2':
+            ctx.backend = SMT2Output(ctx.types)
+        else:
+            raise NotImplementedError(f"Unsupported backend {self.backend}")
+
+        return True
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Convert imperative code to functional code")
