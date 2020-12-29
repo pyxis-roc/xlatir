@@ -296,7 +296,7 @@ class RewritePythonisms(ast.NodeTransformer):
         return node
 
 class TypeEqnGenerator(ast.NodeVisitor):
-    def __init__(self, user_decls = None):
+    def __init__(self, user_decls = None, trim_args_ptxcompat = False):
         self.type_variables = {}
         self.equations = []
         self.call_types = [] # track function call and argument types
@@ -304,6 +304,10 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.literal_index = 0
         self.fn = None
         self.declarations = {} if user_decls is None else user_decls
+        self.stats = {'totalfns': 0, 'usrlibfns': 0, 'unkfns': 0}
+
+        # disregard excess arguments (sign, type, width annotations) when generating type equations
+        self.trim_args_ptxcompat = trim_args_ptxcompat
 
     def generate_type_variable(self, name, literal=None):
         assert name not in self.type_variables
@@ -397,6 +401,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.ret += 1
 
         arg_types = [self.visit(a) for a in args]
+
+        if isinstance(typedef.typedef, TyApp):
+            assert len(arg_types) == len(typedef.typedef.args), f"Number of parameters in typedef ({len(typedef.typedef.args)}) for {fn} does not match those in call ({len(args)})"
+        else:
+            raise NotImplementedError(f'Do not know how to handle PolyTyDef without TyApp')
+
         app = TyApp(ret, arg_types)
         defty = typedef.get(subst)
 
@@ -581,6 +591,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
         fn_name_ty = self.visit(node.func)
         fn = node.func.id if isinstance(node.func, ast.Name) else None
 
+        self.stats['totalfns'] += 1
+
         if fn in self.declarations:
             declty = self.declarations[fn]
             if isinstance(declty, TyApp):
@@ -590,8 +602,10 @@ class TypeEqnGenerator(ast.NodeVisitor):
             else:
                 raise NotImplementedError(f'Do not handle declaration type {declty}')
 
-            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, declty)
+            args = node.args[:len(declty.typedef.args)] if self.trim_args_ptxcompat else node.args
+            ret, fnt, _, _ = self._generate_poly_call_eqns(fn, args, declty)
             _set_fn_node_type(node, fnt)
+            self.stats['usrlibfns'] += 1
             return ret
         elif fn == 'set_sign_bitWidth':
             v, fullty = _get_ty_from_fn_call(node.args[0], node.args[1],
@@ -841,7 +855,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
         self.ret += 1
-
+        self.stats['unkfns'] += 1
         self.generic_visit(node)
         #node._xir_type = fnt
         return fnt
@@ -896,12 +910,17 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(test, TyConstant('bool')))
 
-def infer_types(insn_sem, type_decls = None, user_decls = None):
+def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, noptx = False):
     # generate type equations
     print(astunparse.unparse(insn_sem))
     print(ast.dump(insn_sem))
-    eqg = TypeEqnGenerator(user_decls = user_decls)
+    eqg = TypeEqnGenerator(user_decls = user_decls, trim_args_ptxcompat = not noptx)
     eqg.visit(insn_sem)
+
+    if stats is not None:
+        for k, v in eqg.stats.items():
+            stats[k] = stats.get(k, 0) + v
+
     reps = {}
     #print(eqg.type_variables)
     #print(eqg.equations)

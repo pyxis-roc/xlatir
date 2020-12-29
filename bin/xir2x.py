@@ -26,13 +26,14 @@ def load_usrlib_declarations(semantics, libs):
     import xlatir.xir.anno as xiranno
 
     usrdecls = {}
+    out = {}
     d2t = usrlib.Decl2Type(xirtyping)
     for f in semantics:
-        if usrlib.is_xir_declaration(semantics[f]):
-            usrdecls[f] = d2t.from_FunctionDef(semantics[f])
-        else:
-            if not xiranno.has_anno(semantics[f], xiranno.XIR_IGNORE):
-                args.ptxinsn.append(f)
+        if not xiranno.has_anno(semantics[f], xiranno.XIR_IGNORE):
+            if usrlib.is_xir_declaration(semantics[f]):
+                usrdecls[f] = d2t.from_FunctionDef(semantics[f])
+            else:
+                out[f] = semantics[f]
 
     for l in libs:
         for d in usrlib.load_xir_declarations(l):
@@ -45,7 +46,7 @@ def load_usrlib_declarations(semantics, libs):
             elif isinstance(d, ast.Assign): # only type declaration assignments
                 d2t.add_type_decl(d)
 
-    return usrdecls
+    return usrdecls, semantics
 
 if __name__ == "__main__":
     import argparse
@@ -76,17 +77,20 @@ if __name__ == "__main__":
         assert False, f"Unrecognized language {args.language}"
 
     usrdecls = None
-    if args.noptx:
-        usrdecls = load_usrlib_declarations(semantics, args.lib)
-    else:
-        if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
+    if args.lib:
+        usrdecls, semantics = load_usrlib_declarations(semantics, args.lib)
+
+    if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
+        if args.noptx:
+            args.ptxinsn = list(semantics.keys())
+        else:
             args.ptxinsn = [k[len("execute_"):] for k in semantics if k.startswith("execute_")]
 
     out = []
     defns = []
     tyerrors = []
     xlaterrors = []
-
+    stats = {}
     xh = xir.HandleXIRHints()
     rp = xir.RewritePythonisms()
     rp.desugar_boolean_xor = translator.X.desugar_boolean_xor
@@ -103,7 +107,7 @@ if __name__ == "__main__":
         sem = translator.X.pre_xlat_transform(sem)
 
         try:
-            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls)
+            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls, stats, args.noptx)
         except AssertionError as e:
             if not args.interactive:
                 tyerrors.append((pi, e))
@@ -139,3 +143,7 @@ if __name__ == "__main__":
     for x, e in xlaterrors:
         print(x, e)
 
+    print("*** STATISTICS")
+    print(f"Total functions: {stats['totalfns']}")
+    print(f"Usrlib functions: {stats['usrlibfns']}")
+    print(f"Unknown functions: {stats['unkfns']}")
