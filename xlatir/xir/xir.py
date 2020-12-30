@@ -17,6 +17,9 @@ from collections import namedtuple
 import astunparse
 from xirtyping import *
 import itertools
+import logging
+
+logger = logging.getLogger(__name__)
 
 Def_GenericCompare = PolyTyDef(["gamma"], TyApp(TyConstant('bool'),
                                                 [TyVar("gamma"), TyVar("gamma")]))
@@ -35,7 +38,7 @@ Def_GenericRoundBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
 Def_GenericCarryBinOp = PolyTyDef(["gamma1"], TyApp(TyProduct([TyVar("gamma1"),
                                                                TyConstant("carryflag")]),
                                                     [TyVar("gamma1"), TyVar("gamma1"),
-                                                     TyVar("gamma1")]))
+                                                     TyVar("gamma1")])) # incorrect, not gamma1 for last input
 
 
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
@@ -147,11 +150,12 @@ class RewritePythonisms(ast.NodeTransformer):
 
     # TODO: handle machine_specific
 
-    def _add_rounding(self, n):
-        if isinstance(n.func, ast.Name) and "_ROUND" in n.func.id: #TODO: make a full list?
-            assert isinstance(n.args[-1], ast.Str), f"Expecting last argument of ROUND function to be a string"
-            roundModifier = n.args.pop().s
-            n.func.id = n.func.id.replace('_ROUND', '_ROUND_' + roundModifier)
+    # unused, delete after verification
+    # def _add_rounding(self, n):
+    #     if isinstance(n.func, ast.Name) and "_ROUND" in n.func.id: #TODO: make a full list?
+    #         assert isinstance(n.args[-1], ast.Str), f"Expecting last argument of ROUND function to be a string"
+    #         roundModifier = n.args.pop().s
+    #         n.func.id = n.func.id.replace('_ROUND', '_ROUND_' + roundModifier)
 
     def cvt_machine_specific(self, node):
         def get_keys(msn, keys=None):
@@ -275,6 +279,27 @@ class RewritePythonisms(ast.NodeTransformer):
             elif node.func.id == 'float':
                 if not isinstance(node.args[0], ast.Str):
                     return node.args[0] # don't support float as a type cast
+            elif node.func.id == 'int':
+                return node.args[0] # don't support int as a type cast
+            elif node.func.id == 'range':
+                if len(node.args) != 2:
+                    # though we should support step...
+                    raise NotImplementedError(f"range with {len(node.args)} not supported")
+
+                if not (isinstance(node.args[0], ast.Num) and isinstance(node.args[1], ast.Num)):
+                    raise NotImplementedError(f"range with non-constant arguments not supported")
+            elif node.func.id in ('SHL', 'SHR', 'SAR'):
+                node = self.generic_visit(node)
+                if isinstance(node.args[1], ast.Num):
+                    node.func.id = node.func.id + "_LIT"
+            elif node.func.id == 'BITSTRING':
+                node = self.generic_visit(node)
+                assert isinstance(node.args[3], ast.Num), f"BITSTRING needs a constant size: {node.args[3]}"
+                node.func.id += "_" + str(node.args[3].n)
+            elif node.func.id == 'FROM_BITSTRING':
+                node = self.generic_visit(node)
+                assert isinstance(node.args[1], ast.Num), f"FROM_BITSTRING needs a constant size: {node.args[1]}"
+                node.func.id += "_" + str(node.args[1].n)
             else:
                 node = self.generic_visit(node)
         else:
@@ -451,6 +476,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return ret
 
     def visit_BinOp(self, node):
+        assert False, f"Should not occur in XIR"
+
         if isinstance(node.op, ast.Add):
             fn = f'op_Add'
         elif isinstance(node.op, ast.Mult):
@@ -523,6 +550,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return aet
 
     def visit_UnaryOp(self, node):
+        #assert False, f"Should not happen in XIR" # can happen since xir supports 'not'
+
         self.generic_visit(node)
 
         if isinstance(node.op, ast.USub):
@@ -593,6 +622,9 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.stats['totalfns'] += 1
 
+        if fn not in self.declarations:
+            logger.warning(f"Missing declaration: {fn}")
+
         if fn in self.declarations:
             declty = self.declarations[fn]
             if isinstance(declty, TyApp):
@@ -605,6 +637,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             args = node.args[:len(declty.typedef.args)] if self.trim_args_ptxcompat else node.args
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, args, declty)
             _set_fn_node_type(node, fnt)
+            logging.info(f'usrlib: {fn}')
             self.stats['usrlibfns'] += 1
             return ret
         elif fn == 'set_sign_bitWidth':
@@ -814,13 +847,6 @@ class TypeEqnGenerator(ast.NodeVisitor):
             return ret
 
         elif fn == 'range':
-            if len(node.args) != 2:
-                # though we should support step...
-                raise NotImplementedError(f"range with {len(node.args)} not supported")
-
-            if not (isinstance(node.args[0], ast.Num) and isinstance(node.args[1], ast.Num)):
-                raise NotImplementedError(f"range with non-constant arguments not supported")
-
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef(['gamma'],
                                                                      TyApp(TyConstant('s32'),
@@ -832,7 +858,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args, Def_GenericUnaryOp)
             _set_fn_node_type(node, fnt)
             return ret
-        elif fn == 'BITSTRING':
+        elif fn.startswith('BITSTRING_'):
             assert isinstance(node.args[3], ast.Num), f"BITSTRING needs a constant size: {node.args[3]}"
             arraysz = node.args[3].n
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:1],
@@ -842,7 +868,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                                                                            [TyConstant(f'b{arraysz}')])))
             _set_fn_node_type(node, fnt)
             return ret
-        elif fn == 'FROM_BITSTRING':
+        elif fn.startswith('FROM_BITSTRING'):
             assert isinstance(node.args[1], ast.Num), f"FROM_BITSTRING needs a constant size: {node.args[1]}"
             arraysz = node.args[1].n
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:1],

@@ -40,7 +40,7 @@ def load_usrlib_declarations(semantics, libs):
             if isinstance(d, ast.FunctionDef):
                 f = d.name
                 if f in usrdecls:
-                    warnings.warn(f"{l}:{d.line}: Duplicate declaration for {f}")
+                    warnings.warn(f"{l}:{d.lineno}: Duplicate declaration for {f}")
 
                 usrdecls[f] = d2t.from_FunctionDef(d)
             elif isinstance(d, ast.Assign): # only type declaration assignments

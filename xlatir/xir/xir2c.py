@@ -283,6 +283,11 @@ class Clib(object):
         return f"({args[0]} {XIR_TO_C_OPS[opkey]} {args[1]})"
 
     def _do_shift_op(self, n, fnty, args, node):
+        # HACK
+        if n.endswith('_LIT'):
+            n = n[:-4]
+            fnty = tuple([n] + list(fnty[1:]))
+
         arglen = len(fnty) - 1
         assert arglen == 2, f"Not supported {n}/{fnty} for infix op"
 
@@ -311,8 +316,11 @@ class Clib(object):
     AND = _do_infix_op
     XOR = _do_infix_op
     SHR = _do_shift_op
+    SHR_LIT = _do_shift_op
     SAR = _do_shift_op
+    SAR_LIT = _do_shift_op
     SHL = _do_shift_op
+    SHL_LIT = _do_shift_op
 
     ADD = _do_infix_op
     SUB = _do_infix_op
@@ -612,7 +620,7 @@ class CXlator(xirxlat.Xlator):
         if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
             # because we're using strings
             return f"{fn}({', '.join(args[:arglen])}, __OVERFLOW__)"
-        elif fn == "BITSTRING" or fn == "FROM_BITSTRING":
+        elif fn.startswith("BITSTRING_") or fn.startswith("FROM_BITSTRING_"):
             return args[0]
         else:
             return f"{fn}({', '.join(args[:arglen])})"
