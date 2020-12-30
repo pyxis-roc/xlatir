@@ -90,14 +90,14 @@ def extract_cf(x):
     return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
 
 XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
-                   ('ADD_CARRY', 'u16', 'u16', 'u16'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
-                   ('ADD_CARRY', 's16', 's16', 's16'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 's16', 's16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
 
-                   ('ADD_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
-                   ('ADD_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
+                   ('ADD_CARRY', 'u32', 'u32', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 's32', 's32', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
 
-                   ('ADD_CARRY', 'u64', 'u64', 'u64'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)),
-                   ('ADD_CARRY', 's64', 's64', 's64'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
+                   ('ADD_CARRY', 'u64', 'u64', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)),
+                   ('ADD_CARRY', 's64', 's64', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
 
 
                    ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
@@ -105,11 +105,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                      x, y),
                    ('SUB', '*', '*'): lambda x, y: SExprList(Symbol("bvsub"), x, y),
 
-                   ('SUB_CARRY', 'u32', 'u32', 'u32'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)),
-                   ('SUB_CARRY', 's32', 's32', 's32'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
+                   ('SUB_CARRY', 'u32', 'u32', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)),
+                   ('SUB_CARRY', 's32', 's32', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
 
-                   ('SUB_CARRY', 'u64', 'u64', 'u64'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)),
-                   ('SUB_CARRY', 's64', 's64', 's64'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
+                   ('SUB_CARRY', 'u64', 'u64', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)),
+                   ('SUB_CARRY', 's64', 's64', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
 
                    ('SUB', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.sub"),
                                                                      Symbol("roundNearestTiesToEven"), # TODO
@@ -478,6 +478,10 @@ class SMT2lib(object):
         return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
 
     def _do_SHIFT(self, n, fnty, args, node):
+        if n.endswith('_LIT'):
+            n = n[:-4]
+            fnty = tuple([n] + list(fnty[1:]))
+
         assert fnty[1].v[0] in ('u', 'b', 's'), fnty[1].v[0]
         assert fnty[2].v[0] in ('u', 'b', 's'), fnty[2].v[0]
 
@@ -515,6 +519,10 @@ class SMT2lib(object):
     SHR = _do_SHIFT
     SHL = _do_SHIFT
     SAR = _do_SHIFT
+
+    SHR_LIT = _do_SHIFT
+    SHL_LIT = _do_SHIFT
+    SAR_LIT = _do_SHIFT
 
     ADD = _do_fnop_builtin
     ADD_CARRY = _do_fnop
@@ -1106,7 +1114,7 @@ class SMT2Xlator(xirxlat.Xlator):
         return bool_to_pred(fn)
 
     def xlat_Call(self, fn, fnty, args, node):
-        if fn == 'BITSTRING' or fn == 'FROM_BITSTRING':
+        if fn.startswith('BITSTRING_') or fn.startswith('FROM_BITSTRING_'):
             return args[0]
         else:
             arglen = len(fnty) - 1

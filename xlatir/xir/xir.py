@@ -38,7 +38,7 @@ Def_GenericRoundBinOp = PolyTyDef(["gamma"], TyApp(TyVar("gamma"),
 Def_GenericCarryBinOp = PolyTyDef(["gamma1"], TyApp(TyProduct([TyVar("gamma1"),
                                                                TyConstant("carryflag")]),
                                                     [TyVar("gamma1"), TyVar("gamma1"),
-                                                     TyVar("gamma1")])) # incorrect, not gamma1 for last input
+                                                     TyConstant("carryflag")]))
 
 
 Def_MulOp = PolyTyDef(["gamma_out", "gamma_in"], TyApp(TyVar("gamma_out"),
@@ -85,7 +85,7 @@ MACHINE_SPECIFIC_FNS = set(["MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigne
 
 ARITH_FNS = set(['ADD', 'SUB', 'MUL', 'DIV', 'DIV_FULL', 'DIV_APPROX', 'POW', 'REM', 'MIN', 'MAX', 'FMA', 'MUL24', 'MULWIDE', 'LOG2', 'EXP2', 'RCP', 'RSQRT', 'SINE', 'COSINE', 'COPYSIGN']) | SAT_ARITH_FNS | ROUND_SAT_ARITH_FNS | CARRY_ARITH_FNS | MACHINE_SPECIFIC_FNS
 
-BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT'])
+BITWISE_FNS = set(['AND', 'SHR', 'SAR', 'OR', 'SHL', 'XOR', 'NOT', 'SHR_LIT', 'SAR_LIT', 'SHL_LIT'])
 COMPARE_FNS = set(['GT', 'LT', 'LTE', 'NOTEQ', 'GTE', 'EQ'])
 FLOAT_FNS = set(['ROUND', 'FTZ', 'SATURATE', 'ABSOLUTE', 'ISNAN', 'SQRT', 'RCP']) #also unary
 COMPARE_PTX = set(['compare_eq','compare_equ','compare_ge','compare_geu',
@@ -708,6 +708,14 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
                                                                tydecl)
+            elif fn == "SHR_LIT" or fn == "SHL_LIT" or fn == "SAR_LIT":
+                if isinstance(node.args[1], ast.Num):
+                    tydecl = Def_ShiftOps_Literal
+                else:
+                    assert False
+
+                ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args[:2],
+                                                               tydecl)
             elif fn == "NOT" or fn == "RCP" or fn == "LOG2" or fn == "MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned" or fn in ('SINE', 'COSINE') or fn == 'EXP2' or fn == 'RSQRT':
                 ret, fnt, _, _ = self._generate_poly_call_eqns(fn, [node.args[0]],
                                                                Def_GenericUnaryOp)
@@ -840,7 +848,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             # the na versions are non-array versions
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, node.args,
                                                            PolyTyDef(['gamma'],
-                                                                     TyApp(TyVar('u32'),
+                                                                     TyApp(TyConstant('u32'),
                                                                            [TyConstant('u32'),
                                                                             TyConstant('u8')])))
             _set_fn_node_type(node, fnt)
