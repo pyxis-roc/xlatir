@@ -135,6 +135,8 @@ class HandleXIRHints(ast.NodeTransformer):
 
 class RewritePythonisms(ast.NodeTransformer):
     desugar_boolean_xor = True
+    elim_x_value = False
+
     def _is_float_constant_constructor(self, n):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'float':
             if isinstance(n.args[0], ast.Str):
@@ -300,6 +302,15 @@ class RewritePythonisms(ast.NodeTransformer):
                 node = self.generic_visit(node)
                 assert isinstance(node.args[1], ast.Num), f"FROM_BITSTRING needs a constant size: {node.args[1]}"
                 node.func.id += "_" + str(node.args[1].n)
+            elif self.elim_x_value and node.func.id == 'set_value':
+                # ptx relies on set_value to set type on argument, once
+                # type annotations are on _global_*, we can get rid of self.noptx
+                # get rid of set_value, since it's not needed
+                return node.args[2]
+            elif self.elim_x_value and node.func.id == 'get_value':
+                node = self.generic_visit(node)
+                # get rid of get_value, since it's not needed
+                return node.args[2]
             else:
                 node = self.generic_visit(node)
         else:
@@ -372,12 +383,36 @@ class TypeEqnGenerator(ast.NodeVisitor):
             self.visit(s)
 
     def anno_to_type(self, anno):
-        if anno == 'pred': # TODO: width?
-            ty = TyConstant("bool")
-        elif anno == 'cc_reg_ref':
-            ty = TyPtr(TyConstant("cc_reg"))
+        # This needs to be separated out into a common type annotation parser
+        if isinstance(anno, ast.Name):
+            if anno.id == 'pred': # TODO: width?
+                ty = TyConstant("bool")
+            elif anno.id == 'cc_reg_ref':
+                ty = TyPtr(TyConstant("cc_reg"))
+            else:
+                #TODO: only allow a list!
+                ty = TyConstant(anno.id)
+        elif isinstance(anno, ast.Subscript):
+            if isinstance(anno.value, ast.Name) and anno.value.id == 'Callable':
+                if isinstance(anno.slice.value, ast.Tuple) and len(anno.slice.value.elts) == 2:
+                    argtypes = anno.slice.value.elts[0]
+                    ret = anno.slice.value.elts[1]
+
+                    assert isinstance(argtypes, ast.List), f"Expecting List as first argument of Callable (... not supported)"
+                    assert isinstance(ret, (ast.Constant, ast.Name)), f"Expecting constant/name as return type"
+
+                    argtypes = [self.anno_to_type(a) for a in argtypes.elts]
+                    ret = self.anno_to_type(ret)
+                    ty = TyApp(ret, argtypes)
+                else:
+                    raise SyntaxError(f"Callable syntax incorrect: {anno}")
+            else:
+                raise NotImplementedError(f"Unimplemented subscript type: {ast.dump(anno)}")
+        elif isinstance(anno, ast.Constant):
+            assert anno.value is None, f"Only None supported in type: {anno}"
+            ty = TyConstant('void')
         else:
-            ty = TyConstant(anno)
+            raise NotImplementedError(f"Don't know how to handle type annotation {anno}/{anno.__class__}")
 
         return ty
 
@@ -386,7 +421,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             t = self.get_or_gen_ty_var(a.arg)
             a._xir_type = t
             if a.annotation is not None:
-                aty = self.anno_to_type(a.annotation.id)
+                aty = self.anno_to_type(a.annotation)
                 self.equations.append(TyEqn(t, aty))
 
         ret = self.get_or_gen_ty_var(f"fn_{node.name}_retval")
@@ -398,9 +433,13 @@ class TypeEqnGenerator(ast.NodeVisitor):
         assert node.args.kwarg is None
 
         self.fn = node
-        x = self.generic_visit(node)
+        #x = self.generic_visit(node) # this visits annotations too ...
+        #print("x == ", x)
+        for x in node.body:
+            self.visit(x)
+
         self.fn = None
-        return x
+        return None
 
     def visit_Tuple(self, node):
         return TyProduct([self.visit(e) for e in node.elts])
@@ -924,7 +963,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         assert node.simple == 1 # TODO
 
         lhs = self.visit(node.target)
-        lhsty = self.anno_to_type(node.annotation.id)
+        lhsty = self.anno_to_type(node.annotation)
         self.equations.append(TyEqn(lhs, lhsty))
 
         if node.value is not None:

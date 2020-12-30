@@ -94,6 +94,8 @@ if __name__ == "__main__":
     xh = xir.HandleXIRHints()
     rp = xir.RewritePythonisms()
     rp.desugar_boolean_xor = translator.X.desugar_boolean_xor
+    rp.elim_x_value = args.noptx or len(args.lib) > 0
+
     for pi in args.ptxinsn:
         print("==>", pi)
 
