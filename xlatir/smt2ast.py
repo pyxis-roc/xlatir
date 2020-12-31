@@ -126,6 +126,8 @@ def smt2_literal(v, ty, fp_as_bv=False):
     elif ty == 'cc_reg':
         assert v == 1 or v == 0, f"Wrong value for cc_reg: {v}"
         return SExprList(Symbol("mk-ccreg"), Binary(v, 1))
+    elif ty == 'carryflag':
+        return Binary(v, 1)
     elif ty in ('u8', 'u16', 'u32', 'u64', 'u128',
                 's16', 's32', 's64', 's128',
                 'b16', 'b32', 'b64', 'b1'):
