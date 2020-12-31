@@ -32,6 +32,7 @@ def load_xir(xirf):
         return statements
 
 class XIRFileLoaderPass(Pass):
+    """Load input XIR statements from a file"""
     def __init__(self, fname):
         self.fname = fname
 
@@ -766,6 +767,101 @@ class LegacyConvertToFunctionalPass(Pass):
         ctx.cfg = cfg
         return cfg is not None
 
+class AnnotationsPass(Pass):
+    """Recognize XIR annotations (global, param) and incorporate them into the context. 
+
+       Must be invoked after a backend has been initialized."""
+
+    def run(self, ctx):
+        if len(ctx.statements) and smt2ast.is_call(ctx.statements[0], "global"):
+            inline_globals = set([str(s) for s in ctx.statements[0].v[1:]])
+            ctx.statements = ctx.statements[1:]
+            if ctx.globalvars is not None:
+                ctx.globalvars |= inline_globals
+            else:
+                ctx.globalvars = inline_globals
+
+        logger.debug(f'Global variables: {ctx.globalvars}')
+
+        if len(ctx.statements) and smt2ast.is_call(ctx.statements[0], "param"):
+            param_order = [str(s) for s in ctx.statements[0].v[1:]]
+            ctx.statements = ctx.statements[1:]
+            logger.debug(f'Setting param order: {param_order}')
+            ctx.backend.set_param_order(param_order)
+
+        return True
+
+class PhasePass(Pass):
+    """Simple debugging-aid pass. """
+    def __init__(self, phasename):
+        self.phasename = phasename
+
+    def run(self, ctx):
+        logger.debug(f'===================== {self.phasename}')
+        return True
+
+class CFGBuilderPass(Pass):
+    """Build a CFG from the XIR statements. """
+    def run(self, ctx):
+        ctx.cfg = get_cfg(ctx.statements, ctx.config.name_prefix)
+        return ctx.cfg is not None
+
+class CFGStructureCheckerPass(Pass):
+    """Checks CFG structure, deprecated, use separate passes for finer control. """
+    def run(self, ctx):
+        ctx.cfg.check_structure(prune_unreachable = ctx.config.prune_unreachable)
+        return True
+
+class CFGNonExitingPrunePass(Pass):
+    """Identify non-exiting nodes and prune them. Deprecated, use a separate identification pass and a handling pass instead. """
+
+    def run(self, ctx):
+        if ctx.cfg.check_non_exit(True):
+            logger.warning("CFG contains nodes that cannot reach exit. Nodes removed and CFG patched. This may not be what you want!")
+
+            if ctx.config.error_on_non_exit_nodes:
+                logger.error("Exiting on presence of non-exit nodes as requested")
+                return False
+
+        return True
+
+class CFGMergeBranchExitNodesPass(Pass):
+    """Converts a nested sequence of if/then CFG nodes to meet at a common node."""
+
+    def run(self, ctx):
+        remove_branch_cascades(ctx.cfg)
+        return True
+
+class DumpCFGPass(Pass):
+    """Dump the CFG to a file. """
+    def __init__(self, filename):
+        self.filename = filename
+
+    def run(self, ctx):
+        logging.debug(f'Dumping CFG to {self.filename}')
+        ctx.cfg.dump_dot(self.filename)
+        return True
+
+class LegacyConvertToSSAPass(Pass):
+    """Legacy pass to convert CFG to SSA form. Do not use."""
+
+    def run(self, ctx):
+        orig_names = convert_to_SSA(ctx.cfg,
+                                    cvt_branches_to_functions = True,
+                                    dump_cfg = ctx.config.dump_cfg,
+                                    name_prefix = ctx.config.name_prefix)
+
+        logger.debug(f'Original names after renaming {orig_names}')
+        ctx.cfg.orig_names = orig_names
+        return True
+
+class LegacyConvertSSAToFunctionalPass(Pass):
+    """Legacy pass to convert CFG in SSA form to functional. Do not use."""
+
+    def run(self, ctx):
+        convert_ssa_to_functional(ctx.backend, ctx.cfg, ctx.globalvars, ctx.config.linear)
+        return True
+
 def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False, prune_unreachable = False, error_on_non_exit_nodes = False):
     if len(statements) and smt2ast.is_call(statements[0], "global"):
         inline_globals = set([str(s) for s in statements[0].v[1:]])
@@ -824,13 +920,17 @@ def read_inline_types(stmts):
     return out
 
 class InlineTypesPass(Pass):
+    """Load types for XIR variables from the source code using (type ...) statements.
+
+       Pass will fail if no type statements are found, and the backend requires types."""
+
     def run(self, ctx):
         for s in ctx.statements:
             if smt2ast.is_call(s, 'type'):
                 break
         else:
             if ctx.typed_backend:
-                logger.error("{ctx.backend} bacend requires a types file (specify using --types) or inline types")
+                logger.error("{ctx.backend} backend requires a types file (specify using --types) or inline types")
                 return False
 
         ctx.types = read_inline_types(ctx.statements)
@@ -852,6 +952,8 @@ def read_types_file(tf):
     return out
 
 class TypesFilePass(Pass):
+    """Load types for XIR variables from an external file. """
+
     def __init__(self, typesfile):
         self.typesfile = typesfile
 
@@ -860,6 +962,8 @@ class TypesFilePass(Pass):
         return True
 
 class SetStdOutPass(Pass):
+    """Set output file handle to sys.stdout. """
+
     def __init__(self):
         pass
 
@@ -869,20 +973,23 @@ class SetStdOutPass(Pass):
         return True
 
 class PrologueOutputPass(Pass):
+    """Add a prologue to the output. """
     def __init__(self, prologue):
-        self.prologue = prologue
+        self.prologue = prologue # prologue is any object that supports str()
 
     def run(self, ctx):
-        print(self.prologue, file=ctx.output)
+        print(str(self.prologue), file=ctx.output)
         return True
 
 class BackendOutputPass(Pass):
+    """Append backend output. """
     def run(self, ctx):
         print(ctx.backend.get_output(), file=ctx.output)
         return True
 
 class InitBackendPass(Pass):
-    def __init__(self, backend):
+    """Initialize the selected backend, currently one of 'python' or 'smt2'."""
+    def __init__(self, backend: str):
         self.backend = backend
 
     def run(self, ctx):

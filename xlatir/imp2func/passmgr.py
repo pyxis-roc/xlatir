@@ -38,12 +38,13 @@ class InterPassContext(object):
     statements = None # XIR statements
     types = None # types for XIR variables on the LHS
     typed_backend = False # does the backend need types?
-    output = None  # string
+    output = None  # file handle to send output to
     backend = None # actual backend
 
     config = None # I2FConfig
 
     cfg = None # Control flow graph
+    globalvars = None # set of global variables
 
     def __init__(self, config):
         self.config = config

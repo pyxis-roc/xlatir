@@ -20,6 +20,14 @@ import itertools
 import logging
 import warnings
 
+def get_cfg_name(name, prefix):
+    if prefix is None:
+        prefix = ''
+    else:
+        prefix = '-' + prefix
+
+    return f'cfg{prefix}-{name}.dot'
+
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
@@ -37,7 +45,8 @@ if __name__ == "__main__":
     p.add_argument("--prune-unreachable", dest="prune_unreachable", help="Remove unreachable nodes from CFG.", action='store_true')
     p.add_argument("--non-exit-error", help="Stop if non-exit nodes are present.", action='store_true')
     p.add_argument("--prologue", metavar="FILE", help="Print the contents of FILE before output")
-
+    p.add_argument("--legacy", dest="legacy", action="store_true",
+                   help="Use legacy converter (for testing only)")
     args = p.parse_args()
 
     if args.debug:
@@ -65,7 +74,29 @@ if __name__ == "__main__":
 
     pm.add(InitBackendPass(args.backend))
 
-    pm.add(LegacyConvertToFunctionalPass(args.globalvars))
+    if not args.legacy:
+        pm.ctx.globalvars = set(args.globalvars)
+        pm.add(AnnotationsPass())
+        pm.add(PhasePass('BUILDING CFG')) # maybe actual "Phases"
+        pm.add(CFGBuilderPass())
+
+        # clean up the CFG
+        pm.add(CFGStructureCheckerPass()) # TODO: get rid of this
+        pm.add(CFGNonExitingPrunePass()) # TODO: get rid of this
+        pm.add(CFGMergeBranchExitNodesPass())
+
+        if args.dump_cfg: pm.add(DumpCFGPass(get_cfg_name('initial', args.name_prefix)))
+
+        # convert to SSA form
+        pm.add(PhasePass('CONVERTING TO SSA'))
+        pm.add(LegacyConvertToSSAPass())
+        if args.dump_cfg: pm.add(DumpCFGPass(get_cfg_name('after-ssa', args.name_prefix)))
+
+        pm.add(PhasePass('CONVERTING TO FUNCTIONAL'))
+        pm.add(LegacyConvertSSAToFunctionalPass())
+    else:
+        pm.add(LegacyConvertToFunctionalPass(args.globalvars))
+
 
     pm.add(SetStdOutPass())
     if args.prologue:
