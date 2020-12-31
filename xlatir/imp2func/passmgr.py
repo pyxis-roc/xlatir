@@ -34,16 +34,25 @@ class I2FConfig(object):
             super(I2FConfig, self).__setattr__(a, v)
 
 class InterPassContext(object):
-    filename = None # filename of XIR file
-    statements = None # statements
-    types = None # types
-    typed_backend = False
-    output = None
-    backend = None
+    filename = None # filename of XIR file, if loaded from file
+    statements = None # XIR statements
+    types = None # types for XIR variables on the LHS
+    typed_backend = False # does the backend need types?
+    output = None  # string
+    backend = None # actual backend
+
+    config = None # I2FConfig
+
+    cfg = None # Control flow graph
 
     def __init__(self, config):
         self.config = config
 
+    def __setattr__(self, a, v):
+        if not hasattr(self, a):
+            raise AttributeError(f'Creating a new attribute {a} on InterPassContext without declaring it is disallowed')
+        else:
+            super(InterPassContext, self).__setattr__(a, v)
 
 class Pass(object):
     name = None
