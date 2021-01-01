@@ -14,6 +14,7 @@ import toposort
 import sys
 import itertools
 import logging
+from .passmgr import Pass
 
 logger = logging.getLogger(__name__)
 
@@ -760,3 +761,46 @@ def remove_branch_cascades(cfg):
 
     # remove branch-only nodes
     cfg.remove_nodes([labels_to_nodes[x] for x in targets])
+
+class CFGBuilderPass(Pass):
+    """Build a CFG from the XIR statements. """
+    def run(self, ctx):
+        ctx.cfg = get_cfg(ctx.statements, ctx.config.name_prefix)
+        return ctx.cfg is not None
+
+class CFGStructureCheckerPass(Pass):
+    """Checks CFG structure, deprecated, use separate passes for finer control. """
+    def run(self, ctx):
+        ctx.cfg.check_structure(prune_unreachable = ctx.config.prune_unreachable)
+        return True
+
+class CFGNonExitingPrunePass(Pass):
+    """Identify non-exiting nodes and prune them. Deprecated, use a separate identification pass and a handling pass instead. """
+
+    def run(self, ctx):
+        if ctx.cfg.check_non_exit(True):
+            logger.warning("CFG contains nodes that cannot reach exit. Nodes removed and CFG patched. This may not be what you want!")
+
+            if ctx.config.error_on_non_exit_nodes:
+                logger.error("Exiting on presence of non-exit nodes as requested")
+                return False
+
+        return True
+
+class CFGMergeBranchExitNodesPass(Pass):
+    """Converts a nested sequence of if/then CFG nodes to meet at a common node."""
+
+    def run(self, ctx):
+        remove_branch_cascades(ctx.cfg)
+        return True
+
+class CFGDumperPass(Pass):
+    """Dump the CFG to a file. """
+    def __init__(self, filename):
+        self.filename = filename
+
+    def run(self, ctx):
+        logging.debug(f'Dumping CFG to {self.filename}')
+        ctx.cfg.dump_dot(self.filename)
+        return True
+

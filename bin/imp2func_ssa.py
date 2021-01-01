@@ -13,8 +13,12 @@
 
 import argparse
 from xlatir import smt2ast
-from xlatir.imp2func.imp2func_ssa import *
+
+# for legacy purposes
+from xlatir.imp2func.imp2func_ssa import LegacyConvertToFunctionalPass, LegacyConvertToSSAPass, LegacyConvertSSAToFunctionalPass
+
 from xlatir.imp2func.passmgr import *
+from xlatir.imp2func.passes import *
 import sys
 import itertools
 import logging

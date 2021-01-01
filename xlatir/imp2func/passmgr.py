@@ -79,3 +79,14 @@ class PassManager(object):
                 return False
 
         return True
+
+
+class PhasePass(Pass):
+    """Simple debugging-aid pass. """
+    def __init__(self, phasename):
+        self.phasename = phasename
+
+    def run(self, ctx):
+        logger.debug(f'===================== {self.phasename}')
+        return True
+

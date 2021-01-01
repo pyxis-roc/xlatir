@@ -8,18 +8,18 @@
 #
 # Author: Sreepathi Pai
 #
-# Copyright (c) 2020 University of Rochester
+# Copyright (c) 2020, 2021 University of Rochester
 
 
 import argparse
 from .. import smt2ast
 import sys
 import itertools
+from .passmgr import Pass
 from .impdfanalysis import *
 from .impssa import convert_to_SSA
 import logging
 import warnings
-from .passmgr import PassManager, InterPassContext, Pass
 
 logger = logging.getLogger(__name__)
 
@@ -768,7 +768,7 @@ class LegacyConvertToFunctionalPass(Pass):
         return cfg is not None
 
 class AnnotationsPass(Pass):
-    """Recognize XIR annotations (global, param) and incorporate them into the context. 
+    """Recognize XIR annotations (global, param) and incorporate them into the context.
 
        Must be invoked after a backend has been initialized."""
 
@@ -789,57 +789,6 @@ class AnnotationsPass(Pass):
             logger.debug(f'Setting param order: {param_order}')
             ctx.backend.set_param_order(param_order)
 
-        return True
-
-class PhasePass(Pass):
-    """Simple debugging-aid pass. """
-    def __init__(self, phasename):
-        self.phasename = phasename
-
-    def run(self, ctx):
-        logger.debug(f'===================== {self.phasename}')
-        return True
-
-class CFGBuilderPass(Pass):
-    """Build a CFG from the XIR statements. """
-    def run(self, ctx):
-        ctx.cfg = get_cfg(ctx.statements, ctx.config.name_prefix)
-        return ctx.cfg is not None
-
-class CFGStructureCheckerPass(Pass):
-    """Checks CFG structure, deprecated, use separate passes for finer control. """
-    def run(self, ctx):
-        ctx.cfg.check_structure(prune_unreachable = ctx.config.prune_unreachable)
-        return True
-
-class CFGNonExitingPrunePass(Pass):
-    """Identify non-exiting nodes and prune them. Deprecated, use a separate identification pass and a handling pass instead. """
-
-    def run(self, ctx):
-        if ctx.cfg.check_non_exit(True):
-            logger.warning("CFG contains nodes that cannot reach exit. Nodes removed and CFG patched. This may not be what you want!")
-
-            if ctx.config.error_on_non_exit_nodes:
-                logger.error("Exiting on presence of non-exit nodes as requested")
-                return False
-
-        return True
-
-class CFGMergeBranchExitNodesPass(Pass):
-    """Converts a nested sequence of if/then CFG nodes to meet at a common node."""
-
-    def run(self, ctx):
-        remove_branch_cascades(ctx.cfg)
-        return True
-
-class DumpCFGPass(Pass):
-    """Dump the CFG to a file. """
-    def __init__(self, filename):
-        self.filename = filename
-
-    def run(self, ctx):
-        logging.debug(f'Dumping CFG to {self.filename}')
-        ctx.cfg.dump_dot(self.filename)
         return True
 
 class LegacyConvertToSSAPass(Pass):
