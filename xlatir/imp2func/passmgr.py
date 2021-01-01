@@ -38,6 +38,7 @@ class InterPassContext(object):
     statements = None # XIR statements
     types = None # types for XIR variables on the LHS
     typed_backend = False # does the backend need types?
+    entry_fn = None
     output = None  # file handle to send output to
     backend = None # actual backend
 

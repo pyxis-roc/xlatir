@@ -945,7 +945,7 @@ class InitBackendPass(Pass):
         if self.backend == 'python':
             ctx.backend = PyOutput()
         elif self.backend == 'smt2':
-            ctx.backend = SMT2Output(ctx.types)
+            ctx.backend = SMT2Output(ctx.types, entry_fn = ctx.entry_fn)
         else:
             raise NotImplementedError(f"Unsupported backend {self.backend}")
 
