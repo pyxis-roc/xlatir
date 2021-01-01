@@ -1248,8 +1248,9 @@ class SMT2Xlator(xirxlat.Xlator):
 
         pm.add(InitBackendPass('smt2'))
         pm.add(CFGBuilderPass())
-        pm.add(CFGStructureCheckerPass()) # TODO: get rid of this
-        pm.add(CFGNonExitingPrunePass()) # TODO: get rid of this
+        pm.add(CFGUnreachableNodesPass(action='exit')) # we shouldn't be producing unreachable nodes?
+        pm.add(CFGIdentifyNonExitingPass())
+        pm.add(CFGHandleNonExitingPass(action='exit')) # we don't generate non-exiting nodes either
         pm.add(CFGMergeBranchExitNodesPass())
 
         if dump_cfg: pm.add(CFGDumperPass(f'cfg-{name}-initial.dot'))
