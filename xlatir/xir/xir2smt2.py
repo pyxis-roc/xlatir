@@ -19,6 +19,10 @@ import copy
 import xirpeval
 from collections import namedtuple
 from xlatir.imp2func import imp2func_ssa
+from xlatir.imp2func.imp2func_ssa import LegacyConvertToSSAPass, LegacyConvertSSAToFunctionalPass
+from xlatir.imp2func.passmgr import I2FConfig, InterPassContext, PassManager
+from xlatir.imp2func.passes import *
+
 #import astunparse
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
@@ -1224,6 +1228,42 @@ class SMT2Xlator(xirxlat.Xlator):
     def xlat_While(self, test, body, node):
         raise NotImplemented("Don't support While loops in SMT2 yet")
 
+    def _get_imp2func_pipeline(self, name, body, entry_fn, dump_cfg = False):
+        config = I2FConfig(linear = True, name_prefix = name,
+                           dump_cfg = dump_cfg, debug = False)
+
+        config.error_on_non_exit_nodes = True
+
+        pm = PassManager(config)
+        pm.ctx.typed_backend = True
+        pm.ctx.types = self.lhs_types[name]
+        pm.ctx.statements = body
+        pm.ctx.entry_fn = entry_fn
+        pm.globalvars = set(list(ROUND_MODES_SMT2.values()) +
+                            ['roundNearestTiesToEven', '-oo', '+oo',
+                             'NaN', 'nan', '+zero', '-zero',
+                             'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16',
+                             'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
+                             'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
+
+        pm.add(InitBackendPass('smt2'))
+        pm.add(CFGBuilderPass())
+        pm.add(CFGStructureCheckerPass()) # TODO: get rid of this
+        pm.add(CFGNonExitingPrunePass()) # TODO: get rid of this
+        pm.add(CFGMergeBranchExitNodesPass())
+
+        if dump_cfg: pm.add(CFGDumperPass(f'cfg-{name}-initial.dot'))
+
+        # convert to SSA form
+        pm.add(PhasePass('CONVERTING TO SSA'))
+        pm.add(LegacyConvertToSSAPass())
+        if dump_cfg: pm.add(CFGDumperPass(f'cfg-{name}-after-ssa.dot'))
+
+        pm.add(PhasePass('CONVERTING TO FUNCTIONAL'))
+        pm.add(LegacyConvertSSAToFunctionalPass())
+
+        return pm
+
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         self._retval_ty = retval
 
@@ -1246,16 +1286,9 @@ class SMT2Xlator(xirxlat.Xlator):
             self.lhs_types[name]['_retval'] = set([retval])
             #body.insert(0, SExprList(Symbol("param"), *[pty.v[0] for pty in params]))
             body[-1] = SExprList(Symbol("return"), body[-1])
-            backend = imp2func_ssa.SMT2Output(self.lhs_types[name],
-                                              entry_fn = lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
-            glb = set(list(ROUND_MODES_SMT2.values()) + ['roundNearestTiesToEven', '-oo', '+oo',
-                                                         'NaN', 'nan', '+zero', '-zero',
-                                                         'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16',
-                                                         'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32',
-                                                         'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
-            print("\n".join([str(s) for s in body]))
-            imp2func_ssa.convert_to_functional(body, glb, backend, linear = True, name_prefix = name, dump_cfg = True)
-            output = backend.get_output()
+            pm = self._get_imp2func_pipeline(name, body, lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
+            assert pm.run_all(), f"Conversion to SMT2 failed!"
+            output = pm.ctx.backend.get_output()
 
         self._use_imp2 = False
 
