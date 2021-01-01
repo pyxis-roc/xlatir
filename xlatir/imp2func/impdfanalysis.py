@@ -104,6 +104,19 @@ class ControlFlowGraph(object):
 
     check_unreachable = check_structure
 
+    def identify_unreachable(self):
+        reachable = set()
+        wl = [self.start_node]
+        while len(wl):
+            n = wl.pop()
+            reachable.add(n)
+            for c in self.succ[n]:
+                if c not in reachable: wl.append(c)
+
+        unreachable = set(self.nodes.keys()) - reachable
+        logger.debug(f'Unreachable nodes {unreachable}')
+        return unreachable
+
     def remove_nodes(self, nodes):
         nodes = set(nodes)
 
@@ -773,6 +786,40 @@ class CFGStructureCheckerPass(Pass):
     def run(self, ctx):
         ctx.cfg.check_structure(prune_unreachable = ctx.config.prune_unreachable)
         return True
+
+class CFGUnreachableNodesPass(Pass):
+    """Checks CFG for unreachable nodes.
+
+       Stores set of unreachable node in ctx.results['CFGUnreachableNodesPass'].
+
+       If specified, action is one of 'prune' or 'exit'. The former
+       prunes the CFG, the latter exit with an error.
+
+    """
+
+    def __init__(self, action = None):
+        assert action is None or action in ('prune', 'exit')
+        self.action = action
+
+    def run(self, ctx):
+        unreachable = ctx.cfg.identify_unreachable()
+        ctx.results[self.__class__.__name__] = unreachable
+
+        if len(unreachable):
+            if self.action == 'prune':
+                logger.info(f"Removing unreachable nodes {unreachable}")
+                ctx.cfg.remove_nodes(unreachable)
+                return True
+            elif self.action == 'exit':
+                logger.error(f"Unreachable nodes found, exiting as requested")
+                return False
+            elif self.action is None:
+                return True
+            else:
+                assert False
+
+        return True
+
 
 class CFGNonExitingPrunePass(Pass):
     """Identify non-exiting nodes and prune them. Deprecated, use a separate identification pass and a handling pass instead. """

@@ -5,4 +5,6 @@
 
 from .imp2func_ssa import XIRFileLoaderPass, AnnotationsPass, PrologueOutputPass, BackendOutputPass, InitBackendPass, TypesFilePass, InlineTypesPass, SetStdOutPass
 from .passmgr import PhasePass
-from .impdfanalysis import CFGBuilderPass, CFGStructureCheckerPass, CFGNonExitingPrunePass, CFGMergeBranchExitNodesPass, CFGDumperPass
+from .impdfanalysis import CFGBuilderPass, CFGNonExitingPrunePass, CFGMergeBranchExitNodesPass, CFGDumperPass, CFGUnreachableNodesPass
+
+#deprecated: CFGStructureCheckerPass

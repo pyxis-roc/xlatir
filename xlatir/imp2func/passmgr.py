@@ -47,8 +47,11 @@ class InterPassContext(object):
     cfg = None # Control flow graph
     globalvars = None # set of global variables
 
+    results = None # a map from Pass name to its results.
+
     def __init__(self, config):
         self.config = config
+        self.results = {}
 
     def __setattr__(self, a, v):
         if not hasattr(self, a):

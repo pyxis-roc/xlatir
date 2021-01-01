@@ -85,7 +85,7 @@ if __name__ == "__main__":
         pm.add(CFGBuilderPass())
 
         # clean up the CFG
-        pm.add(CFGStructureCheckerPass()) # TODO: get rid of this
+        pm.add(CFGUnreachableNodesPass(action='prune' if i2f_cfg.prune_unreachable else None))
         pm.add(CFGNonExitingPrunePass()) # TODO: get rid of this
         pm.add(CFGMergeBranchExitNodesPass())
 
