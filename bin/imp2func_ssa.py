@@ -89,12 +89,12 @@ if __name__ == "__main__":
         pm.add(CFGNonExitingPrunePass()) # TODO: get rid of this
         pm.add(CFGMergeBranchExitNodesPass())
 
-        if args.dump_cfg: pm.add(DumpCFGPass(get_cfg_name('initial', args.name_prefix)))
+        if args.dump_cfg: pm.add(CFGDumperPass(get_cfg_name('initial', args.name_prefix)))
 
         # convert to SSA form
         pm.add(PhasePass('CONVERTING TO SSA'))
         pm.add(LegacyConvertToSSAPass())
-        if args.dump_cfg: pm.add(DumpCFGPass(get_cfg_name('after-ssa', args.name_prefix)))
+        if args.dump_cfg: pm.add(CFGDumperPass(get_cfg_name('after-ssa', args.name_prefix)))
 
         pm.add(PhasePass('CONVERTING TO FUNCTIONAL'))
         pm.add(LegacyConvertSSAToFunctionalPass())
