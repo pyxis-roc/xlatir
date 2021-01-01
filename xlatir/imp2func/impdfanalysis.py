@@ -77,6 +77,7 @@ class ControlFlowGraph(object):
         except toposort.CircularDependencyError as e:
             return None
 
+    # deprecated, do not use
     def check_structure(self, prune_unreachable = False):
         reachable = set()
         wl = [self.start_node]
@@ -102,6 +103,7 @@ class ControlFlowGraph(object):
 
         # TODO: check loops?
 
+    # deprecated, do not use
     check_unreachable = check_structure
 
     def identify_unreachable(self):
@@ -141,10 +143,7 @@ class ControlFlowGraph(object):
             self.pred[dst].add(src)
             self.edges.append((src, dst))
 
-    def check_non_exit(self, prune_non_exit = False):
-        """Check for nodes that can be reached, but cannot reach EXIT. Must be
-           executed after check_unreachable for relevant results."""
-
+    def identify_non_exit(self):
         reachable = set()
         wl = [self.exit_node]
         while len(wl):
@@ -154,30 +153,39 @@ class ControlFlowGraph(object):
                 if c not in reachable: wl.append(c)
 
         non_exit_nodes = set(self.nodes.keys() - reachable)
-        if len(non_exit_nodes):
-            logger.error(f"Nodes {non_exit_nodes} do not reach {self.exit_node}")
+        return non_exit_nodes
 
-        if prune_non_exit:
-            bridge_nodes = set()
-            for n in non_exit_nodes:
-                for neighbour in itertools.chain(self.pred[n], self.succ[n]):
-                    if neighbour not in non_exit_nodes:
-                        # connected to a part of the reachable CFG
-                        bridge_nodes.add(neighbour)
-                        break
+    def prune_non_exit(self, non_exit_nodes):
+        bridge_nodes = set()
+        for n in non_exit_nodes:
+            for neighbour in itertools.chain(self.pred[n], self.succ[n]):
+                if neighbour not in non_exit_nodes:
+                    # connected to a part of the reachable CFG
+                    bridge_nodes.add(neighbour)
+                    break
 
-            logger.info(f'Removing non-exiting nodes {non_exit_nodes}')
+        logger.info(f'Removing non-exiting nodes {non_exit_nodes}')
 
-            self.remove_nodes(non_exit_nodes)
+        self.remove_nodes(non_exit_nodes)
 
-            logger.info(f'Patching up bridge nodes {bridge_nodes}')
-            for bn in bridge_nodes:
-                assert len(self.succ[bn]) > 0, f"Bridge node {bn} has zero successors"
-                last_stmt = self.nodes[bn][-1].stmt
-                assert smt2ast.is_call(last_stmt, "cbranch"), f"Bridge node {bn} does not end in cbranch"
-                dst = [x for x in last_stmt.v[2:] if str(x) not in non_exit_nodes]
-                assert len(dst) == 1, f"Bridge node {bn} does not connect to a node that reaches exit, current connections: {dst}"
-                self.nodes[bn][-1].stmt = smt2ast.SExprList(smt2ast.Symbol("branch"), dst[0])
+        logger.info(f'Patching up bridge nodes {bridge_nodes}')
+        for bn in bridge_nodes:
+            assert len(self.succ[bn]) > 0, f"Bridge node {bn} has zero successors"
+            last_stmt = self.nodes[bn][-1].stmt
+            assert smt2ast.is_call(last_stmt, "cbranch"), f"Bridge node {bn} does not end in cbranch"
+            dst = [x for x in last_stmt.v[2:] if str(x) not in non_exit_nodes]
+            assert len(dst) == 1, f"Bridge node {bn} does not connect to a node that reaches exit, current connections: {dst}"
+            self.nodes[bn][-1].stmt = smt2ast.SExprList(smt2ast.Symbol("branch"), dst[0])
+
+    # deprecated, do not use
+    def check_non_exit(self, prune_non_exit = False):
+        """Check for nodes that can be reached, but cannot reach EXIT. Must be
+           executed after check_unreachable for relevant results."""
+
+        non_exit_nodes = self.identify_non_exit()
+
+        if prune_non_exit and len(non_exit_nodes):
+            self.prune_non_exit(non_exit_nodes)
 
         return len(non_exit_nodes) > 0
 
@@ -820,9 +828,46 @@ class CFGUnreachableNodesPass(Pass):
 
         return True
 
+class CFGIdentifyNonExitingPass(Pass):
+    """Identify non-exiting nodes. """
+
+    def run(self, ctx):
+        non_exit_nodes = ctx.cfg.identify_non_exit()
+        ctx.results[self.__class__.__name__] = non_exit_nodes
+        if len(non_exit_nodes):
+            logger.error(f"Nodes {non_exit_nodes} do not reach {ctx.cfg.exit_node}")
+
+        return True
+
+class CFGHandleNonExitingPass(Pass):
+    """Handle non-exiting nodes. Must be executed after CFGIdentifyNonExitingPass.
+
+       The two passes are separate, because handling non-exiting nodes can't be simply pruned.
+
+       Action is 'prune' or 'exit'. This pass does NOT use ctx.config.error_on_non_exit_nodes."""
+
+    def __init__(self, action='prune'):
+        assert action in ('prune', 'exit'), f'Invalid action "{action}"'
+        self.action = action
+
+    def run(self, ctx):
+        assert CFGIdentifyNonExitingPass.__name__ in ctx.results, f'Non-exit nodes not found in context'
+        non_exit_nodes = ctx.results[CFGIdentifyNonExitingPass.__name__]
+        if len(non_exit_nodes):
+            if self.action == 'exit':
+                logger.error("Exiting on presence of non-exit nodes as requested.")
+                return False
+            elif self.action == 'prune':
+                logger.info(f'Non-exit nodes {non_exit_nodes} removed and CFG patched.')
+                ctx.cfg.prune_non_exit(non_exit_nodes)
+                return True
+
+        return True
 
 class CFGNonExitingPrunePass(Pass):
-    """Identify non-exiting nodes and prune them. Deprecated, use a separate identification pass and a handling pass instead. """
+    """Identify non-exiting nodes and prune them.
+
+       DEPRECATED, use a separate identification pass and a handling pass instead. """
 
     def run(self, ctx):
         if ctx.cfg.check_non_exit(True):

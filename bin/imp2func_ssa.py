@@ -86,7 +86,8 @@ if __name__ == "__main__":
 
         # clean up the CFG
         pm.add(CFGUnreachableNodesPass(action='prune' if i2f_cfg.prune_unreachable else None))
-        pm.add(CFGNonExitingPrunePass()) # TODO: get rid of this
+        pm.add(CFGIdentifyNonExitingPass())
+        pm.add(CFGHandleNonExitingPass(action='exit' if i2f_cfg.error_on_non_exit_nodes else 'prune'))
         pm.add(CFGMergeBranchExitNodesPass())
 
         if args.dump_cfg: pm.add(CFGDumperPass(get_cfg_name('initial', args.name_prefix)))
