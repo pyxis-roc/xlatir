@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
-import xir
+from . import xir
 import ast
-import extract_ex_semantics
-from xirtyping import *
+from .xirtyping import *
 import os
-import xirxlat
+from . import xirxlat
 
 XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'b16': 'uint16_t',
@@ -794,35 +793,3 @@ def write_output_general(outfile, translations, defns):
         f.write("#include <math.h>\n\n")
         f.write('\n')
         f.write("\n".join(defns))
-
-if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Convert XIR semantics to C")
-    p.add_argument('semfile', help="File containing executable semantics")
-    p.add_argument('ptxinsn', nargs="+", help="PTX instruction in underscore form (e.g. add_u16)")
-    p.add_argument("-o", dest="output", help="Output instruction")
-
-    args = p.parse_args()
-    gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
-
-
-    if len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all':
-        args.ptxinsn = [k[len("execute_"):] for k in semantics if k not in debug_exclude]
-
-    translator = XIRToC()
-    out = []
-    out_defns = []
-    rp = xir.RewritePythonisms()
-
-    for pi in args.ptxinsn:
-        sem = semantics["execute_" + pi]
-        #if pi.startswith('setp_q'): continue
-        rp.visit(sem)
-        ast.dump(sem)
-        ty = xir.infer_types(sem)
-        out.append(translator.translate(sem, ty))
-        out_defns.extend(translator.defns)
-
-    if args.output:
-        write_output(args.output, out, out_defns)
-    else:
-        print("\n\n".join(out))

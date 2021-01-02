@@ -4,10 +4,9 @@
 #
 # Utilities for helping with translating XIR to other languages
 
-import xir
+from . import xir
 import ast
-import extract_ex_semantics
-from xirtyping import *
+from .xirtyping import *
 
 # The passing of actual arguments instead of just node in the xlat_*
 # functions is meant to make things convenient. In case this doesn't

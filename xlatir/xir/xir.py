@@ -11,11 +11,10 @@
 # TODO: Move this into a separate package gpurosetta?
 
 import ast
-import extract_ex_semantics
 import argparse
 from collections import namedtuple
 import astunparse
-from xirtyping import *
+from .xirtyping import *
 import itertools
 import logging
 
@@ -1059,26 +1058,3 @@ def types_from_decls(eqg, reps, type_decls):
         inct = out
 
     return reps
-
-if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Run various bits of xir on a semantic")
-    p.add_argument('semfile', help="File containing executable semantics for XIR")
-    p.add_argument('task', help="Task to perform", choices=['types'])
-    p.add_argument('ptxinsn', nargs="+", help="PTX instruction in underscore form (e.g. add_u16)")
-
-    args = p.parse_args()
-    gl, semantics = extract_ex_semantics.load_execute_functions(args.semfile)
-
-    rp = RewritePythonisms()
-
-    if args.task == 'types':
-        if len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all':
-            args.ptxinsn = [k[len("execute_"):] for k in semantics]
-
-        for pi in args.ptxinsn:
-            sem = semantics["execute_" + pi]
-            rp.visit(sem)
-
-            infer_types(semantics["execute_" + pi], type_decls = TYPE_DECLS)
-            print(f"**** TYPES OKAY {pi}")
-

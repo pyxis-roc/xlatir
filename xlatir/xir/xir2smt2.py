@@ -7,16 +7,15 @@
 # Author: Sreepathi Pai
 
 import ast
-import xir
-import xirxlat
-from xirtyping import *
+from . import xir
+from . import xirxlat
+from .xirtyping import *
 import textwrap
 import os
 import struct
-#from smt2ast import *
 from xlatir.smt2ast import *
 import copy
-import xirpeval
+from . import xirpeval
 from collections import namedtuple
 from xlatir.imp2func.passmgr import I2FConfig, InterPassContext, PassManager
 from xlatir.imp2func.passes import *
@@ -1295,7 +1294,7 @@ class SMT2Xlator(xirxlat.Xlator):
 
     def write_output(self, output, translations, defns, ptx = True):
         def include_file(inc, outf):
-            with open(os.path.join(os.path.dirname(__file__), inc), "r") as incl:
+            with open(inc, "r") as incl:
                 print(f"; begin-include {inc}", file=outf)
                 print(incl.read(), file=outf)
                 print(f"; end-include {inc}", file=outf)

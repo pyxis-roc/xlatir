@@ -8,11 +8,12 @@
 
 import ast
 import astunparse
-import utils
 import logging
 import copy
 
 logger = logging.getLogger(__name__)
+
+utils = None
 
 class DearrayificationPrep(ast.NodeVisitor):
     def __init__(self):
@@ -483,7 +484,12 @@ class GatherConstants(ast.NodeVisitor):
         self.visit(node)
         return self._constants
 
-
+def set_utils(new_utils):
+    """Hack to set the old utils variables that contains implementations
+       of functions used to partially evaluate code."""
+    global utils
+    utils = new_utils
+    
 def constantify(s):
     g = GatherConstants()
     p = PropagateConstants()
