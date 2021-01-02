@@ -9,9 +9,10 @@
 # Copyright (C) 2020, University of Rochester
 
 from .. import smt2ast
-from .impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi
+from .impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi, CFGDumperPass
 import functools
 import logging
+from .passmgr import Pass
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,59 @@ def branches_to_functions(cfg):
 
             stmtcon.stmt = stmt
 
+class SSAPlacePhiPass(Pass):
+    """First half of SSA conversion, placing phi functions at dominance frontiers."""
+    def run(self, ctx):
+        get_reads_and_writes(ctx.cfg)
+        dom = ctx.cfg.run_idfa(Dominators())
+        place_phi(ctx.cfg, dom)
+        return True
+
+class SSABranchesToFunctionsPass(Pass):
+    """Converts branches at the end of basic blocks to function calls.
+
+       Required only if converting ultimately to functional form."""
+
+    def run(self, ctx):
+        branches_to_functions(ctx.cfg)
+
+        # update reads and writes for newly created function calls
+        #TODO: should do this incrementally
+        get_reads_and_writes(ctx.cfg)
+        return True
+
+class SSARenameVariablesPass(Pass):
+    """Second half of SSA conversion, renaming variables."""
+
+    def run(self, ctx):
+        rdef = ctx.cfg.run_idfa(ReachingDefinitions())
+        renamed = rename(rdef)
+        ctx.cfg.orig_names = renamed
+
+        return True
+
+def assemble_convert_to_SSA(pm, cvt_branches_to_functions = True):
+    """Add the passes required to convert a CFG to SSA form."""
+    pm.add(SSAPlacePhiPass())
+
+    if pm.ctx.config.name_prefix:
+        prefix = '-' + pm.ctx.config.name_prefix
+    else:
+        prefix = ''
+
+    if pm.ctx.config.dump_cfg:
+        pm.add(CFGDumperPass(f'cfg{prefix}-phi.dot'))
+
+    if cvt_branches_to_functions: pm.add(SSABranchesToFunctionsPass())
+
+    pm.add(SSARenameVariablesPass())
+
+    if pm.ctx.config.dump_cfg:
+        pm.add(CFGDumperPass(f'cfg{prefix}-renamed.dot'))
+
+    return pm
+
+# legacy, do not use.
 def convert_to_SSA(cfg, cvt_branches_to_functions = True, dump_cfg = False, name_prefix = ''):
     get_reads_and_writes(cfg)
     dom = cfg.run_idfa(Dominators())

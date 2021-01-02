@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
         # convert to SSA form
         pm.add(PhasePass('CONVERTING TO SSA'))
-        pm.add(LegacyConvertToSSAPass())
+        assemble_convert_to_SSA(pm)
         if args.dump_cfg: pm.add(CFGDumperPass(get_cfg_name('after-ssa', args.name_prefix)))
 
         pm.add(PhasePass('CONVERTING TO FUNCTIONAL'))
