@@ -98,7 +98,7 @@ if __name__ == "__main__":
         if args.dump_cfg: pm.add(CFGDumperPass(get_cfg_name('after-ssa', args.name_prefix)))
 
         pm.add(PhasePass('CONVERTING TO FUNCTIONAL'))
-        pm.add(LegacyConvertSSAToFunctionalPass())
+        pm.add(ConvertSSAToFunctionalPass())
     else:
         pm.add(LegacyConvertToFunctionalPass(args.globalvars))
 

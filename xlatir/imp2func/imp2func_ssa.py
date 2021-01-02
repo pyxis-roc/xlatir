@@ -792,7 +792,9 @@ class AnnotationsPass(Pass):
         return True
 
 class LegacyConvertToSSAPass(Pass):
-    """Legacy pass to convert CFG to SSA form. Do not use."""
+    """Legacy pass to convert CFG to SSA form. Do not use.
+
+       Use assemble_convert_to_SSA (or the passes therein) instead."""
 
     def run(self, ctx):
         orig_names = convert_to_SSA(ctx.cfg,
@@ -809,6 +811,16 @@ class LegacyConvertSSAToFunctionalPass(Pass):
 
     def run(self, ctx):
         convert_ssa_to_functional(ctx.backend, ctx.cfg, ctx.globalvars, ctx.config.linear)
+        return True
+
+class ConvertSSAToFunctionalPass(Pass):
+    """Converts CFG is SSA form with converted branches to Functional form."""
+
+    def run(self, ctx):
+        ctx.backend.set_linear(ctx.config.linear)
+
+        fcfg = FunctionalCFG(ctx.cfg, ctx.globalvars)
+        fcfg.convert(ctx.backend)
         return True
 
 def convert_to_functional(statements, globalvars, backend, linear = False, name_prefix = '', dump_cfg = False, prune_unreachable = False, error_on_non_exit_nodes = False):
