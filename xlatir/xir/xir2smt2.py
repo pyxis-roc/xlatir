@@ -18,8 +18,6 @@ from xlatir.smt2ast import *
 import copy
 import xirpeval
 from collections import namedtuple
-from xlatir.imp2func import imp2func_ssa
-from xlatir.imp2func.imp2func_ssa import LegacyConvertToSSAPass, LegacyConvertSSAToFunctionalPass
 from xlatir.imp2func.passmgr import I2FConfig, InterPassContext, PassManager
 from xlatir.imp2func.passes import *
 
@@ -1257,11 +1255,11 @@ class SMT2Xlator(xirxlat.Xlator):
 
         # convert to SSA form
         pm.add(PhasePass('CONVERTING TO SSA'))
-        pm.add(LegacyConvertToSSAPass())
+        assemble_convert_to_SSA(pm)
         if dump_cfg: pm.add(CFGDumperPass(f'cfg-{name}-after-ssa.dot'))
 
         pm.add(PhasePass('CONVERTING TO FUNCTIONAL'))
-        pm.add(LegacyConvertSSAToFunctionalPass())
+        pm.add(ConvertSSAToFunctionalPass())
 
         return pm
 
