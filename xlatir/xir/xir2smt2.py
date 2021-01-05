@@ -1328,10 +1328,11 @@ class SMT2Xlator(xirxlat.Xlator):
             for sz in [32, 64]:
                 print(f"(define-sort f{sz} () Float{sz})", file=f)
 
-            include_file("ptx_utils.smt2", f)
-            include_file("lop3_lut.smt2", f)
-            include_file("readbyte_prmt.smt2", f)
-            include_file("machine_specific.smt2", f)
+            if ptx: #TODO
+                include_file("ptx_utils.smt2", f)
+                include_file("lop3_lut.smt2", f)
+                include_file("readbyte_prmt.smt2", f)
+                include_file("machine_specific.smt2", f)
 
             print("; :end global", file=f)
 

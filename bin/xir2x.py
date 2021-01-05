@@ -66,7 +66,7 @@ def load_usrlib_declarations(semantics, libs):
             elif isinstance(d, ast.Assign): # only type declaration assignments
                 d2t.add_type_decl(d)
 
-    return usrdecls, semantics
+    return usrdecls, out
 
 def load_pemod(pemodeps, pemod):
     def loader(mod, modfile):
