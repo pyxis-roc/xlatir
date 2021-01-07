@@ -17,6 +17,7 @@ import xlatir.xir.xirxlat as xirxlat
 import xlatir.xir.xir2c as xir2c
 import xlatir.xir.xir2smt2 as xir2smt2
 import xlatir.xir.xirpeval as xirpeval
+import xlatir.xir.srcutils as srcutils
 import logging
 import sys
 import warnings
@@ -104,10 +105,13 @@ if __name__ == "__main__":
     p.add_argument('-l', metavar='LIBFILE', dest='lib', action='append', help="Use LIB (full filename) as a source of user-defined declarations", default=[])
     p.add_argument('--pemdeps', dest='pedeps', metavar='MODULEFILE', action='append', help='Import MODULEFILE as a dependency for pemodule', default=[])
     p.add_argument('--pem', dest='pemodule', metavar='MODULEFILE', help='Import MODULEFILE as utils for partial evaluator')
+    p.add_argument('-I', dest='include_dirs', metavar='DIR', help='Look for included files in this directory', action='append', default=[])
+
     args = p.parse_args()
 
     gl, semantics = load_execute_functions(args.semfile)
     translator = xirxlat.XIRToX()
+    translator.INC = srcutils.IncludeLocator(args.include_dirs)
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)

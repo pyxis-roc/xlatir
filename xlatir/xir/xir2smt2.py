@@ -1294,54 +1294,60 @@ class SMT2Xlator(xirxlat.Xlator):
 
     def write_output(self, output, translations, defns, ptx = True):
         def include_file(inc, outf):
+            inc = self.x2x.INC.locate(inc)
+            
             with open(inc, "r") as incl:
                 print(f"; begin-include {inc}", file=outf)
                 print(incl.read(), file=outf)
                 print(f"; end-include {inc}", file=outf)
 
-        with open(output, "w") as f:
-            print("(set-logic QF_FPBV)", file=f) # need to support arrays too
+        try:
+            with open(output, "w") as f:
+                print("(set-logic QF_FPBV)", file=f) # need to support arrays too
 
-            print(textwrap.dedent("""\
-            ; :begin global
-            ; (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
-            (declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )
-            ; (declare-datatypes (T1) ((CCRegister (mk-ccreg (cf T1)))))
-            (declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))
-            (define-sort u8 () (_ BitVec 8))
-            (define-sort b1 () (_ BitVec 1))
-            (define-sort carryflag () b1)
-            (define-sort pred () (_ BitVec 1))
+                print(textwrap.dedent("""\
+                ; :begin global
+                ; (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
+                (declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )
+                ; (declare-datatypes (T1) ((CCRegister (mk-ccreg (cf T1)))))
+                (declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))
+                (define-sort u8 () (_ BitVec 8))
+                (define-sort b1 () (_ BitVec 1))
+                (define-sort carryflag () b1)
+                (define-sort pred () (_ BitVec 1))
 
-            (define-fun bool_to_pred ((x Bool)) pred (ite x #b1 #b0))
-            (define-fun pred_to_bool ((x pred)) Bool (= x #b1))
-            """), file=f)
+                (define-fun bool_to_pred ((x Bool)) pred (ite x #b1 #b0))
+                (define-fun pred_to_bool ((x pred)) Bool (= x #b1))
+                """), file=f)
 
-            for sz in [16, 32, 64, 128]:
-                for prefix in ['b', 's', 'u']:
-                    print(f"(define-sort {prefix}{sz} () (_ BitVec {sz}))", file=f)
+                for sz in [16, 32, 64, 128]:
+                    for prefix in ['b', 's', 'u']:
+                        print(f"(define-sort {prefix}{sz} () (_ BitVec {sz}))", file=f)
 
-            for dt in DATA_TYPES_LIST:
-                #(define-sort predpair () (Pair pred pred))
-                print(f"(define-sort {dt.name} () ({dt.sort_cons} {' '.join(dt.fieldtypes)}))", file=f)
+                for dt in DATA_TYPES_LIST:
+                    #(define-sort predpair () (Pair pred pred))
+                    print(f"(define-sort {dt.name} () ({dt.sort_cons} {' '.join(dt.fieldtypes)}))", file=f)
 
-            for sz in [32, 64]:
-                print(f"(define-sort f{sz} () Float{sz})", file=f)
+                for sz in [32, 64]:
+                    print(f"(define-sort f{sz} () Float{sz})", file=f)
 
-            if ptx: #TODO
-                include_file("ptx_utils.smt2", f)
-                include_file("lop3_lut.smt2", f)
-                include_file("readbyte_prmt.smt2", f)
-                include_file("machine_specific.smt2", f)
+                if ptx: #TODO
+                    include_file("ptx_utils.smt2", f)
+                    include_file("lop3_lut.smt2", f)
+                    include_file("readbyte_prmt.smt2", f)
+                    include_file("machine_specific.smt2", f)
 
-            print("; :end global", file=f)
+                print("; :end global", file=f)
 
 
-            for t in translations:
-                for tl in t:
-                    print(str(tl), file=f)
+                for t in translations:
+                    for tl in t:
+                        print(str(tl), file=f)
 
-                print("\n", file=f)
+                    print("\n", file=f)
+        except:
+            os.unlink(output)
+            raise
 
 class RefReturnFixer(ast.NodeVisitor):
     """Change all Return statements for functions accepting a ref
