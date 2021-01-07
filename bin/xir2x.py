@@ -82,11 +82,11 @@ def load_pemod(pemodeps, pemod):
 
     for pd in pemodeps:
         assert pd[-3:] == ".py"
-        mod = pd[:-3] # remove .py
+        mod = os.path.basename(pd[:-3]) # remove .py
         loader(mod, pd)
 
     assert pemod[-3:] == ".py"
-    pemodname = pemod[:-3] # remove .py
+    pemodname = os.path.basename(pemod[:-3]) # remove .py
     utilsmod = loader(pemodname, pemod)
     xirpeval.set_utils(utilsmod)
 
