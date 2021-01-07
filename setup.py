@@ -1,6 +1,6 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='xlatir',
       version='0.1',
-      packages=['xlatir'],
+      packages=find_packages(),
 )
