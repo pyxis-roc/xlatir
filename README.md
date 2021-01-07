@@ -55,7 +55,7 @@ user-definable. Currently, this is not the case.
 
 ## Examples
 
-A short and simple definition: eBPF in XIR.
+A simple definition: [eBPF in XIR](https://github.com/pyxis-roc/ebpf-xir).
 
 The PTX definition in XIR -- TODO.
 
