@@ -7,6 +7,9 @@
 #
 
 import ast
+from collections import namedtuple
+
+SourceInfo = namedtuple('SourceInfo', 'filename lineno col_offset srcline')
 
 class XIRSyntaxError(SyntaxError):
     pass
@@ -24,13 +27,34 @@ class XIRSyntaxCheck(ast.NodeVisitor):
     _xir_supported_cmpop = (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
 
     def _synerr_params(self, node):
-        return (self._xir_filename,
-                node.lineno,
-                node.col_offset,
-                self._xir_source[node.lineno-1])
+        return SourceInfo(filename=self._xir_filename,
+                          lineno=node.lineno if hasattr(node, 'lineno') else None,
+                          col_offset=node.col_offset if hasattr(node, 'col_offset') else None,
+                          srcline=self._xir_source[node.lineno-1] if hasattr(node, 'lineno') else None)
 
-    def _unsupported(self, node):
-        raise XIRSyntaxError(f"Don't support {node.__class__} in XIR", self._synerr_params(node))
+    def _unsupported(self, node, se_node = None):
+        # se_node is a node that is an instance of ast.expr or ast.stmt
+        # its lineno, col_offset will be used if node does not have them
+
+        if se_node is not None:
+            assert isinstance(se_node, (ast.expr, ast.stmt))
+
+        si = None
+        if isinstance(node, (ast.expr, ast.stmt)):
+            assert hasattr(node, 'lineno'), f"Node {node} is missing lineno information"
+            si = self._synerr_params(node)
+        else:
+            if se_node:
+                assert hasattr(se_node, 'lineno'), f"se_node {node} is missing lineno information"
+                si = self._synerr_params(se_node)
+            else:
+                si = self._synerr_params(node) # this will just have ??
+
+        if si.srcline is None:
+            raise XIRSyntaxError(f"{si.filename}:{si.lineno}.{si.col_offset}:Don't support {node.__class__.__name__} in XIR ({si.srcline})", si)
+        else:
+            # SyntaxError will show the correct
+            raise XIRSyntaxError(f"Don't support {node.__class__.__name__} in XIR", si)
 
     visit_AsyncFunctionDef = _unsupported
     visit_ClassDef = _unsupported
@@ -74,6 +98,19 @@ class XIRSyntaxCheck(ast.NodeVisitor):
 
     visit_FormattedValue = _unsupported
     visit_JoinedStr = _unsupported
+
+    #TODO: Constant [things like None are not allowed except for partial evaluation]
+    visit_Starred = _unsupported
+
+    #TODO: List
+    #TODO: Tuple
+
+    def visit_Subscript(self, node):
+        self.visit(node.value)
+        if isinstance(node.slice, ast.Slice):
+            #TODO: we should be able to support slices later, but for now we only support indices.
+            self._unsupported(node.slice, node)
+
 
 class PyToXIRImp(ast.NodeTransformer):
     """Convert Python-using XIR to strict XIR syntax (e.g., no operators)"""
