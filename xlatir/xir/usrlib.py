@@ -11,6 +11,7 @@
 
 
 import ast
+import astunparse
 
 XIR_DECL_ANNO = 'xirdecl'
 
@@ -79,7 +80,8 @@ class Decl2Type(object):
             elif expr.id in self.TypeVars:
                 return self.typing.TyVar(expr.id)
             else:
-                raise SyntaxError(f'Unknown type constant "{expr.id}"')
+                li = ('<unk>', expr.lineno, expr.col_offset, '??TODO-SRC-LINE??')
+                raise SyntaxError(f'Unknown type constant "{expr.id}"', li)
         elif isinstance(expr, ast.Tuple):
             return self.typing.TyProduct([self.py_type_expr_to_xirtype(t) for t in expr.elts])
         elif isinstance(expr, ast.Constant): # or could be ast.NamedConstant in older Python

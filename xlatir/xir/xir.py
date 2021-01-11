@@ -291,6 +291,7 @@ class RewritePythonisms(ast.NodeTransformer):
                     raise NotImplementedError(f"range with non-constant arguments not supported")
             elif node.func.id in ('SHL', 'SHR', 'SAR'):
                 node = self.generic_visit(node)
+                assert len(node.args) == 2, f"{node.func.id} needs two arguments"
                 if isinstance(node.args[1], ast.Num):
                     node.func.id = node.func.id + "_LIT"
             elif node.func.id == 'BITSTRING':
