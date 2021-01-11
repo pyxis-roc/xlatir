@@ -788,6 +788,7 @@ class AnnotationsPass(Pass):
             ctx.statements = ctx.statements[1:]
             logger.debug(f'Setting param order: {param_order}')
             ctx.backend.set_param_order(param_order)
+            ctx.params = param_order
 
         return True
 

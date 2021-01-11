@@ -1244,6 +1244,7 @@ class SMT2Xlator(xirxlat.Xlator):
                              'MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64'])
 
         pm.add(InitBackendPass('smt2'))
+        pm.add(AnnotationsPass())
         pm.add(CFGBuilderPass())
         pm.add(CFGUnreachableNodesPass(action='exit')) # we shouldn't be producing unreachable nodes?
         pm.add(CFGIdentifyNonExitingPass())
@@ -1282,7 +1283,7 @@ class SMT2Xlator(xirxlat.Xlator):
                 self.record_type(pty.v[0], pty.v[1])
 
             self.lhs_types[name]['_retval'] = set([retval])
-            #body.insert(0, SExprList(Symbol("param"), *[pty.v[0] for pty in params]))
+            body.insert(0, SExprList(Symbol("param"), *[pty.v[0] for pty in params]))
             body[-1] = SExprList(Symbol("return"), body[-1])
             pm = self._get_imp2func_pipeline(name, body, lambda x, y, z: (Symbol(name), SExprList(*params), Symbol(retval)))
             assert pm.run_all(), f"Conversion to SMT2 failed!"
@@ -1295,7 +1296,7 @@ class SMT2Xlator(xirxlat.Xlator):
     def write_output(self, output, translations, defns, ptx = True):
         def include_file(inc, outf):
             inc = self.x2x.INC.locate(inc)
-            
+
             with open(inc, "r") as incl:
                 print(f"; begin-include {inc}", file=outf)
                 print(incl.read(), file=outf)

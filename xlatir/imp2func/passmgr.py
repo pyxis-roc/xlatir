@@ -46,7 +46,7 @@ class InterPassContext(object):
 
     cfg = None # Control flow graph
     globalvars = None # set of global variables
-
+    params = None # list of parameters
     results = None # a map from Pass name to its results.
 
     def __init__(self, config):

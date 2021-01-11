@@ -27,7 +27,7 @@ def replace_symbols(s, replacement):
     else:
         return s
 
-def rename(rdef, sep='_'):
+def rename(rdef, sep='_', params=set()):
     # rename lhs
     varndx = dict([(x, 0) for x in rdef.defns.keys()])
     defn2var = {}
@@ -85,6 +85,9 @@ def rename(rdef, sep='_'):
             if is_phi(stmt):
                 v = stmt.v[2].v[1].v
                 repl = [smt2ast.Symbol(x[1]) for x in replacements if x[0] == v]
+
+                if len(replacements) < len(rdef.cfg.pred[n]) and params and v in params:
+                    repl = repl + [smt2ast.Symbol(v) for i in range(len(rdef.cfg.pred[n]) - len(replacements))]
 
                 assert len(stmt.v[2].v) == len(repl) + 1, f"Potentially missing definition for phi statement {stmt} with replacements {repl}"
 
@@ -328,7 +331,8 @@ class SSARenameVariablesPass(Pass):
 
     def run(self, ctx):
         rdef = ctx.cfg.run_idfa(ReachingDefinitions())
-        renamed = rename(rdef)
+        params = None if ctx.params is None else set(ctx.params)
+        renamed = rename(rdef, params=params)
         ctx.cfg.orig_names = renamed
 
         return True
