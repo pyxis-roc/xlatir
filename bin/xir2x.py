@@ -67,7 +67,7 @@ def load_usrlib_declarations(semantics, libs):
             elif isinstance(d, ast.Assign): # only type declaration assignments
                 d2t.add_type_decl(d)
 
-    return usrdecls, out
+    return usrdecls, out, d2t
 
 def load_pemod(pemodeps, pemod):
     def loader(mod, modfile):
@@ -125,8 +125,10 @@ if __name__ == "__main__":
         assert False, f"Unrecognized language {args.language}"
 
     usrdecls = None
+    typedecls = None
+
     if args.lib:
-        usrdecls, semantics = load_usrlib_declarations(semantics, args.lib)
+        usrdecls, semantics, typedecls = load_usrlib_declarations(semantics, args.lib)
 
     if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
         if args.noptx:
@@ -161,7 +163,7 @@ if __name__ == "__main__":
         sem = translator.X.pre_xlat_transform(sem)
 
         try:
-            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls, stats, args.noptx)
+            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls, stats, args.noptx, typedecls)
         except AssertionError as e:
             if not args.interactive:
                 tyerrors.append((pi, e))

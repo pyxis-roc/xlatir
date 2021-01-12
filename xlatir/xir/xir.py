@@ -341,6 +341,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.fn = None
         self.declarations = {} if user_decls is None else user_decls
         self.stats = {'totalfns': 0, 'usrlibfns': 0, 'unkfns': 0}
+        self.typedecl = None
 
         # disregard excess arguments (sign, type, width annotations) when generating type equations
         self.trim_args_ptxcompat = trim_args_ptxcompat
@@ -390,8 +391,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif anno.id == 'cc_reg_ref':
                 ty = TyPtr(TyConstant("cc_reg"))
             else:
-                #TODO: only allow a list!
-                ty = TyConstant(anno.id)
+                if self.typedecl and anno.id in self.typedecl.TypeAliases:
+                    ty = TyConstant(self.typedecl.TypeAliases[anno.id])
+                else:
+                    #TODO: only allow a list!
+                    ty = TyConstant(anno.id)
         elif isinstance(anno, ast.Subscript):
             if isinstance(anno.value, ast.Name) and anno.value.id == 'Callable':
                 if isinstance(anno.slice.value, ast.Tuple) and len(anno.slice.value.elts) == 2:
@@ -737,11 +741,12 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(test, TyConstant('bool')))
 
-def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, noptx = False):
+def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, noptx = False, typedecl = None):
     # generate type equations
     print(astunparse.unparse(insn_sem))
     print(ast.dump(insn_sem))
     eqg = TypeEqnGenerator(user_decls = user_decls, trim_args_ptxcompat = not noptx)
+    eqg.typedecl = typedecl
     eqg.visit(insn_sem)
 
     if stats is not None:

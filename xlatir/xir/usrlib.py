@@ -12,6 +12,9 @@
 
 import ast
 import astunparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 XIR_DECL_ANNO = 'xirdecl'
 
@@ -158,6 +161,7 @@ class Decl2Type(object):
                     self._gen_type_variable(node.targets[0], node.value)
             elif isinstance(node.value, ast.Name):
                 if node.value.id in self.TypeConstants:
+                    logger.debug(f'Added alias {node.targets[0].id} for {node.value.id}')
                     self.TypeAliases[node.targets[0].id] = node.value.id
                 else:
                     raise SyntaxError(f"Unknown type constant {node.value.id} in alias {node.targets[0].id}")
