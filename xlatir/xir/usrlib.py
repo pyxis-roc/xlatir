@@ -92,8 +92,8 @@ class Decl2Type(object):
         elif isinstance(expr, ast.Subscript):
             # only support u32[N] where N is a literal constant
             assert isinstance(expr.slice, ast.Index), f"Unsupported: {expr.slice}"
-            assert isinstance(expr.slice.value, ast.Constant), f"Unsupported size: {expr.slice.value}"
-            ty = self.py_type_expr_to_xirtype(expr.value)
+            assert isinstance(expr.slice.value, (ast.Constant, ast.Num)), f"Unsupported size: {expr.slice.value}"
+            ty = self.py_type_expr_to_xirtype(expr.value if hasattr(expr, 'value') else expr.n)
             return self.typing.TyArray(ty, [int(expr.slice.value.value)])
         else:
             raise NotImplementedError(f'Unrecognized annotation expression type {expr}')
