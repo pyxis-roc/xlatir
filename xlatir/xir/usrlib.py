@@ -84,7 +84,7 @@ class Decl2Type(object):
                 raise SyntaxError(f'Unknown type constant "{expr.id}"', li)
         elif isinstance(expr, ast.Tuple):
             return self.typing.TyProduct([self.py_type_expr_to_xirtype(t) for t in expr.elts])
-        elif isinstance(expr, (ast.Constant, ast.NamedConstant)): # or could be ast.NamedConstant in older Python
+        elif isinstance(expr, (ast.Constant, ast.NameConstant)): # or could be ast.NamedConstant in older Python
             if expr.value is None:
                 return self.typing.TyConstant('void')
             else:
