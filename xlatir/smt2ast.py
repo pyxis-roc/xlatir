@@ -120,13 +120,15 @@ def is_call(sexpr, func):
     return isinstance(sexpr, SExprList) and (len(sexpr.v) > 0 and isinstance(sexpr.v[0], Symbol) and (sexpr.v[0].v == func))
 
 def smt2_literal(v, ty, fp_as_bv=False):
+    #TODO: remove all PTX-specific literals or accept a custom transformations
     if ty == 'pred':
-        assert v == 1 or v == 0, f"Wrong value for pred: {v}"
+        assert v is 1 or v is 0, f"Wrong value for pred: {v}"
         return Binary(v, 1)
     elif ty == 'cc_reg':
-        assert v == 1 or v == 0, f"Wrong value for cc_reg: {v}"
+        assert v is 1 or v is 0, f"Wrong value for cc_reg: {v}"
         return SExprList(Symbol("mk-ccreg"), Binary(v, 1))
     elif ty == 'carryflag':
+        assert v is 1 or v is 0, f"Wrong value for carryflag: {v}"
         return Binary(v, 1)
     elif ty in ('u8', 'u16', 'u32', 'u64', 'u128',
                 's16', 's32', 's64', 's128',
