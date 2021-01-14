@@ -17,13 +17,14 @@ import xlatir.xir.xirxlat as xirxlat
 import xlatir.xir.xir2c as xir2c
 import xlatir.xir.xir2smt2 as xir2smt2
 import xlatir.xir.xirpeval as xirpeval
+import xlatir.xir.xirsrc as xirsrc
 import xlatir.xir.srcutils as srcutils
 import logging
 import sys
 import warnings
+import itertools
 
-#TODO: build a uniform loader for XIR files.
-
+# DEPRECATED
 def load_execute_functions(semfile):
     """This loads the low-level semantics file produced by the semantics compiler"""
     out = {}
@@ -42,6 +43,7 @@ def load_execute_functions(semfile):
 
     return gl, out
 
+# DEPRECATED
 def load_usrlib_declarations(semantics, libs):
     import xlatir.xir.usrlib as usrlib
     import xlatir.xir.anno as xiranno
@@ -91,6 +93,50 @@ def load_pemod(pemodeps, pemod):
     utilsmod = loader(pemodname, pemod)
     xirpeval.set_utils(utilsmod)
 
+def load_xir_source(src, libs):
+    import xlatir.xir.xirsrc as xirsrc
+
+    gl = {}
+    semantics = {}
+    usrdecls = None
+    typedecls = None
+
+    s = xirsrc.XIRSource()
+    s.load(src)
+    gl, semantics, usrdecls, typedecls = s.parse()
+
+    # for now, everything lives in a global namespace, typedecls handled separately
+    names = set(itertools.chain(gl.keys(), semantics.keys(), usrdecls.keys()))
+
+    for l in libs:
+        ls = xirsrc.XIRSource()
+        ls.load(l)
+
+        lgl, lsemantics, lusrdecls, ltypedecls = ls.parse(names)
+
+        names |= set(itertools.chain(lgl.keys(),
+                                     lsemantics.keys(),
+                                     lusrdecls.keys()))
+
+        if len(lgl) > 0:
+            warnings.warn(f'{l}: Globals in libraries not supported')
+            lgl = {}
+
+        if len(lsemantics) > 0:
+            raise NotImplementedError(f'{l}: Functions with bodies in libraries not yet supported')
+
+        usrdecls.update(lusrdecls)
+
+        try:
+            typedecls.merge(ltypedecls)
+        except ValueError as e:
+            print(f"ERROR when processing library {l}:")
+            raise
+
+
+    return gl, semantics, usrdecls, typedecls
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -109,7 +155,9 @@ if __name__ == "__main__":
 
     args = p.parse_args()
 
-    gl, semantics = load_execute_functions(args.semfile)
+    gl, semantics, usrdecls, typedecls = load_xir_source(args.semfile, args.lib)
+
+    #gl, semantics = load_execute_functions(args.semfile)
     translator = xirxlat.XIRToX()
     translator.INC = srcutils.IncludeLocator(args.include_dirs)
 
@@ -124,11 +172,11 @@ if __name__ == "__main__":
     else:
         assert False, f"Unrecognized language {args.language}"
 
-    usrdecls = None
-    typedecls = None
+    #usrdecls = None
+    #typedecls = None
 
-    if args.lib:
-        usrdecls, semantics, typedecls = load_usrlib_declarations(semantics, args.lib)
+    #if args.lib:
+    #    usrdecls, semantics, typedecls = load_usrlib_declarations(semantics, args.lib)
 
     if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
         if args.noptx:

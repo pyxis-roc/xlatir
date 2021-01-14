@@ -291,7 +291,8 @@ class RewritePythonisms(ast.NodeTransformer):
                     raise NotImplementedError(f"range with non-constant arguments not supported")
             elif node.func.id in ('SHL', 'SHR', 'SAR'):
                 node = self.generic_visit(node)
-                assert len(node.args) == 2, f"{node.func.id} needs two arguments"
+                #TODO: the greater than is because of PTX...
+                assert len(node.args) >= 2, f"{node.func.id} needs two arguments" 
                 if isinstance(node.args[1], ast.Num):
                     node.func.id = node.func.id + "_LIT"
             elif node.func.id == 'BITSTRING':
@@ -675,7 +676,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             elif isinstance(declty, PolyTyDef):
                 declty = self.declarations[fn]
             else:
-                raise NotImplementedError(f'Do not handle declaration type {declty}')
+                raise NotImplementedError(f'Do not handle declaration type {declty} for {fn}')
 
             args = node.args[:len(declty.typedef.args)] if self.trim_args_ptxcompat else node.args
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, args, declty)

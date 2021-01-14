@@ -74,6 +74,24 @@ class Decl2Type(object):
         self.TypeVars = {}
         self.TypeAliases = {}
 
+    def merge(self, od2t):
+        assert self.typing == od2t.typing, f"Different type classes"
+
+        for v in od2t.TypeVars:
+            # duplicate type vars are usually not a problem
+            if v in self.TypeVars: continue
+            self.TypeVars[v] = od2t.TypeVars[v]
+
+        for a in od2t.TypeAliases:
+            if a in self.TypeAliases:
+                if self.TypeAliases[a] == od2t.TypeAliases[a]:
+                    continue
+
+                # this means x = y and x = z in two different source files/libraries
+                raise ValueError(f"Duplicate and differing type aliases {a}")
+            else:
+                self.TypeAliases[a] = od2t.TypeAliases[a]
+
     def py_type_expr_to_xirtype(self, expr):
         if isinstance(expr, ast.Name):
             if expr.id in self.TypeConstants:
