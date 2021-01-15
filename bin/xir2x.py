@@ -93,9 +93,11 @@ def load_pemod(pemodeps, pemod):
     utilsmod = loader(pemodname, pemod)
     xirpeval.set_utils(utilsmod)
 
-def load_xir_source(src, libs):
+def load_xir_source(src, libs, libdirs):
     import xlatir.xir.xirsrc as xirsrc
 
+    libdirs.append(os.path.join(os.path.dirname(xirsrc.__file__), 'stdlib'))
+    lloc = srcutils.IncludeLocator(libdirs)
     gl = {}
     semantics = {}
     usrdecls = None
@@ -109,8 +111,9 @@ def load_xir_source(src, libs):
     names = set(itertools.chain(gl.keys(), semantics.keys(), usrdecls.keys()))
 
     for l in libs:
+        lpath = lloc.locate(l)
         ls = xirsrc.XIRSource()
-        ls.load(l)
+        ls.load(lpath)
 
         lgl, lsemantics, lusrdecls, ltypedecls = ls.parse(names)
 
@@ -152,10 +155,14 @@ if __name__ == "__main__":
     p.add_argument('--pemdeps', dest='pedeps', metavar='MODULEFILE', action='append', help='Import MODULEFILE as a dependency for pemodule', default=[])
     p.add_argument('--pem', dest='pemodule', metavar='MODULEFILE', help='Import MODULEFILE as utils for partial evaluator')
     p.add_argument('-I', dest='include_dirs', metavar='DIR', help='Look for included files in this directory', action='append', default=[])
+    p.add_argument('-L', dest='lib_dirs', metavar='DIR', help='Look for library files in DIR', action='append', default=[])
 
     args = p.parse_args()
 
-    gl, semantics, usrdecls, typedecls = load_xir_source(args.semfile, args.lib)
+    args.lib_dirs.insert(0, os.path.dirname(args.semfile))
+    args.lib_dirs.insert(0, os.getcwd())
+
+    gl, semantics, usrdecls, typedecls = load_xir_source(args.semfile, args.lib, args.lib_dirs)
 
     #gl, semantics = load_execute_functions(args.semfile)
     translator = xirxlat.XIRToX()
