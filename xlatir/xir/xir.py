@@ -341,6 +341,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.literal_index = 0
         self.fn = None
         self.declarations = {} if user_decls is None else user_decls
+        self.local_decls = {} # for local declarations, TODO: replace declarations and local declarations with a proper scoped declarations implementation
         self.stats = {'totalfns': 0, 'usrlibfns': 0, 'unkfns': 0}
         self.typedecl = None
 
@@ -422,11 +423,21 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return ty
 
     def visit_FunctionDef(self, node):
+        self.local_decls = {}
+
         for a in node.args.args:
             t = self.get_or_gen_ty_var(a.arg)
             a._xir_type = t
             if a.annotation is not None:
                 aty = self.anno_to_type(a.annotation)
+                if isinstance(aty, TyApp):
+                    assert a.arg not in self.local_decls, f"Duplicate local declaration for argument {a.arg}"
+                    #TODO: this doesn't work now because it is parsed incorrectly
+                    if any([isinstance(x, TyVar) for x in aty.args]) or isinstance(aty.ret, TyVar):
+                        raise NotImplementedError(f'Do not support type variables (type literals only) in Callable')
+
+                    self.local_decls[a.arg] = aty
+
                 self.equations.append(TyEqn(t, aty))
 
         ret = self.get_or_gen_ty_var(f"fn_{node.name}_retval")
@@ -666,23 +677,30 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.stats['totalfns'] += 1
 
-        if fn not in self.declarations:
+        if fn not in self.declarations and fn not in self.local_decls:
             logger.warning(f"Missing declaration: {fn}")
-
-        if fn in self.declarations:
-            declty = self.declarations[fn]
-            if isinstance(declty, TyApp):
-                declty = PolyTyDef([], self.declarations[fn].copy())
-            elif isinstance(declty, PolyTyDef):
+        else:
+            if fn in self.local_decls:
+                declty = self.local_decls[fn]
+            else:
                 declty = self.declarations[fn]
+
+            if isinstance(declty, TyApp):
+                #TODO: local_decls can't be polymorphic yet ...
+                declty = PolyTyDef([], declty.copy())
+            elif isinstance(declty, PolyTyDef):
+                pass
             else:
                 raise NotImplementedError(f'Do not handle declaration type {declty} for {fn}')
 
             args = node.args[:len(declty.typedef.args)] if self.trim_args_ptxcompat else node.args
             ret, fnt, _, _ = self._generate_poly_call_eqns(fn, args, declty)
             _set_fn_node_type(node, fnt)
-            logging.info(f'usrlib: {fn}')
-            self.stats['usrlibfns'] += 1
+            if fn in self.local_decls:
+                logging.info(f'local decl: {fn}')
+            else:
+                logging.info(f'usrlib: {fn}')
+                self.stats['usrlibfns'] += 1
             return ret
 
         fnt = self.get_or_gen_ty_var(f'unknown_fn_{fn if fn else ""}{self.ret}')
