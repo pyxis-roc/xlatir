@@ -448,6 +448,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
         assert node.args.vararg is None
         assert node.args.kwarg is None
 
+        node._xir_return = False
+
         self.fn = node
         #x = self.generic_visit(node) # this visits annotations too ...
         #print("x == ", x)
@@ -455,6 +457,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
             self.visit(x)
 
         self.fn = None
+
+        if not node._xir_return:
+            logging.debug(f'Function {node.name} has no return statement, returning void')
+            self.equations.append(TyEqn(node._xir_type.ret, TyConstant('void')))
+
         return None
 
     def visit_Tuple(self, node):
@@ -468,6 +475,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         #TODO: multiple return values need a product type
         self.equations.append(TyEqn(tyv, self.fn._xir_type.ret))
+        self.fn._xir_return = True
 
     def _generate_poly_call_eqns(self, fn, args, typedef):
         ret = self.get_or_gen_ty_var(f"ret{self.ret}")
