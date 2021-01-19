@@ -1263,10 +1263,20 @@ class SMT2Xlator(xirxlat.Xlator):
 
         return pm
 
+    def _check_arg_types(self, node):
+        for a in node.args.args:
+            aty = self.x2x._get_type(a._xir_type)
+            if isinstance(aty, TyApp):
+                # waiting for: https://matryoshka-project.github.io/wait2018/slides/WAIT-2018-Fontaine-SMT-LIB-TIP.pdf
+
+                raise NotImplementedError(f"Don't support higher-order functions in SMT-LIB2")
+
     def xlat_FunctionDef(self, name, params, retval, decls, body, node):
         self._retval_ty = retval
 
         use_create_dag = not self._use_imp2
+
+        self._check_arg_types(node)
 
         if use_create_dag:
             dag = create_dag(body, _debug_trace = False)
