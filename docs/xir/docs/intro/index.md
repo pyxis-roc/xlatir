@@ -57,4 +57,4 @@ can perform a syntax check and alert you to unsupported syntax.
 
 ### XIR supports macros
 
-Unlike Python, XIR supports syntactic macros to ease the work of semantics engineering. TODO: document macros.
+Unlike Python, XIR supports [syntactic macros](../macros) to ease the work of semantics engineering.
