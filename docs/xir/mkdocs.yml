@@ -1,0 +1,5 @@
+site_name: XIR
+nav:
+  - Home: index.md
+  - About: about.md
+#theme: readthedocs
