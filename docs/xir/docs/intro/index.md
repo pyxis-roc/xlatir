@@ -18,7 +18,7 @@ def EBPF_MUL(a: b32, b: b32):
 ```
 
 The type annotations are mostly a _subset_ of the mypy type
-syntax, but include non-mypy constructs as well. TODO: document these.
+syntax, but include non-mypy constructs as well. Some preliminary documentation about [XIR types](../types) is available.
 
 For those familiar with type inference in other languages, literals in
 XIR do _not_ have a default type. In certain circumstances, this may
