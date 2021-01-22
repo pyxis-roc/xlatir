@@ -8,8 +8,15 @@ from .syntax import XIRSyntaxError, SourceInfo
 from . import anno as xiranno
 from . import usrlib
 from . import xirtyping
+from . import typeparser
+import logging
+
+logger = logging.getLogger(__name__)
 
 class XIRSource(object):
+    def __init__(self):
+        self.tyenv = typeparser.TypeEnv()
+
     def load(self, srcfile):
 
         with open(srcfile, 'r') as f:
@@ -51,6 +58,8 @@ class XIRSource(object):
         gl = {}
         d2t = usrlib.Decl2Type(xirtyping)
 
+        app = typeparser.AppropriateParser(self.tyenv, self)
+
         for s in self.ast.body:
             if isinstance(s, ast.FunctionDef):
                 if s.name in names:
@@ -62,8 +71,9 @@ class XIRSource(object):
                 if xiranno.has_anno(s, xiranno.XIR_IGNORE):
                     continue
 
+                # TODO: move this parsing to teparser
                 if usrlib.is_xir_declaration(s):
-                    usrdecls[s.name] = d2t.from_FunctionDef(s)
+                    usrdecls[s.name] = app.parse(s)
                 else:
                     fdefs[s.name] = s
             elif isinstance(s, ast.Assign):
@@ -75,9 +85,15 @@ class XIRSource(object):
 
                 # This is either a typedecl/a type alias, or constant assignment
 
-                if usrlib.is_xir_type_decl(s):
-                    d2t.add_type_decl(s)
-                else:
+                try:
+                    a = app.parse(s)
+                    if isinstance(a, xirtyping.TyAlias):
+                        self.tyenv.type_aliases[a.name] = a.value
+                    else:
+                        self.tyenv.type_vars[a.name] = a
+                except XIRSyntaxError as e:
+                    logging.debug('Failed to parse assignment as type information: {e}, treating as global instead')
+
                     #TODO: we need to restrict this so that it is gl =
                     # constant [transitively], so we can strictly disambiguate between
                     # typedecls and constants, and catch syntax errors?
@@ -85,7 +101,7 @@ class XIRSource(object):
                     # re-examine why this was needed, since only PTX uses it.
                     gl[s.targets[0].id] = s
             elif isinstance(s, ast.AnnAssign):
-                # not sure this is needed
+                # This may be needed in the future for : type = definitions
                 raise NotImplementedError
             elif isinstance(s, (ast.Import, ast.ImportFrom)):
                 # TODO: set up namespaces, etc.

@@ -37,10 +37,13 @@ if __name__ == '__main__':
     te.type_constants.add('bool')
     te.type_constants.add('pred')
     te.type_constants.add('intptr_t')
+
+    appp = AppropriateParser(te, xs)
+
     for s in xs.ast.body:
         if isinstance(s, ast.Assign):
             try:
-                a = ap.parse(s)
+                a = appp.parse(s)
                 if isinstance(a, TyAlias):
                     te.type_aliases[a.name] = a.value
                 else:
@@ -48,13 +51,14 @@ if __name__ == '__main__':
             except XIRSyntaxError as e:
                 print(e)
         elif isinstance(s, ast.FunctionDef):
-            tep = TypeExprParser()
             print(ast.dump(s))
+            print(appp.parse(s))
+
             for a in s.args.args:
-                print("annotation", tep.parse(a.annotation, te, xs))
+                print("annotation", appp.parse(a.annotation))
 
             for st in s.body:
                 # only handles top-level statements for now
                 if isinstance(st, ast.AnnAssign):
                     print(ast.dump(st))
-                    print("assign-annotation", tep.parse(st.annotation, te, xs))
+                    print("assign-annotation", appp.parse(st.annotation))

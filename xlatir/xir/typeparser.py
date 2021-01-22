@@ -17,10 +17,10 @@
 
 import ast
 from .xirtyping import *
-from .xirsrc import XIRSource, XIRSyntaxError
+#from .xirsrc import XIRSource, XIRSyntaxError
 from typing import Union, Tuple
 
-def expect(node: ast.AST, classes: Tuple[ast.AST], xsrc: XIRSource):
+def expect(node: ast.AST, classes: Tuple[ast.AST], xsrc):
     if not isinstance(classes, tuple):
         classes = (classes, )
 
@@ -167,7 +167,75 @@ class TypeExprParser(ast.NodeVisitor):
         else:
             raise self._xsrc._gen_syntax_error(f'Invalid ast node {node.__class__.__name__} in type expression', node)
 
-    def parse(self, node: ast.AST, tyenv: TypeEnv, xsrc: XIRSource):
+    def parse(self, node: ast.AST, tyenv: TypeEnv, xsrc):
         self._xsrc = xsrc
         self._tyenv = tyenv
         return self.visit(node)
+
+# function defs also specify a function type, but are syntactically different from function type expressions which use callable
+
+class FuncDefParser(object):
+    def parse(self, fdefnode, tyenv, xsrc, tyexprparser = None, return_is_optional = False):
+        if tyexprparser is None:
+            tyexprparser = TypeExprParser()
+
+        tep = tyexprparser
+
+        if not return_is_optional and not fdefnode.returns:
+            raise xsrc._gen_syntax_error(f'FunctionDef must have a return type', node)
+
+        if fdefnode.returns:
+            ret = tep.parse(fdefnode.returns, tyenv, xsrc)
+            if isinstance(ret, tuple):
+                # DEPRECATED
+                ret = TyProduct(ret) 
+        else:
+            ret = TyVar(f'fn_{f.name}_retval')
+
+        arg_types = []
+        poly_tydef = set()
+        for a in fdefnode.args.args:
+            if a.annotation:
+                t = tep.parse(a.annotation, tyenv, xsrc)
+
+                if isinstance(t, TyVar):
+                    poly_tydef.add(t.name)
+
+                arg_types.append(t)
+            else:
+                raise xsrc._gen_syntax_error(f'Argument {a.arg} must be annotated with type', a)
+
+        if fdefnode.args.vararg is not None:
+            # needed for min, max
+            raise NotImplementedError(f"Don't support varargs in FunctionDef yet")
+
+        fntype = TyApp(ret, arg_types)
+
+        if len(poly_tydef):
+            return PolyTyDef(list(poly_tydef), fntype)
+        else:
+            return fntype
+
+
+class AppropriateParser(object):
+    """Parser for global type declarations, calls the appropriate parser.
+       Use this instead of the individual parsers, since its interface
+       is less likely to change.
+    """
+
+    def __init__(self, tyenv, xsrc):
+        self.tyenv = tyenv
+        self.xsrc = xsrc
+        self.ap = AssignmentParser(self.xsrc)
+        self.tep = TypeExprParser()
+        self.fdp = FuncDefParser()
+
+    def parse(self, node):
+        if isinstance(node, ast.Assign):
+            return self.ap.parse(node)
+        elif isinstance(node, ast.FunctionDef):
+            return self.fdp.parse(node, self.tyenv, self.xsrc, tyexprparser=self.tep)
+        elif isinstance(node, ast.expr): # not the Expr statement
+            return self.tep.parse(node, self.tyenv, self.xsrc)
+        else:
+            raise NotImplementedError(f"Don't know which parser to use for node {node}")

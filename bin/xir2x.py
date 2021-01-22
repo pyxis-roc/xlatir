@@ -19,6 +19,7 @@ import xlatir.xir.xir2smt2 as xir2smt2
 import xlatir.xir.xirpeval as xirpeval
 import xlatir.xir.xirsrc as xirsrc
 import xlatir.xir.srcutils as srcutils
+
 import logging
 import sys
 import warnings
@@ -93,6 +94,28 @@ def load_pemod(pemodeps, pemod):
     utilsmod = loader(pemodname, pemod)
     xirpeval.set_utils(utilsmod)
 
+def setup_ptx_typeenv(te):
+    """Compatibility for PTX"""
+    te.type_constants.add('b1')
+    te.type_constants.add('u8')
+    te.type_constants.add('u16')
+    te.type_constants.add('u32')
+    te.type_constants.add('u64')
+    te.type_constants.add('b16')
+    te.type_constants.add('b32')
+    te.type_constants.add('b64')
+    te.type_constants.add('s16')
+    te.type_constants.add('s32')
+    te.type_constants.add('s64')
+    te.type_constants.add('f32')
+    te.type_constants.add('f64')
+    te.type_constants.add('carryflag')
+    te.type_constants.add('cc_reg_ref')
+    te.type_constants.add('cc_reg')
+    te.type_constants.add('bool')
+    te.type_constants.add('pred')
+    te.type_constants.add('intptr_t')
+
 def load_xir_source(src, libs, libdirs):
     import xlatir.xir.xirsrc as xirsrc
 
@@ -104,6 +127,7 @@ def load_xir_source(src, libs, libdirs):
     typedecls = None
 
     s = xirsrc.XIRSource()
+    setup_ptx_typeenv(s.tyenv)
     s.load(src)
     gl, semantics, usrdecls, typedecls = s.parse()
 
@@ -113,6 +137,7 @@ def load_xir_source(src, libs, libdirs):
     for l in libs:
         lpath = lloc.locate(l)
         ls = xirsrc.XIRSource()
+        setup_ptx_typeenv(ls.tyenv) # NOTE: this means that type environments are per source, we need to namespace this into a global type environment
         ls.load(lpath)
 
         lgl, lsemantics, lusrdecls, ltypedecls = ls.parse(names)
@@ -133,7 +158,7 @@ def load_xir_source(src, libs, libdirs):
         try:
             typedecls.merge(ltypedecls)
         except ValueError as e:
-            print(f"ERROR when processing library {l}:")
+            print(f"ERROR when processing library {l}")
             raise
 
 
