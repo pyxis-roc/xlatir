@@ -15,6 +15,14 @@ class Expander(ast.NodeTransformer):
 
         return node
 
+    def visit_FunctionDef(self, node):
+        node = self.generic_visit(node)
+
+        if node.name in self._expansions:
+            node.name = self._expansions[node.name].id
+
+        return node
+
     def expand(self, expansions, xmacro):
         body = copy.deepcopy(xmacro.body)
         self._expansions = expansions
