@@ -56,7 +56,6 @@ class XIRSource(object):
         fdefs = {}
         usrdecls = {}
         gl = {}
-        d2t = usrlib.Decl2Type(xirtyping)
 
         app = typeparser.AppropriateParser(self.tyenv, self)
 
@@ -109,4 +108,4 @@ class XIRSource(object):
             else:
                 raise self._gen_syntax_error(f"Unsupported statement {s.__class__.__name__}", s)
 
-        return (gl, fdefs, usrdecls, d2t)
+        return (gl, fdefs, usrdecls)

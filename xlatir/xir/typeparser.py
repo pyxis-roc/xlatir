@@ -93,6 +93,8 @@ class TypeEnv(object):
         self.type_vars = {}
         self.type_aliases = {}
 
+    # TODO: handle duplicate names
+
     def resolve(self, name):
         if name in self.type_constants or name in self.builtins:
             return TyConstant(name)
@@ -102,6 +104,27 @@ class TypeEnv(object):
             return self.type_aliases[name]
         else:
             raise KeyError(f"Not found in type environment: {name}")
+
+    def merge(self, ote):
+        #assert self.typing == od2t.typing, f"Different type classes"
+
+        self.type_constants |= ote.type_constants
+
+        for v in ote.type_vars:
+            # duplicate type vars are usually not a problem
+            if v in self.type_vars: continue
+            self.type_vars[v] = ote.type_vars[v]
+
+        for a in ote.type_aliases:
+            if a in self.type_aliases:
+                if self.type_aliases[a] == ote.type_aliases[a]:
+                    continue
+
+                # this means x = y and x = z in two different source files/libraries
+                raise ValueError(f"Duplicate and differing type aliases {a}")
+            else:
+                self.type_aliases[a] = ote.type_aliases[a]
+
 
 # TypeExpr := TypeConstant | ArrayType | CallableType | TypeAlias | TypeVariable
 #   TypeConstant, TypeAlias, TypeVariable are all ast.Name or ast.Constant (for None)
@@ -188,7 +211,7 @@ class FuncDefParser(object):
             ret = tep.parse(fdefnode.returns, tyenv, xsrc)
             if isinstance(ret, tuple):
                 # DEPRECATED
-                ret = TyProduct(ret) 
+                ret = TyProduct(ret)
         else:
             ret = TyVar(f'fn_{f.name}_retval')
 

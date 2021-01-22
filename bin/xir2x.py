@@ -19,6 +19,7 @@ import xlatir.xir.xir2smt2 as xir2smt2
 import xlatir.xir.xirpeval as xirpeval
 import xlatir.xir.xirsrc as xirsrc
 import xlatir.xir.srcutils as srcutils
+import xlatir.xir.typeparser as typeparser
 
 import logging
 import sys
@@ -125,13 +126,16 @@ def load_xir_source(src, libs, libdirs):
     semantics = {}
     usrdecls = None
     typedecls = None
+    gltyenv = typeparser.TypeEnv()
+    setup_ptx_typeenv(gltyenv)
 
     s = xirsrc.XIRSource()
     setup_ptx_typeenv(s.tyenv)
     s.load(src)
-    gl, semantics, usrdecls, typedecls = s.parse()
+    gl, semantics, usrdecls = s.parse()
+    gltyenv.merge(s.tyenv)
 
-    # for now, everything lives in a global namespace, typedecls handled separately
+    # for now, everything lives in a global namespace, typedecls handled separately using merge
     names = set(itertools.chain(gl.keys(), semantics.keys(), usrdecls.keys()))
 
     for l in libs:
@@ -140,7 +144,7 @@ def load_xir_source(src, libs, libdirs):
         setup_ptx_typeenv(ls.tyenv) # NOTE: this means that type environments are per source, we need to namespace this into a global type environment
         ls.load(lpath)
 
-        lgl, lsemantics, lusrdecls, ltypedecls = ls.parse(names)
+        lgl, lsemantics, lusrdecls = ls.parse(names)
 
         names |= set(itertools.chain(lgl.keys(),
                                      lsemantics.keys(),
@@ -156,13 +160,12 @@ def load_xir_source(src, libs, libdirs):
         usrdecls.update(lusrdecls)
 
         try:
-            typedecls.merge(ltypedecls)
+            gltyenv.merge(ls.tyenv)
         except ValueError as e:
             print(f"ERROR when processing library {l}")
             raise
 
-
-    return gl, semantics, usrdecls, typedecls
+    return s, gl, semantics, usrdecls, gltyenv
 
 
 if __name__ == "__main__":
@@ -187,9 +190,8 @@ if __name__ == "__main__":
     args.lib_dirs.insert(0, os.path.dirname(args.semfile))
     args.lib_dirs.insert(0, os.getcwd())
 
-    gl, semantics, usrdecls, typedecls = load_xir_source(args.semfile, args.lib, args.lib_dirs)
+    xsrc, gl, semantics, usrdecls, gltyenv = load_xir_source(args.semfile, args.lib, args.lib_dirs)
 
-    #gl, semantics = load_execute_functions(args.semfile)
     translator = xirxlat.XIRToX()
     translator.INC = srcutils.IncludeLocator(args.include_dirs)
 
@@ -203,12 +205,6 @@ if __name__ == "__main__":
         sys.setrecursionlimit(2500)
     else:
         assert False, f"Unrecognized language {args.language}"
-
-    #usrdecls = None
-    #typedecls = None
-
-    #if args.lib:
-    #    usrdecls, semantics, typedecls = load_usrlib_declarations(semantics, args.lib)
 
     if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
         if args.noptx:
@@ -243,7 +239,7 @@ if __name__ == "__main__":
         sem = translator.X.pre_xlat_transform(sem)
 
         try:
-            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls, stats, args.noptx, typedecls)
+            ty = xir.infer_types(sem, xir.TYPE_DECLS, usrdecls, stats, args.noptx, typeenv=gltyenv, xsrc=xsrc)
         except AssertionError as e:
             if not args.interactive:
                 tyerrors.append((pi, e))

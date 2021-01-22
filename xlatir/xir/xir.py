@@ -17,6 +17,7 @@ import astunparse
 from .xirtyping import *
 import itertools
 import logging
+from .typeparser import AppropriateParser
 
 logger = logging.getLogger(__name__)
 
@@ -343,10 +344,18 @@ class TypeEqnGenerator(ast.NodeVisitor):
         self.declarations = {} if user_decls is None else user_decls
         self.local_decls = {} # for local declarations, TODO: replace declarations and local declarations with a proper scoped declarations implementation
         self.stats = {'totalfns': 0, 'usrlibfns': 0, 'unkfns': 0}
-        self.typedecl = None
+        self.typedecl = None # deprecated
+        self.typeenv = None
+        self.xsrc = None
+        self._appp = None
 
         # disregard excess arguments (sign, type, width annotations) when generating type equations
         self.trim_args_ptxcompat = trim_args_ptxcompat
+
+    def set_src_info(self, xsrc, typeenv):
+        self.xsrc = xsrc
+        self.typeenv = typeenv
+        self._appp = AppropriateParser(self.typeenv, self.xsrc)
 
     def generate_type_variable(self, name, literal=None):
         assert name not in self.type_variables
@@ -422,6 +431,16 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         return ty
 
+    def anno_to_type_2(self, anno):
+        ty = self._appp.parse(anno)
+        if isinstance(ty, TyConstant):
+            if ty.value == 'pred':
+                return TyConstant('bool')
+            elif ty.value == 'cc_reg_ref':
+                return TyPtr(TyConstant('cc_reg')) # PTXism
+
+        return ty
+
     def visit_FunctionDef(self, node):
         self.local_decls = {}
 
@@ -429,7 +448,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
             t = self.get_or_gen_ty_var(a.arg)
             a._xir_type = t
             if a.annotation is not None:
-                aty = self.anno_to_type(a.annotation)
+                aty = self.anno_to_type_2(a.annotation)
                 if isinstance(aty, TyApp):
                     assert a.arg not in self.local_decls, f"Duplicate local declaration for argument {a.arg}"
                     #TODO: this doesn't work now because it is parsed incorrectly
@@ -748,7 +767,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         assert node.simple == 1 # TODO
 
         lhs = self.visit(node.target)
-        lhsty = self.anno_to_type(node.annotation)
+        lhsty = self.anno_to_type_2(node.annotation)
         self.equations.append(TyEqn(lhs, lhsty))
 
         if node.value is not None:
@@ -768,12 +787,17 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         self.equations.append(TyEqn(test, TyConstant('bool')))
 
-def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, noptx = False, typedecl = None):
+def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, noptx = False, typeenv = None, xsrc = None):
     # generate type equations
     print(astunparse.unparse(insn_sem))
     print(ast.dump(insn_sem))
     eqg = TypeEqnGenerator(user_decls = user_decls, trim_args_ptxcompat = not noptx)
-    eqg.typedecl = typedecl
+
+    if typeenv or xsrc:
+        assert xsrc is not None, f"xsrc must be specified if typeenv is specified"
+        assert typeenv is not None, f"typeenv must be specified if xsrc is specified"
+        eqg.set_src_info(xsrc, typeenv)
+
     eqg.visit(insn_sem)
 
     if stats is not None:
