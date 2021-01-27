@@ -463,6 +463,10 @@ class TypeEqnGenerator(ast.NodeVisitor):
         fnty = TyApp(ret, [a._xir_type for a in node.args.args])
         node._xir_type = fnty
 
+        if node.returns:
+            rty = self.anno_to_type_2(node.returns)
+            self.equations.append(TyEqn(ret, rty))
+
         # not supported
         assert node.args.vararg is None
         assert node.args.kwarg is None
