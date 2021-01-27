@@ -134,6 +134,44 @@ class TyApp(TyTerm):
 
         return TyApp(ret_new, arg_copies)
 
+class TyRecord(TyTerm):
+    def __init__(self, name, fields_and_types):
+        self.name = name
+        # list of tuples of ('fieldname', fieldtype)
+        self.fields_and_types = fields_and_types
+        self.field_names = set([x[0] for x in self.fields_and_types])
+        assert len(self.field_names) == len(self.fields_and_types), f"Possible duplicate field name."
+
+    def __str__(self):
+        n = self.name or '?'
+        return f"TyRecord({n}, [{', '.join(['%s: %s' % (f, t) for f, t in self.fields_and_types])}])"
+
+    __repr__ = __str__
+
+    def copy(self, subst = None):
+        fields_and_types_copies = [(x[0], x[1].copy(subst)) for x in self.fields_and_types]
+
+        return TyRecord(self.name, fields_and_types_copies)
+
+# not sure if declarations should be tyterms
+# this is closer to PolyTyDef
+class TyRecordDecl(object):
+    def __init__(self, name, fields_and_types):
+        self.name = name
+        # list of tuples of ('fieldname', fieldtype)
+        self.fields_and_types = fields_and_types
+        self.field_names = set([x[0] for x in self.fields_and_types])
+        assert len(self.field_names) == len(self.fields_and_types), f"Possible duplicate field name"
+
+    def __str__(self):
+        return f"{self.name} [{', '.join(['%s: %s' % (f, t) for f, t in self.fields_and_types])}]"
+
+    __repr__ = __str__
+
+    def copy(self, subst = None):
+        fields_and_types_copies = [(x[0], x[1].copy(subst)) for x in self.fields_and_types]
+
+        return TyRecordDecl(self.name, fields_and_types_copies)
 
 class PolyTyDef(object):
     def __init__(self, uqvars, typedef):
@@ -295,6 +333,31 @@ def unify(m, n, reps = None):
             return True
         else:
             return False
+
+    if isinstance(s, TyRecord) and isinstance(t, TyRecord):
+        if s.name and t.name and s.name != t.name:
+            print(f"Failed to unify records {s} and {t}, different structures!")
+            return False
+
+        nmemb1 = dict(s.fields_and_types)
+        nmemb2 = dict(t.fields_and_types)
+        nmemb = set(nmemb1.keys()).intersection(nmemb2.keys())
+
+        for common in nmemb:
+            if not unify(nmemb1[common], nmemb2[common]):
+                print(f"Failed to unify common field {common} [when unifying records {s} and {t}]")
+                return False
+
+        name = s.name or t.name
+        fields_and_types = [(k, find(n, reps)) for n in nmemb]
+        fields_and_types.extend([(k, nmemb1[k]) for k in nmemb1 if k not in nmemb])
+        fields_and_types.extend([(k, nmemb2[k]) for k in nmemb2 if k not in nmemb])
+
+        v = find(TyRecord(name, fields_and_types), reps, create_missing = True)
+        union(s, v, reps)
+        union(t, v, reps)
+
+        return True
 
     if isinstance(s, TyVar) or isinstance(t, TyVar):
         union(s, t, reps)

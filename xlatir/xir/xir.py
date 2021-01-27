@@ -836,6 +836,49 @@ def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, no
 
     return reps
 
+def get_record_decl(recordty, typeenv):
+    def match(t1, t2):
+        # this is really a "silent" unify
+
+        if isinstance(t1, TyConstant) and isinstance(t2, TyConstant):
+            return t1 == t2
+        elif (isinstance(t1, TyVar) or isinstance(t2, TyVar)):
+            assert False, f'Cannot resolve type variables in get_record_decl: {t1}, {t2}'
+        else:
+            # neither of them is a TyVar
+            raise NotImplementedError(f"Can't match {t1} and {t2}")
+
+            #elif isinstance(t1, TyProduct) and isinstance(t2, TyProduct):
+            #return len(t1.args) == len(t2.args) and all([match(x, y) for x, y in zip(t1.args, t2.args)])
+
+    if recordty.name is not None:
+        assert recordty.name in typeenv.type_constants, f'Unknown record type "{recordty.name}"'
+        return TyConstant(recordty.name)
+
+    # find all records containing the fields
+    rfields = dict(recordty.fields_and_types)
+    candidates = []
+
+    rd = typeenv.record_decls
+    for r in rd:
+        if all([f in rd[r].field_names for f in rfields]):
+            candidates.append(rd[r])
+
+    # weed out based on types
+    candidates2 = []
+    for crd in candidates:
+        crdf = dict(crd.fields_and_types)
+        if all([match(crdf[f], rfields[f]) for f in rfields]):
+            candidates2.append(crd)
+
+    if len(candidates2) == 0:
+        print(f"Unable to find record declaration for {recordty}")
+    elif len(candidates2) > 1:
+        print(f"ERROR: Multiple record declarations match {recordty}: {candidates2}")
+        return None
+    else:
+        return candidates2[0]
+
 def types_from_decls(eqg, reps, type_decls):
     inct = eqg.call_types
     changed = True

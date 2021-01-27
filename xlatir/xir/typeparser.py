@@ -88,10 +88,11 @@ class TypeEnv(object):
     type_aliases = None
 
     def __init__(self):
-        self.builtins = set(['Callable'])
+        self.builtins = set(['Callable', 'Tuple']) # Tuple is deprecated and will be removed
         self.type_constants = set()
         self.type_vars = {}
         self.type_aliases = {}
+        self.record_decls = {}
 
     # TODO: handle duplicate names
 
