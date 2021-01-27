@@ -8,10 +8,85 @@ from collections import OrderedDict
 
 XIRMACRO = 'xirmacro'
 
-class Expander(ast.NodeTransformer):
+#TODO
+class FreeVariables(ast.NodeVisitor):
+    _fdef = None
+
     def visit_Name(self, node):
+        assert self._fdef is not None
+
+        if node.id not in self._fdef._bound:
+            #print('adding to free', node.id)
+            # TODO: revisit this, right now it isn't very useful
+            # since we want to it to apply only to variables, not function names
+            self._fdef._free.add(node.id)
+
+    def visit_FunctionDef(self, node):
+        # Note: names can be bound in Python in multiple places
+        #   comprehensions
+        #   lambda functions
+        #
+        # Since XIR does not support these constructs, the only place
+        # we bind names are in function definitions.
+        #
+        # TODO: also add nonlocal to bound
+
+        node._free = set()
+        node._bound = set()
+
+        for a in node.args.args:
+            node._bound.add(a.arg)
+
+        node._bound.add(node.name)
+
+        pfdef = self._fdef
+        self._fdef = node
+        self.generic_visit(node)
+        self._fdef = pfdef
+
+
+class Expander(ast.NodeTransformer):
+    _fdef = None
+
+    def _is_free(self, name):
+        if name in self._expansions: return False
+        if self._fdef and name in self._fdef._bound:
+            return False
+
+        return True
+
+    def visit_Name(self, node):
+        #if self._fdef and node.id in self._fdef._bound:
+        #   return node
+
         if node.id in self._expansions:
             return self._expansions[node.id]
+
+        return node
+
+    def visit_Assign(self, node):
+        node = self.generic_visit(node)
+
+        #if isinstance(node.targets[0], ast.Name):
+        #    print(node.targets[0].id, self._is_free(node.targets[0].id))
+
+        return node
+
+    def visit_Call(self, node):
+        # Strangely, nodeTransformer does not visit Call args...
+        node.func = self.visit(node.func)
+        node.args = [self.visit(a) for a in node.args]
+        return node
+
+    def visit_FunctionDef(self, node):
+        pfdef = self._fdef
+
+        self._fdef = node
+        node = self.generic_visit(node)
+        self._fdef = pfdef
+
+        if node.name in self._expansions:
+            node.name = self._expansions[node.name].id
 
         return node
 
@@ -48,6 +123,7 @@ class XIRMacro(object):
         self.parameters = OrderedDict([(n.arg, None) for n in node.args.args])
         self.expander = Expander()
         self.is_expression_macro = len(self.macro.body) == 1 and isinstance(self.macro.body[0], ast.Expr)
+        FreeVariables().visit(self.macro)
 
     @property
     def body(self):
@@ -59,6 +135,7 @@ class XIRMacro(object):
         if len(call.args) != len(self.parameters):
             #TODO: print a better error message including line number and column
             raise SyntaxError(f"Parameter mismatch in call {astunparse.unparse(call)} to {self.macro.name}, expected {len(self.parameters)}, got {len(call.args)}.")
+
         params = {}
         for k, v in zip(self.parameters, call.args):
             params[k] = v
@@ -98,6 +175,8 @@ class ApplyMacros(ast.NodeTransformer):
         return node
 
     def visit_Call(self, node):
+        node = self.generic_visit(node)
+
         if self._is_macro_call(node):
             self._expanded = True
             return self._macros[node.func.id].expand(node)
