@@ -18,6 +18,7 @@ import xlatir.xir.xir2c as xir2c
 import xlatir.xir.xir2smt2 as xir2smt2
 import xlatir.xir.xirpeval as xirpeval
 import xlatir.xir.xirsrc as xirsrc
+from xlatir.xir.syntax import XIRSyntaxError
 import xlatir.xir.srcutils as srcutils
 import xlatir.xir.typeparser as typeparser
 
@@ -98,6 +99,7 @@ def load_pemod(pemodeps, pemod):
 def setup_ptx_typeenv(te):
     """Compatibility for PTX"""
     te.type_constants.add('b1')
+    te.type_constants.add('b8')
     te.type_constants.add('u8')
     te.type_constants.add('u16')
     te.type_constants.add('u32')
@@ -247,6 +249,12 @@ if __name__ == "__main__":
             else:
                 raise
         except NotImplementedError as e:
+            if not args.interactive:
+                tyerrors.append((pi, e))
+                continue
+            else:
+                raise
+        except XIRSyntaxError as e:
             if not args.interactive:
                 tyerrors.append((pi, e))
                 continue
