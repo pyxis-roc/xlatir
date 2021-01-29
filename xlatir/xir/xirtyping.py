@@ -14,6 +14,9 @@ class TyTerm(object):
     def copy(self, subst = None):
         raise NotImplementedError
 
+    def get_typevars(self):
+        raise NotImplementedError
+
 class TyAlias(object):
     def __init__(self, name, value):
         self.name = name
@@ -23,6 +26,9 @@ class TyAlias(object):
         return f"TyAlias({self.name}, {self.value})"
 
     __repr__ = __str__
+
+    def get_typevars(self):
+        return []
 
 class TyVar(TyTerm):
     def __init__(self, name):
@@ -42,6 +48,10 @@ class TyVar(TyTerm):
         else:
             return TyVar(self.name)
 
+    def get_typevars(self):
+        return [self.name]
+
+
 # temporary for now: note this behaves like TyVar
 class TyVarLiteral(TyVar):
     def __init__(self, name, literal):
@@ -57,6 +67,10 @@ class TyVarLiteral(TyVar):
 
     __repr__ = __str__
 
+    def get_typevars(self):
+        return []
+
+
 class TyConstant(TyTerm):
     def __init__(self, value):
         self.value = value
@@ -71,6 +85,9 @@ class TyConstant(TyTerm):
 
     def copy(self, subst = None):
         return TyConstant(self.value)
+
+    def get_typevars(self):
+        return []
 
 class TyPtr(TyTerm):
     def __init__(self, pointee_type):
@@ -90,6 +107,10 @@ class TyPtr(TyTerm):
 
         return TyPtr(pty_copy)
 
+    def get_typevars(self):
+        raise self.pty.get_typevars()
+
+
 class TyProduct(TyTerm):
     def __init__(self, args):
         self.args = args
@@ -104,6 +125,13 @@ class TyProduct(TyTerm):
 
         return TyProduct(arg_copies)
 
+    def get_typevars(self):
+        out = []
+        for a in self.args:
+            out.extend(a.get_typevars())
+
+        return out
+
 class TyArray(TyTerm):
     def __init__(self, elt, sizes):
         self.elt = elt
@@ -116,6 +144,9 @@ class TyArray(TyTerm):
 
     def copy(self, subst = None):
         return TyArray(self.elt.copy(subst), list(self.sizes))
+
+    def get_typevars(self):
+        return self.elt.get_typevars()
 
 # rewrite this in terms of TyProduct?
 class TyApp(TyTerm):
@@ -134,6 +165,15 @@ class TyApp(TyTerm):
 
         return TyApp(ret_new, arg_copies)
 
+    def get_typevars(self):
+        out = self.ret.get_typevars()
+        for a in self.args:
+            out.extend(a.get_typevars())
+
+        return out
+
+
+# used in equations
 class TyRecord(TyTerm):
     def __init__(self, name, fields_and_types):
         self.name = name
@@ -153,13 +193,21 @@ class TyRecord(TyTerm):
 
         return TyRecord(self.name, fields_and_types_copies)
 
+    def get_typevars(self):
+        out = []
+        for f, t in self.fields_and_types:
+            out.extend(t.get_typevars())
+
+        return out
+
 # not sure if declarations should be tyterms
 # this is closer to PolyTyDef
-class TyRecordDecl(object):
-    def __init__(self, name, fields_and_types):
+class RecordDecl(object):
+    def __init__(self, name, fields_and_types, generic_tyvars = None):
         self.name = name
         # list of tuples of ('fieldname', fieldtype)
         self.fields_and_types = fields_and_types
+        self.generic_tyvars = [] if generic_tyvars is None else generic_tyvars # list of tyvars.
         self.field_names = set([x[0] for x in self.fields_and_types])
         assert len(self.field_names) == len(self.fields_and_types), f"Possible duplicate field name"
 
@@ -168,10 +216,41 @@ class TyRecordDecl(object):
 
     __repr__ = __str__
 
+    def subst(self, decl, subst_values, record_decls):
+        out_ft = []
+        for (f, t) in decl.fields_and_types:
+            if isinstance(t, TyVar):
+                assert t.name in subst_values, f'Type variable {t.name} has no substitution'
+                t = subst_values[t.name]
+            elif isinstance(t, TyConstant):
+                if t.value in record_decls:
+                    raise NotImplementedError
+                else:
+                    t = t.copy()
+            else:
+                raise NotImplemented
+
+            out_ft.append((f, t))
+
+        return TyRecord(decl.name, out_ft)
+
+    def get_tyrecord(self, record_decls, generic_subst = None):
+        if len(self.generic_tyvars) > 0:
+            assert generic_subst is not None, f'Generic substitutions needed for {self.name}'
+
+            generic_subst = dict(zip([t.name for t in self.generic_tyvars], generic_subst))
+            tyvars = set([t.name for t in self.generic_tyvars])
+            missing = tyvars - set(generic_subst.keys())
+            assert len(missing) == 0, f'{self.name} requires substitutions for all generic variables to produced TyRecord, missing substitutions for {missing}'
+        else:
+            assert generic_subst is None, f'Generic substitutions provided for {self.name}, which does not use Generic'
+
+        return self.subst(self, generic_subst, record_decls)
+
     def copy(self, subst = None):
         fields_and_types_copies = [(x[0], x[1].copy(subst)) for x in self.fields_and_types]
 
-        return TyRecordDecl(self.name, fields_and_types_copies)
+        return RecordDecl(self.name, fields_and_types_copies)
 
 class PolyTyDef(object):
     def __init__(self, uqvars, typedef):

@@ -91,7 +91,7 @@ class XIRSource(object):
                     else:
                         self.tyenv.type_vars[a.name] = a
                 except XIRSyntaxError as e:
-                    logging.debug('Failed to parse assignment as type information: {e}, treating as global instead')
+                    logging.warning(f'Failed to parse assignment as type information: {e}, treating as global instead')
 
                     #TODO: we need to restrict this so that it is gl =
                     # constant [transitively], so we can strictly disambiguate between
@@ -105,6 +105,10 @@ class XIRSource(object):
             elif isinstance(s, (ast.Import, ast.ImportFrom)):
                 # TODO: set up namespaces, etc.
                 pass
+            elif isinstance(s, (ast.ClassDef,)):
+                cd = app.parse(s)
+                self.tyenv.record_decls[cd.name] = cd
+                self.tyenv.type_constants.add(cd.name)
             else:
                 raise self._gen_syntax_error(f"Unsupported statement {s.__class__.__name__}", s)
 
