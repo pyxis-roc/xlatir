@@ -57,7 +57,7 @@ class XIRSyntaxCheck(ast.NodeVisitor):
             raise XIRSyntaxError(f"Don't support {node.__class__.__name__} in XIR", si)
 
     visit_AsyncFunctionDef = _unsupported
-    visit_ClassDef = _unsupported
+    #visit_ClassDef = _unsupported # TODO: we only support a subset
     visit_Delete = _unsupported
 
     def visit_AugAssign(self, node):

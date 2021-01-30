@@ -427,8 +427,10 @@ def unify(m, n, reps = None):
                 print(f"Failed to unify common field {common} [when unifying records {s} and {t}]")
                 return False
 
+
+
         name = s.name or t.name
-        fields_and_types = [(k, find(n, reps)) for n in nmemb]
+        fields_and_types = [(n, nmemb1[n]) for n in nmemb]
         fields_and_types.extend([(k, nmemb1[k]) for k in nmemb1 if k not in nmemb])
         fields_and_types.extend([(k, nmemb2[k]) for k in nmemb2 if k not in nmemb])
 

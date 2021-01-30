@@ -138,6 +138,11 @@ class TypeEnv(object):
             else:
                 self.type_aliases[a] = ote.type_aliases[a]
 
+        for a in ote.record_decls:
+            if a in self.record_decls:
+                raise ValueError(f"Duplicate class definitions {a}")
+            else:
+                self.record_decls[a] = ote.record_decls[a]
 
 class RecordDeclParser(ast.NodeVisitor):
     def visit_Name(self, node):
@@ -304,7 +309,11 @@ class TypeExprParser(ast.NodeVisitor):
     def parse(self, node: ast.AST, tyenv: TypeEnv, xsrc):
         self._xsrc = xsrc
         self._tyenv = tyenv
-        return self.visit(node)
+        v = self.visit(node)
+        if isinstance(v, TyConstant) and v.value in tyenv.record_decls:
+            return tyenv.record_decls[v.value].get_tyrecord(tyenv.record_decls)
+        else:
+            return v
 
 # function defs also specify a function type, but are syntactically different from function type expressions which use Callable
 
