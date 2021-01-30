@@ -413,6 +413,7 @@ class CXlator(xirxlat.Xlator):
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = Clib()
+        self.gen_structs = {}
 
     def pre_xlat_transform(self, s):
         return s
@@ -438,6 +439,14 @@ class CXlator(xirxlat.Xlator):
                     return f"struct cc_register * {declname}"
 
             return f"{pt} * {declname}"
+
+        if isinstance(t, TyRecord):
+            self.gen_structs[t.name] = t # TODO
+            if not declname:
+                return f"struct {t.name}"
+            else:
+                return f"struct {t.name} {declname}"
+
 
         if isinstance(t, TyApp):
             arg_types = [self._get_c_type(x) for x in t.args]
@@ -682,11 +691,21 @@ class CXlator(xirxlat.Xlator):
 
         return output
 
+    def xlat_struct_gen(self):
+        out = []
+        for s in self.gen_structs:
+            out.append(f"struct {s} {{")
+            for f, t in self.gen_structs[s].fields_and_types:
+                ct = self._get_c_type(t)
+                out.append(f"    {ct} {f};")
+            out.append(f"}};")
+        return out
     def write_output(self, output, translations, defns, ptx = True):
+        structs = self.xlat_struct_gen()
         if ptx:
-            write_output_ptx(output, translations, defns)
+            write_output_ptx(output, translations, structs + defns)
         else:
-            write_output_general(output, translations, defns)
+            write_output_general(output, translations, structs + defns)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',
