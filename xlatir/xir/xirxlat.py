@@ -395,8 +395,9 @@ class XIRToX(ast.NodeVisitor):
     def visit_Assert(self, node):
         return None
 
-    def translate(self, sem, types):
+    def translate(self, sem, types, tyenv):
         self.types = types
+        self.tyenv = tyenv
         #TODO: handle this?
         self.defns = []
         return self.visit(sem)
@@ -412,25 +413,15 @@ def accumulate_body(stmts):
 
     return out
 
-def get_ground_name(tyterm):
-    if isinstance(tyterm, TyConstant):
-        return tyterm.value
-    else:
-        raise NotImplementedError(f"Don't support ground name for {tyterm}")
-
 class RecordInstantiation:
     def __init__(self, decl, instantiation):
         self.decl = decl
         self.inst = instantiation.copy()
-        self.subst = {}
-        suffix = []
-        for (df, dt), (if_, it) in zip(decl.fields_and_types, instantiation.fields_and_types):
-            if isinstance(dt, TyVar):
-                gn = get_ground_name(it)
-                suffix.append(gn)
-                self.subst[dt.name] = gn
+        self.subst = decl.get_inst_subst(instantiation)
+        self.suffix = tuple([x[1] for x in self.subst])
+        self.subst = dict(self.subst)
 
-        self.inst.name = f"{self.decl.name}_{'_'.join(suffix)}"
+        self.inst.name = f"{self.decl.name}_{'_'.join(self.suffix)}"
 
     @property
     def name(self):
@@ -455,7 +446,25 @@ class RecordInstantiation:
 class PolymorphicInst(ast.NodeVisitor):
     def __init__(self, translator):
         self._x2x = translator
+        self._tyenv = None
+        self._ty = None
         self.instantiations = {'records': OrderedDict()}
+        self._ri = {}
+
+    def find(self, ty):
+        if isinstance(ty, TyRecord):
+            assert self._tyenv.is_generic_record(ty.name), f"{ty.name} is not a generic record, so can't find instantiation"
+            decl = self._tyenv.record_decls[ty.name]
+            suffix = [x[1] for x in decl.get_inst_subst(ty)]
+            key = (decl.name, *suffix)
+            return self._ri.get(key, None)
+
+        return None
+    def is_instantiation(self, ty):
+        if isinstance(ty, TyRecord):
+            return ty.name in self.instantiations['records']
+
+        return False
 
     def add_instantiation(self, i):
         if isinstance(i, RecordInstantiation):
@@ -464,6 +473,8 @@ class PolymorphicInst(ast.NodeVisitor):
                 assert x[i.inst.name].equivalent(i), f"Instantiated record {i.inst.name} shares name with {x[i.inst.name]}, but is not equivalent"
             else:
                 x[i.inst.name] = i
+                key = (i.decl.name, *i.suffix)
+                self._ri[key] = i
         else:
             raise NotImplementedError(f"Don't handle {i}")
 
@@ -474,10 +485,11 @@ class PolymorphicInst(ast.NodeVisitor):
     def visit_Attribute(self, node):
         assert hasattr(node.value, '_xir_type')
         vty = self._x2x._get_type(node.value._xir_type)
-        if vty.name and self._is_ground(vty):
+        if vty.name and self._tyenv.is_generic_record(vty.name):
             rd = self._tyenv.record_decls[vty.name]
             if len(rd.generic_tyvars):
-                self.add_instantiation(RecordInstantiation(rd, vty))
+                ity = RecordInstantiation(rd, vty)
+                self.add_instantiation(ity)
         else:
             pass
 

@@ -441,11 +441,19 @@ class CXlator(xirxlat.Xlator):
             return f"{pt} * {declname}"
 
         if isinstance(t, TyRecord):
-            self.gen_structs[t.name] = t # TODO
-            if not declname:
-                return f"struct {t.name}"
+            if self.x2x.tyenv.is_generic_record(t.name):
+                # find instantiation
+                inst = self.x2x.polyinst.find(t)
+                assert inst is not None
+                struct_name = inst.name
             else:
-                return f"struct {t.name} {declname}"
+                struct_name = t.name
+
+            self.gen_structs[struct_name] = t # TODO
+            if not declname:
+                return f"struct {struct_name}"
+            else:
+                return f"struct {struct_name} {declname}"
 
 
         if isinstance(t, TyApp):
@@ -700,6 +708,7 @@ class CXlator(xirxlat.Xlator):
                 out.append(f"    {ct} {f};")
             out.append(f"}};")
         return out
+
     def write_output(self, output, translations, defns, ptx = True):
         structs = self.xlat_struct_gen()
         if ptx:

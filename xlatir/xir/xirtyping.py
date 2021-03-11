@@ -17,6 +17,10 @@ class TyTerm(object):
     def get_typevars(self):
         raise NotImplementedError
 
+    def get_suffix(self):
+        """Suffix to be used when generating polymorphic instantiations"""
+        raise NotImplementedError
+
 class TyAlias(object):
     def __init__(self, name, value):
         self.name = name
@@ -29,6 +33,9 @@ class TyAlias(object):
 
     def get_typevars(self):
         return []
+
+    def get_suffix(self):
+        return self.value.get_suffix()
 
 class TyVar(TyTerm):
     def __init__(self, name):
@@ -89,6 +96,9 @@ class TyConstant(TyTerm):
     def get_typevars(self):
         return []
 
+    def get_suffix(self):
+        return self.value
+
 class TyPtr(TyTerm):
     def __init__(self, pointee_type):
         self.pty = pointee_type
@@ -109,6 +119,9 @@ class TyPtr(TyTerm):
 
     def get_typevars(self):
         raise self.pty.get_typevars()
+
+    def get_suffix(self):
+        return "p_" + self.pty.get_suffix()
 
 
 class TyProduct(TyTerm):
@@ -132,6 +145,9 @@ class TyProduct(TyTerm):
 
         return out
 
+    def get_suffix(self):
+        return "_".join([a.get_suffix() for a in self.args])
+
 class TyArray(TyTerm):
     def __init__(self, elt, sizes):
         self.elt = elt
@@ -147,6 +163,9 @@ class TyArray(TyTerm):
 
     def get_typevars(self):
         return self.elt.get_typevars()
+
+    def get_suffix(self):
+        return f"a_{self.elt}{'_'.join([str(s) for s in self.sizes])}"
 
 # rewrite this in terms of TyProduct?
 class TyApp(TyTerm):
@@ -172,6 +191,8 @@ class TyApp(TyTerm):
 
         return out
 
+    def get_suffix(self):
+        return f"fn_{self.ret}{'_'.join([s.get_suffix() for s in self.args])}"
 
 # used in equations
 class TyRecord(TyTerm):
@@ -199,6 +220,10 @@ class TyRecord(TyTerm):
             out.extend(t.get_typevars())
 
         return out
+
+    def get_suffix(self):
+        # TODO: field names?
+        return f"{self.name}{'_'.join([f + '_' + t.get_suffix() for f, t in self.fields_and_types])}"
 
 # not sure if declarations should be tyterms
 # this is closer to PolyTyDef
@@ -246,6 +271,17 @@ class RecordDecl(object):
             assert generic_subst is None, f'Generic substitutions provided for {self.name}, which does not use Generic'
 
         return self.subst(self, generic_subst, record_decls)
+
+    def get_inst_subst(self, inst):
+        assert inst.name == self.name, f"Names must be equal"
+
+        suffix = []
+        for (df, dt), (if_, it) in zip(self.fields_and_types, inst.fields_and_types):
+            if isinstance(dt, TyVar):
+                gn = it.get_suffix()
+                suffix.append((dt.name, gn))
+
+        return suffix
 
     def copy(self, subst = None):
         fields_and_types_copies = [(x[0], x[1].copy(subst)) for x in self.fields_and_types]

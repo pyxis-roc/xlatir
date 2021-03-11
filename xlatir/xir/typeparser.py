@@ -105,8 +105,15 @@ class TypeEnv(object):
         self.type_vars = {}
         self.type_aliases = {}
         self.record_decls = {}
-
+        self._generic_records = {}
     # TODO: handle duplicate names
+
+    def is_generic_record(self, name):
+        if name not in self._generic_records:
+            rd = self.record_decls[name]
+            self._generic_records[name] = len(rd.generic_tyvars) > 0
+
+        return self._generic_records[name]
 
     def resolve(self, name):
         if name in self.type_constants or name in self.builtins:
