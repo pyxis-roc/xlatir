@@ -196,6 +196,7 @@ if __name__ == "__main__":
 
     translator = xirxlat.XIRToX()
     translator.INC = srcutils.IncludeLocator(args.include_dirs)
+    polyinst = xirxlat.PolymorphicInst(translator)
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -260,6 +261,8 @@ if __name__ == "__main__":
                 continue
             else:
                 raise
+
+        p = polyinst.get_instantiations(sem, ty, gltyenv)
 
         try:
             xlation = translator.translate(sem, ty)

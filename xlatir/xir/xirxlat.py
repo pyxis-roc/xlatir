@@ -7,6 +7,7 @@
 from . import xir
 import ast
 from .xirtyping import *
+from collections import OrderedDict
 
 # The passing of actual arguments instead of just node in the xlat_*
 # functions is meant to make things convenient. In case this doesn't
@@ -410,3 +411,82 @@ def accumulate_body(stmts):
             out.append(s)
 
     return out
+
+def get_ground_name(tyterm):
+    if isinstance(tyterm, TyConstant):
+        return tyterm.value
+    else:
+        raise NotImplementedError(f"Don't support ground name for {tyterm}")
+
+class RecordInstantiation:
+    def __init__(self, decl, instantiation):
+        self.decl = decl
+        self.inst = instantiation.copy()
+        self.subst = {}
+        suffix = []
+        for (df, dt), (if_, it) in zip(decl.fields_and_types, instantiation.fields_and_types):
+            if isinstance(dt, TyVar):
+                gn = get_ground_name(it)
+                suffix.append(gn)
+                self.subst[dt.name] = gn
+
+        self.inst.name = f"{self.decl.name}_{'_'.join(suffix)}"
+
+    @property
+    def name(self):
+        return self.inst.name
+
+    def equivalent(self, o):
+        if not isinstance(o, RecordInstantiation): return False
+        if o.name != self.name: return False
+
+        if o.decl.name != self.decl.name: return False
+
+        for (of, ot), (sf, st) in zip(o.inst.fields_and_types, self.inst.fields_and_types):
+            if not (ot == st): return False
+
+        return True
+
+    def __str__(self):
+        return str(self.inst)
+
+    __repr__ = __str__
+
+class PolymorphicInst(ast.NodeVisitor):
+    def __init__(self, translator):
+        self._x2x = translator
+        self.instantiations = {'records': OrderedDict()}
+
+    def add_instantiation(self, i):
+        if isinstance(i, RecordInstantiation):
+            x = self.instantiations['records']
+            if i.inst.name in x:
+                assert x[i.inst.name].equivalent(i), f"Instantiated record {i.inst.name} shares name with {x[i.inst.name]}, but is not equivalent"
+            else:
+                x[i.inst.name] = i
+        else:
+            raise NotImplementedError(f"Don't handle {i}")
+
+    def _is_ground(self, ty):
+        v = ty.get_typevars()
+        return len(v) == 0
+
+    def visit_Attribute(self, node):
+        assert hasattr(node.value, '_xir_type')
+        vty = self._x2x._get_type(node.value._xir_type)
+        if vty.name and self._is_ground(vty):
+            rd = self._tyenv.record_decls[vty.name]
+            if len(rd.generic_tyvars):
+                self.add_instantiation(RecordInstantiation(rd, vty))
+        else:
+            pass
+
+        pass
+
+        self.generic_visit(node)
+
+    def get_instantiations(self, node, tyreps, tyenv):
+        self._ty = tyreps
+        self._tyenv = tyenv
+        self._x2x.types = self._ty
+        self.visit(node)
