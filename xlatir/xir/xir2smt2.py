@@ -752,6 +752,7 @@ class SMT2Xlator(xirxlat.Xlator):
         self._use_imp2 = False
         self._label = 0
         self.lhs_types = {}
+        self.gen_structs = {}
 
     def pre_xlat_transform(self, s):
         self._use_imp2 = False
@@ -783,6 +784,20 @@ class SMT2Xlator(xirxlat.Xlator):
         else:
             return f'{suffix}{self._label}'
 
+    def _add_record_inst(self, inst):
+        name = inst.name
+        cons = f"mk-{inst.decl.name}"
+        fields = tuple([x[0] for x in inst.inst.fields_and_types])
+        ftypes = tuple([x[1].get_suffix() for x in inst.inst.fields_and_types])
+        sort_cons = inst.decl.name
+
+        dt = DT(name, cons, fields, ftypes, sort_cons)
+
+        if dt.name not in DATA_TYPES:
+            DATA_TYPES_LIST.append(dt)
+            DATA_TYPES[dt.name] = dt
+            FIELDS_TO_DT[(ftypes, Symbol(dt.name))] = dt
+
     def _get_smt2_type(self, node, declname = None):
         if isinstance(node, ast.AST):
             ty = node._xir_type
@@ -805,6 +820,23 @@ class SMT2Xlator(xirxlat.Xlator):
 
             raise NotImplementedError(f"Support for pointer types {t} pointing to {pt}")
             return Symbol("ptr_{pt}")
+
+        if isinstance(t, TyRecord):
+            if self.x2x.tyenv.is_generic_record(t.name):
+                # find instantiation
+                inst = self.x2x.polyinst.find(t)
+                assert inst is not None
+                struct_name = inst.name
+                self._add_record_inst(inst)
+                self.gen_structs[inst.decl.name] = inst.decl
+            else:
+                struct_name = t.name
+                self.gen_structs[struct_name] = t
+
+            if not declname:
+                return Symbol(struct_name)
+            else:
+                return SExprList(Symbol(declname), Symbol(struct_name))
 
         if isinstance(t, TyApp):
             arg_types = [self._get_smt2_type(x) for x in t.args]
@@ -899,7 +931,7 @@ class SMT2Xlator(xirxlat.Xlator):
             return SExprList(Symbol("_xir_attr_ref"), String(attr), value, Symbol("cc_reg"))
             pass
 
-        return f'{value}.{attr}'
+        return SExprList(Symbol(attr), value)
 
     def xlat_Str(self, s, node):
         return String(s)
@@ -1303,6 +1335,36 @@ class SMT2Xlator(xirxlat.Xlator):
 
         return [f"; :begin {name}", output, f"; :end {name}"]
 
+    def _gen_datatypes(self):
+        out = []
+        for t in self.gen_structs:
+            ty = self.gen_structs[t]
+            if isinstance(ty, RecordDecl):
+                name = ty.name
+                par = len(ty.generic_tyvars)
+
+                ft = []
+                for (f, t) in ty.fields_and_types:
+                    if isinstance(t, TyVar):
+                        ft.append(SExprList(Symbol(f), Symbol(t.name)))
+                    else:
+                        ft.append(SExprList(Symbol(f), self._get_smt2_type(t)))
+
+                cons = SExprList(Symbol(f"mk-{name}"), *ft)
+
+                if par > 0:
+                    cons = SExprList(Symbol("par"),
+                                     SExprList(*[Symbol(t.name) for t in ty.generic_tyvars]),
+                                     SExprList(cons))
+
+                decl = SExprList(Symbol("declare-datatypes"),
+                                 SExprList(SExprList(Symbol(name), Decimal(par))),
+                                 SExprList(cons))
+
+                out.append(decl)
+
+        return "\n".join([str(s) for s in out])
+
     def write_output(self, output, translations, defns, ptx = True):
         def include_file(inc, outf):
             inc = self.x2x.INC.locate(inc)
@@ -1315,13 +1377,19 @@ class SMT2Xlator(xirxlat.Xlator):
         try:
             with open(output, "w") as f:
                 print("(set-logic QF_FPBV)", file=f) # need to support arrays too
+                print(self._gen_datatypes(), file=f)
+                print("; :begin global")
 
+                if "Pair" not in self.gen_structs:
+                    # legacy
+                    print("(declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )", file=f)
+
+                if "CCRegister" not in self.gen_structs:
+                    # legacy
+                    print("(declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))", file=f)
+
+                #TODO: get rid of below too
                 print(textwrap.dedent("""\
-                ; :begin global
-                ; (declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
-                (declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )
-                ; (declare-datatypes (T1) ((CCRegister (mk-ccreg (cf T1)))))
-                (declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))
                 (define-sort u8 () (_ BitVec 8))
                 (define-sort b1 () (_ BitVec 1))
                 (define-sort carryflag () b1)
