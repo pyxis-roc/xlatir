@@ -423,11 +423,9 @@ def unify(m, n, reps = None):
         nmemb = set(nmemb1.keys()).intersection(nmemb2.keys())
 
         for common in nmemb:
-            if not unify(nmemb1[common], nmemb2[common]):
+            if not unify(nmemb1[common], nmemb2[common], reps):
                 print(f"Failed to unify common field {common} [when unifying records {s} and {t}]")
                 return False
-
-
 
         name = s.name or t.name
         fields_and_types = [(n, nmemb1[n]) for n in nmemb]
