@@ -351,7 +351,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         # disregard excess arguments (sign, type, width annotations) when generating type equations
         self.trim_args_ptxcompat = trim_args_ptxcompat
-
+        self.ptx_compat = self.trim_args_ptxcompat
+        
     def set_src_info(self, xsrc, typeenv):
         self.xsrc = xsrc
         self.typeenv = typeenv
@@ -499,7 +500,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return None
 
     def visit_Tuple(self, node):
-        return TyProduct([self.visit(e) for e in node.elts])
+        if self.ptx_compat:
+            return TyProduct([self.visit(e) for e in node.elts])
+        else:
+            raise SyntaxError(f"Tuples are not supported")
+
 
     def visit_Return(self, node):
         if node.value:
