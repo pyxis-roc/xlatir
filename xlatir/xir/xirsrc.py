@@ -41,6 +41,16 @@ class XIRSource(object):
         return XIRSyntaxError(message,
                               self._gen_source_info(node))
 
+    def _get_constructor(self, rd):
+        gvars = [x.name for x in rd.generic_tyvars]
+
+        subst = [xirtyping.TyVar(x) for x in gvars]
+
+        tyr = rd.get_tyrecord(self.tyenv.record_decls, subst)
+        func = xirtyping.TyApp(tyr, [f[1] for f in tyr.fields_and_types])
+        f = xirtyping.PolyTyDef(gvars, func)
+        return f
+
     def parse(self, names = None):
         # We assume this is strict/plain XIR
 
@@ -107,8 +117,13 @@ class XIRSource(object):
                 pass
             elif isinstance(s, (ast.ClassDef,)):
                 cd = app.parse(s)
+                if cd.name in usrdecls:
+                    raise self._gen_syntax_error(f"Class {cd.name} duplicates another declaration", s)
+
                 self.tyenv.record_decls[cd.name] = cd
                 self.tyenv.type_constants.add(cd.name)
+                cons = self._get_constructor(cd)
+                usrdecls[cd.name] = cons
             else:
                 raise self._gen_syntax_error(f"Unsupported statement {s.__class__.__name__}", s)
 

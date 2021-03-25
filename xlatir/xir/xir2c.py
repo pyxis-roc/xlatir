@@ -633,6 +633,11 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1
+
+        if fnty[0] in self.x2x.tyenv.record_decls:
+            # this is a structure creation, so behave like erstwhile tuple
+            return list(args)
+
         if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
             # because we're using strings
             return f"{fn}({', '.join(args[:arglen])}, __OVERFLOW__)"
@@ -643,7 +648,12 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
-            vty = vty[:vty.index("{")]
+            if "{" in vty:
+                # compat, we used anonymous structs for Tuples
+                vty = vty[:vty.index("{")]
+            else:
+                pass
+
             v = f"{vty} _retval = {{ {', '.join(v)} }};\n\treturn _retval"
             return v
         elif v is not None:
@@ -685,7 +695,11 @@ class CXlator(xirxlat.Xlator):
 
         if retval.startswith("struct "):
             self.x2x.defns.append(retval + ";")
-            retval = retval[:retval.index("{")]
+            if "{" in retval:
+                # compat, anonymous TyProduct handling
+                retval = retval[:retval.index("{")]
+            else:
+                pass
 
         self._retval_ty = retval
         self.x2x.defns.append(f"{retval} {name} ({', '.join(params)});")

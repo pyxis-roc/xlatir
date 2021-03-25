@@ -278,6 +278,8 @@ class RecordDecl(object):
         suffix = []
         for (df, dt), (if_, it) in zip(self.fields_and_types, inst.fields_and_types):
             if isinstance(dt, TyVar):
+                # must be fully resolved ...
+                assert not isinstance(it, TyVar), f"Can't substitute TyVar {it.name} for {df}"
                 gn = it.get_suffix()
                 suffix.append((dt.name, gn))
 
@@ -364,6 +366,10 @@ def union(s, t, reps):
     elif isinstance(s, TyApp):
         reps[str(t)] = reps[str(s)]
     elif isinstance(t, TyApp):
+        reps[str(s)] = reps[str(t)]
+    elif isinstance(s, TyRecord) and s.name is not None:
+        reps[str(t)] = reps[str(s)]
+    elif isinstance(t, TyRecord) and t.name is not None:
         reps[str(s)] = reps[str(t)]
     else:
         reps[str(s)] = reps[str(t)]

@@ -377,9 +377,15 @@ class XIRToX(ast.NodeVisitor):
 
 
         func = node.name
-        retval = self.X.get_native_type(node._xir_type.ret,
-                                        func[len('execute_'):] if isinstance(self._get_type(node._xir_type.ret), TyProduct) else None)
+        declname = None
+        if isinstance(self._get_type(node._xir_type.ret), TyProduct):
+            if func.startswith("execute_"):
+                # compat, anonymous
+                declname = func[len('execute_'):]
+            else:
+                assert False # not supported in nonptx
 
+        retval = self.X.get_native_type(node._xir_type.ret, declname)
         self._retval_ty = retval
 
         # order is important!
@@ -453,6 +459,7 @@ class PolymorphicInst(ast.NodeVisitor):
 
     def find(self, ty):
         if isinstance(ty, TyRecord):
+            ty = self._resolve_tyvars(ty)
             assert self._tyenv.is_generic_record(ty.name), f"{ty.name} is not a generic record, so can't find instantiation"
             decl = self._tyenv.record_decls[ty.name]
             suffix = [x[1] for x in decl.get_inst_subst(ty)]
@@ -460,6 +467,7 @@ class PolymorphicInst(ast.NodeVisitor):
             return self._ri.get(key, None)
 
         return None
+
     def is_instantiation(self, ty):
         if isinstance(ty, TyRecord):
             return ty.name in self.instantiations['records']
@@ -481,6 +489,31 @@ class PolymorphicInst(ast.NodeVisitor):
     def _is_ground(self, ty):
         v = ty.get_typevars()
         return len(v) == 0
+
+    def _resolve_tyvars(self, tyrec):
+        out = []
+        for f, t in tyrec.fields_and_types:
+            if isinstance(t, TyRecord):
+                raise NotImplementedError
+            else:
+                out.append((f, self._x2x._get_type(t)))
+
+        return TyRecord(tyrec.name, out)
+
+    def visit_Call(self, node):
+        assert hasattr(node, '_xir_type')
+        fty = self._x2x._get_type(node._xir_type)
+
+        for pr in [fty.ret]:
+            if isinstance(pr, TyRecord) and pr.name:
+                if self._tyenv.is_generic_record(pr.name):
+                    inst = self._resolve_tyvars(pr)
+                    rd = self._tyenv.record_decls[inst.name]
+                    if len(rd.generic_tyvars):
+                        ity = RecordInstantiation(rd, inst)
+                        self.add_instantiation(ity)
+
+        self.generic_visit(node)
 
     def visit_Attribute(self, node):
         assert hasattr(node.value, '_xir_type')

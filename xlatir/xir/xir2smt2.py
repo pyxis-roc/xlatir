@@ -1150,6 +1150,9 @@ class SMT2Xlator(xirxlat.Xlator):
         if fn.startswith('BITSTRING_') or fn.startswith('FROM_BITSTRING_'):
             return args[0]
         else:
+            if fnty[0] in self.x2x.tyenv.record_decls:
+                fn = "mk-" + fn
+                
             arglen = len(fnty) - 1
             return SExprList(Symbol(fn), *args[:arglen])
 
