@@ -20,6 +20,11 @@ from .xirtyping import *
 #from .xirsrc import XIRSource, XIRSyntaxError
 from typing import Union, Tuple
 from collections import OrderedDict
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def expect(node: ast.AST, classes: Tuple[ast.AST], xsrc):
     if not isinstance(classes, tuple):
         classes = (classes, )
@@ -200,9 +205,9 @@ class RecordDeclParser(ast.NodeVisitor):
             elif isinstance(s, ast.ClassDef):
                 raise NotImplementedError(f'Do not support nested class defs')
             elif isinstance(s, ast.FunctionDef):
-                logging.debug(f'Ignoring FunctionDef in ClassDef')
+                logger.debug(f'Ignoring FunctionDef in ClassDef')
             else:
-                logging.debug(f'Ignoring {s} in ClassDef')
+                logger.debug(f'Ignoring {s} in ClassDef')
                 pass
 
         return RecordDecl(record_name, _fields.items(), bt)
