@@ -19,6 +19,7 @@ from . import xirpeval
 from collections import namedtuple
 from xlatir.imp2func.passmgr import I2FConfig, InterPassContext, PassManager
 from xlatir.imp2func.passes import *
+from .astcompat import AC
 
 #import astunparse
 
@@ -1517,17 +1518,6 @@ class ArrayFn(ast.NodeTransformer):
 
         return node
 
-    def _make_num(self, v):
-        # 3.8+
-        if hasattr(ast, 'Constant'):
-            o = ast.Constant(v)
-            if not hasattr(o, 'kind'):
-                o.kind = None # 3.8 bug?
-        else:
-            o = ast.Num(v)
-
-        return o
-
     def visit_FunctionDef(self, node):
         self._converted = False
         self._arrays = set()
@@ -1537,7 +1527,7 @@ class ArrayFn(ast.NodeTransformer):
             # assists dearrayification
             out = []
             for v, sz in self._arrays:
-                initializer = ast.List([self._make_num(0)]*sz, ast.Load())
+                initializer = ast.List([AC.mk_constant(0)]*sz, ast.Load())
                 node.body.insert(0, ast.Assign([ast.Name(v, ast.Store())], initializer))
 
         return node
@@ -1553,10 +1543,10 @@ class ArrayFn(ast.NodeTransformer):
             for i in range(self._array_sz):
                 call = copy.deepcopy(node)
                 call.func.id = self._array_fn_rename
-                call.args[self._array_arg_idx] = self._make_num(i)
+                call.args[self._array_arg_idx] = AC.mk_constant(i)
 
                 out.append(ast.Assign([ast.Subscript(node.args[self._array_arg_idx],
-                                                    ast.Index(self._make_num(i)),
+                                                    ast.Index(AC.mk_constant(i)),
                                                     ast.Store())],
                                       call))
 

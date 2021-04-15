@@ -23,6 +23,7 @@ class Python36Compat:
     def __init__(self):
         # deprecated in 3.8: ast.Num, ast.Str, ast.Bytes, ast.NameConstant and ast.Ellipsis
         self.isNum = (ast.Num,)
+        self.isStr = (ast.Str,)
         self.isNameConstant = (ast.NameConstant,)
         self.isConstant = (ast.Num, ast.Str, ast.Bytes, ast.NameConstant, ast.Ellipsis)
 
@@ -55,6 +56,7 @@ class Python36Compat:
 class Python38Compat:
     def __init__(self):
         self.isNum = (ast.Constant,)
+        self.isStr = (ast.Constant,)
         self.isNameConstant = (ast.Constant,)
         self.isConstant = (ast.Constant,)
 

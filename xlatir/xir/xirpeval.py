@@ -10,6 +10,7 @@ import ast
 import astunparse
 import logging
 import copy
+from .astcompat import AC
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class DearrayificationPrep(ast.NodeVisitor):
         if isinstance(node.slice, ast.Index):
             # will be wrong if the array is aliased!
             if isinstance(node.value, ast.Name):
-                if not isinstance(node.slice.value, ast.Num):
+                if not isinstance(node.slice.value, AC.isNum):
                         self.non_numeric_accesses.add(node.value.id)
 
 class Dearrayification(ast.NodeTransformer):
@@ -56,7 +57,7 @@ class Dearrayification(ast.NodeTransformer):
         if isinstance(node.slice, ast.Index):
             if isinstance(node.value, ast.Name):
                 if node.value.id in self._prep.arrays:
-                    return ast.Name(id=f"{node.value.id}_{node.slice.value.n}", ctx=node.ctx)
+                    return ast.Name(id=f"{node.value.id}_{AC.value(node.slice.value)}", ctx=node.ctx)
 
         return self.generic_visit(node)
 
@@ -131,11 +132,11 @@ class EvalConstExpr(ast.NodeTransformer):
 
             # bool checks must precede int checks
             if isinstance(val, bool) or val is None:
-                return ast.NameConstant(val)
+                return AC.mk_constant(val)
             elif isinstance(val, int):
-                return ast.Num(n = val)
+                return AC.mk_constant(val)
             elif isinstance(val, str):
-                return ast.Str(s = val)
+                return AC.mk_constant(val)
             else:
                 raise NotImplementedError(f"unknown constant expression type: {val} (from {v})")
         except:
@@ -149,7 +150,9 @@ class EvalConstExpr(ast.NodeTransformer):
         r = self.stk.pop()
 
         if r and len(self.stk) == 0:
-            if not isinstance(node.value, (ast.Num, ast.Str, ast.NameConstant)):
+            if not (isinstance(node.value, AC.isNum) \
+                    or isinstance(node.value, AC.isStr) \
+                    or isinstance(node.value, AC.isNameConstant)):
                 node.value = self._get_val(node.value)
         else:
             # should never happen since Expr is a statement?
@@ -166,14 +169,14 @@ class EvalConstExpr(ast.NodeTransformer):
         # short-circuit, todo generalize to Or?
         if isinstance(node.op, ast.And):
             print(ast.dump(node))
-            node.values = [x for x in node.values if not (isinstance(x, ast.NameConstant) and x.value == True)]
-            if len([x for x in node.values if isinstance(x, ast.NameConstant) and x.value == False]):
-                node.values = [ast.NameConstant(value = False)]
+            node.values = [x for x in node.values if not (isinstance(x, AC.isNameConstant) and AC.value(x) == True)]
+            if len([x for x in node.values if isinstance(x, AC.isNameConstant) and AC.value(x) == False]):
+                node.values = [AC.mk_constant(False)]
 
             if len(node.values) == 1:
                 node = node.values[0]
             elif len(node.values) == 0:
-                node = ast.NameConstant(value=True)
+                node = AC.mk_constant(True)
 
         if len(self.stk):
             self.stk[-1] = r
@@ -216,7 +219,7 @@ class EvalIf(ast.NodeVisitor):
             # print(call_node.args[0].id, self.variable_types)
             if call_node.args[0].id in self.variable_types:
                 if self.variable_types[call_node.args[0].id] not in ('Float', 'Double'):
-                    return ast.NameConstant(False)
+                    return AC.mk_constant(False)
 
         return call_node
 
@@ -229,9 +232,9 @@ class EvalIf(ast.NodeVisitor):
             val = eval(test, d)
             logger.debug(f"Evaluation returned {val}")
             if val:
-                node.test = ast.NameConstant(value=True)
+                node.test = AC.mk_constant(True)
             else:
-                node.test = ast.NameConstant(value=False)
+                node.test = AC.mk_constant(False)
         except:
             if isinstance(node.test, ast.Call) and isinstance(node.test.func, ast.Name):
                 if node.test.func.id == 'ISNAN':
@@ -249,9 +252,9 @@ class EvalIf(ast.NodeVisitor):
             d.update(self.values)
             val = eval(test, d)
             if val:
-                node.test = ast.NameConstant(value=True)
+                node.test = AC.mk_constant(True)
             else:
-                node.test = ast.NameConstant(value=False)
+                node.test = AC.mk_constant(False)
         except:
             pass
 
@@ -263,6 +266,7 @@ class EvalFunc(ast.NodeTransformer):
 
         if not isinstance(node.func, ast.Name): return node
 
+        # TODO: astcompat
         if node.func.id == 'MUL':
             if all([isinstance(x, ast.Num) for x in node.args[:2]]):
                 num1 = node.args[0].n
@@ -338,7 +342,7 @@ class StripCode(ast.NodeTransformer):
         if isinstance(node.func, ast.Name):
             if node.func.id == 'ROUND':
                 # set_round_mode(var, None)
-                if isinstance(node.args[-1], ast.NameConstant) and node.args[-1].value is None:
+                if isinstance(node.args[-1], AC.isNameConstant) and AC.value(node.args[-1]) is None:
                     return node.args[0] # var
 
         return self.generic_visit(node)
@@ -350,7 +354,7 @@ class StripCode(ast.NodeTransformer):
             return None
 
         if len(node.targets) == 1:
-            if isinstance(node.targets[0], ast.NameConstant) and node.targets[0].value is None:
+            if isinstance(node.targets[0], AC.isNameConstant) and AC.value(node.targets[0]) is None:
                 # strip None=None
                 #return None
                 #print(ast.dump(node))
@@ -369,19 +373,19 @@ class StripCode(ast.NodeTransformer):
 
     def visit_IfExp(self, node):
         node = self.generic_visit(node)
-        if isinstance(node.test, ast.NameConstant):
-            if node.test.value == False:
+        if isinstance(node.test, AC.isNameConstant):
+            if AC.value(node.test) == False:
                 return node.orelse
-            elif node.test.value == True:
+            elif AC.value(node.test) == True:
                 return node.body
 
         return node
 
     def visit_If(self, node):
-        if isinstance(node.test, ast.NameConstant):
-            if node.test.value == False:
+        if isinstance(node.test, AC.isNameConstant):
+            if value(node.test) == False:
                 r = list(filter(lambda x: x is not None, [self.visit(x) for x in node.orelse]))
-            elif node.test.value == True:
+            elif value(node.test) == True:
                 # drop the else part
                 r = list(filter(lambda x: x is not None, [self.visit(x) for x in node.body]))
             else:
@@ -408,8 +412,8 @@ class UnrollChecker(ast.NodeVisitor):
         unroll = False
         if isinstance(node.target, ast.Name):
             if isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name) and node.iter.func.id == 'range':
-                assert isinstance(node.iter.args[0], ast.Num)
-                assert isinstance(node.iter.args[1], ast.Num)
+                assert isinstance(node.iter.args[0], AC.isNum)
+                assert isinstance(node.iter.args[1], AC.isNum)
                 unroll = True
 
         node._unroll = unroll
@@ -418,7 +422,7 @@ class UnrollChecker(ast.NodeVisitor):
 class ReplaceIndex(ast.NodeTransformer):
     def visit_Name(self, node):
         if node.id == self._idx_var:
-            return ast.Num(self._idx_val)
+            return AC.mk_constant(self._idx_val)
 
         return node
 
@@ -451,7 +455,7 @@ class PropagateConstants(ast.NodeTransformer):
     def visit_Name(self, node):
         if node.id in self._constants:
             if isinstance(node.ctx, ast.Load):
-                return ast.Num(self._constants[node.id])
+                return AC.mk_constant(self._constants[node.id])
 
         return node
 
@@ -475,8 +479,8 @@ class GatherConstants(ast.NodeVisitor):
                 del self._constants[v]
                 self._non_constants[v] = node.value
             elif v not in self._non_constants:
-                if isinstance(node.value, ast.Num):
-                    self._constants[v] = node.value.n
+                if isinstance(node.value, AC.isNum):
+                    self._constants[v] = AC.value(node.value)
 
     def gather(self, node):
         self._constants = {}
@@ -489,7 +493,7 @@ def set_utils(new_utils):
        of functions used to partially evaluate code."""
     global utils
     utils = new_utils
-    
+
 def constantify(s):
     g = GatherConstants()
     p = PropagateConstants()
