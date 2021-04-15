@@ -76,7 +76,7 @@ class Python38Compat:
             raise NotImplementedError(f'Do not know how to set value of class {node.__class__.__name__}')
 
     def mk_constant(self, value):
-        if isinstance(value, (int, str, float)) or value is None or value is True or value is False:
+        if isinstance(value, (int, str, float)) or (value is None) or (value is True) or (value is False):
             n = ast.Constant(value=value)
             if not hasattr(n, 'kind'): n.kind = None # 3.8 bug
             return n

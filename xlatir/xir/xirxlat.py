@@ -182,6 +182,8 @@ class XIRToX(ast.NodeVisitor):
 
     def visit_Constant(self, node):
         ty = self.X.get_native_type(self._get_type(node._xir_type))
+        if isinstance(node.value, bool) or node.value is None: # must be checked before int!
+            return self.X.xlat_NameConstant(node.value, ty, node)
         if isinstance(node.value, (int, float)):
             return self.X.xlat_Num(node.value, ty, node)
         elif isinstance(node.value, str):

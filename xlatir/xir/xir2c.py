@@ -6,6 +6,7 @@ import ast
 from .xirtyping import *
 import os
 from . import xirxlat
+from .astcompat import AC
 
 XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'b16': 'uint16_t',
@@ -525,11 +526,11 @@ class CXlator(xirxlat.Xlator):
         return name
 
     def xlat_NameConstant(self, value, vty, node):
-        if node.value == True:
+        if AC.value(node) == True:
             return "1"
-        elif node.value == False:
+        elif AC.value(node) == False:
             return "0"
-        elif node.value is None:
+        elif AC.value(node) is None:
             return "None"
 
         raise NotImplementedError(f"NameConstant for value {value} not supported")
