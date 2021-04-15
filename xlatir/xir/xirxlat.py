@@ -525,9 +525,11 @@ class PolymorphicInst(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node):
-        assert hasattr(node.value, '_xir_type')
-        vty = self._x2x._get_type(node.value._xir_type)
-        if vty.name and self._tyenv.is_generic_record(vty.name):
+        # TODO: this was checking node.value for _xir_type, but
+        # xir.py sets the type on node, not node.value ...
+        assert hasattr(node, '_xir_type')
+        vty = self._x2x._get_type(node._xir_type)
+        if isinstance(vty, TyRecord) and vty.name and self._tyenv.is_generic_record(vty.name):
             rd = self._tyenv.record_decls[vty.name]
             if len(rd.generic_tyvars):
                 ity = RecordInstantiation(rd, vty)
