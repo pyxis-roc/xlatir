@@ -21,6 +21,9 @@ from .xirtyping import *
 from typing import Union, Tuple
 from collections import OrderedDict
 from .astcompat import AC
+import logging
+
+logger = logging.getLogger(__name__)
 
 def expect(node: ast.AST, classes: Tuple[ast.AST], xsrc):
     if not isinstance(classes, tuple):
@@ -107,8 +110,15 @@ class TypeEnv(object):
         self.type_vars = {}
         self.type_aliases = {}
         self.record_decls = {}
-
+        self._generic_records = {}
     # TODO: handle duplicate names
+
+    def is_generic_record(self, name):
+        if name not in self._generic_records:
+            rd = self.record_decls[name]
+            self._generic_records[name] = len(rd.generic_tyvars) > 0
+
+        return self._generic_records[name]
 
     def resolve(self, name):
         if name in self.type_constants or name in self.builtins:
@@ -140,6 +150,11 @@ class TypeEnv(object):
             else:
                 self.type_aliases[a] = ote.type_aliases[a]
 
+        for a in ote.record_decls:
+            if a in self.record_decls:
+                raise ValueError(f"Duplicate class definitions {a}")
+            else:
+                self.record_decls[a] = ote.record_decls[a]
 
 class RecordDeclParser(ast.NodeVisitor):
     def visit_Name(self, node):
@@ -190,9 +205,9 @@ class RecordDeclParser(ast.NodeVisitor):
             elif isinstance(s, ast.ClassDef):
                 raise NotImplementedError(f'Do not support nested class defs')
             elif isinstance(s, ast.FunctionDef):
-                logging.debug(f'Ignoring FunctionDef in ClassDef')
+                logger.debug(f'Ignoring FunctionDef in ClassDef')
             else:
-                logging.debug(f'Ignoring {s} in ClassDef')
+                logger.debug(f'Ignoring {s} in ClassDef')
                 pass
 
         return RecordDecl(record_name, _fields.items(), bt)
@@ -318,7 +333,11 @@ class TypeExprParser(ast.NodeVisitor):
     def parse(self, node: ast.AST, tyenv: TypeEnv, xsrc):
         self._xsrc = xsrc
         self._tyenv = tyenv
-        return self.visit(node)
+        v = self.visit(node)
+        if isinstance(v, TyConstant) and v.value in tyenv.record_decls:
+            return tyenv.record_decls[v.value].get_tyrecord(tyenv.record_decls)
+        else:
+            return v
 
 # function defs also specify a function type, but are syntactically different from function type expressions which use Callable
 

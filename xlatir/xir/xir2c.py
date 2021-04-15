@@ -413,6 +413,7 @@ class CXlator(xirxlat.Xlator):
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = Clib()
+        self.gen_structs = {}
 
     def pre_xlat_transform(self, s):
         return s
@@ -438,6 +439,22 @@ class CXlator(xirxlat.Xlator):
                     return f"struct cc_register * {declname}"
 
             return f"{pt} * {declname}"
+
+        if isinstance(t, TyRecord):
+            if self.x2x.tyenv.is_generic_record(t.name):
+                # find instantiation
+                inst = self.x2x.polyinst.find(t)
+                assert inst is not None
+                struct_name = inst.name
+            else:
+                struct_name = t.name
+
+            self.gen_structs[struct_name] = t # TODO
+            if not declname:
+                return f"struct {struct_name}"
+            else:
+                return f"struct {struct_name} {declname}"
+
 
         if isinstance(t, TyApp):
             arg_types = [self._get_c_type(x) for x in t.args]
@@ -616,6 +633,11 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_Call(self, fn, fnty, args, node):
         arglen = len(fnty) - 1
+
+        if fnty[0] in self.x2x.tyenv.record_decls:
+            # this is a structure creation, so behave like erstwhile tuple
+            return list(args)
+
         if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
             # because we're using strings
             return f"{fn}({', '.join(args[:arglen])}, __OVERFLOW__)"
@@ -626,7 +648,12 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
-            vty = vty[:vty.index("{")]
+            if "{" in vty:
+                # compat, we used anonymous structs for Tuples
+                vty = vty[:vty.index("{")]
+            else:
+                pass
+
             v = f"{vty} _retval = {{ {', '.join(v)} }};\n\treturn _retval"
             return v
         elif v is not None:
@@ -668,7 +695,11 @@ class CXlator(xirxlat.Xlator):
 
         if retval.startswith("struct "):
             self.x2x.defns.append(retval + ";")
-            retval = retval[:retval.index("{")]
+            if "{" in retval:
+                # compat, anonymous TyProduct handling
+                retval = retval[:retval.index("{")]
+            else:
+                pass
 
         self._retval_ty = retval
         self.x2x.defns.append(f"{retval} {name} ({', '.join(params)});")
@@ -682,11 +713,22 @@ class CXlator(xirxlat.Xlator):
 
         return output
 
+    def xlat_struct_gen(self):
+        out = []
+        for s in self.gen_structs:
+            out.append(f"struct {s} {{")
+            for f, t in self.gen_structs[s].fields_and_types:
+                ct = self._get_c_type(t)
+                out.append(f"    {ct} {f};")
+            out.append(f"}};")
+        return out
+
     def write_output(self, output, translations, defns, ptx = True):
+        structs = self.xlat_struct_gen()
         if ptx:
-            write_output_ptx(output, translations, defns)
+            write_output_ptx(output, translations, structs + defns)
         else:
-            write_output_general(output, translations, defns)
+            write_output_general(output, translations, structs + defns)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',

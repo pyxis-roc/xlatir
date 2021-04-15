@@ -7,6 +7,7 @@
 from . import xir
 import ast
 from .xirtyping import *
+from collections import OrderedDict
 
 # The passing of actual arguments instead of just node in the xlat_*
 # functions is meant to make things convenient. In case this doesn't
@@ -385,9 +386,15 @@ class XIRToX(ast.NodeVisitor):
 
 
         func = node.name
-        retval = self.X.get_native_type(node._xir_type.ret,
-                                        func[len('execute_'):] if isinstance(self._get_type(node._xir_type.ret), TyProduct) else None)
+        declname = None
+        if isinstance(self._get_type(node._xir_type.ret), TyProduct):
+            if func.startswith("execute_"):
+                # compat, anonymous
+                declname = func[len('execute_'):]
+            else:
+                assert False # not supported in nonptx
 
+        retval = self.X.get_native_type(node._xir_type.ret, declname)
         self._retval_ty = retval
 
         # order is important!
@@ -403,8 +410,9 @@ class XIRToX(ast.NodeVisitor):
     def visit_Assert(self, node):
         return None
 
-    def translate(self, sem, types):
+    def translate(self, sem, types, tyenv):
         self.types = types
+        self.tyenv = tyenv
         #TODO: handle this?
         self.defns = []
         return self.visit(sem)
@@ -419,3 +427,120 @@ def accumulate_body(stmts):
             out.append(s)
 
     return out
+
+class RecordInstantiation:
+    def __init__(self, decl, instantiation):
+        self.decl = decl
+        self.inst = instantiation.copy()
+        self.subst = decl.get_inst_subst(instantiation)
+        self.suffix = tuple([x[1] for x in self.subst])
+        self.subst = dict(self.subst)
+
+        self.inst.name = f"{self.decl.name}_{'_'.join(self.suffix)}"
+
+    @property
+    def name(self):
+        return self.inst.name
+
+    def equivalent(self, o):
+        if not isinstance(o, RecordInstantiation): return False
+        if o.name != self.name: return False
+
+        if o.decl.name != self.decl.name: return False
+
+        for (of, ot), (sf, st) in zip(o.inst.fields_and_types, self.inst.fields_and_types):
+            if not (ot == st): return False
+
+        return True
+
+    def __str__(self):
+        return str(self.inst)
+
+    __repr__ = __str__
+
+class PolymorphicInst(ast.NodeVisitor):
+    def __init__(self, translator):
+        self._x2x = translator
+        self._tyenv = None
+        self._ty = None
+        self.instantiations = {'records': OrderedDict()}
+        self._ri = {}
+
+    def find(self, ty):
+        if isinstance(ty, TyRecord):
+            ty = self._resolve_tyvars(ty)
+            assert self._tyenv.is_generic_record(ty.name), f"{ty.name} is not a generic record, so can't find instantiation"
+            decl = self._tyenv.record_decls[ty.name]
+            suffix = [x[1] for x in decl.get_inst_subst(ty)]
+            key = (decl.name, *suffix)
+            return self._ri.get(key, None)
+
+        return None
+
+    def is_instantiation(self, ty):
+        if isinstance(ty, TyRecord):
+            return ty.name in self.instantiations['records']
+
+        return False
+
+    def add_instantiation(self, i):
+        if isinstance(i, RecordInstantiation):
+            x = self.instantiations['records']
+            if i.inst.name in x:
+                assert x[i.inst.name].equivalent(i), f"Instantiated record {i.inst.name} shares name with {x[i.inst.name]}, but is not equivalent"
+            else:
+                x[i.inst.name] = i
+                key = (i.decl.name, *i.suffix)
+                self._ri[key] = i
+        else:
+            raise NotImplementedError(f"Don't handle {i}")
+
+    def _is_ground(self, ty):
+        v = ty.get_typevars()
+        return len(v) == 0
+
+    def _resolve_tyvars(self, tyrec):
+        out = []
+        for f, t in tyrec.fields_and_types:
+            if isinstance(t, TyRecord):
+                raise NotImplementedError
+            else:
+                out.append((f, self._x2x._get_type(t)))
+
+        return TyRecord(tyrec.name, out)
+
+    def visit_Call(self, node):
+        assert hasattr(node, '_xir_type')
+        fty = self._x2x._get_type(node._xir_type)
+
+        for pr in [fty.ret]:
+            if isinstance(pr, TyRecord) and pr.name:
+                if self._tyenv.is_generic_record(pr.name):
+                    inst = self._resolve_tyvars(pr)
+                    rd = self._tyenv.record_decls[inst.name]
+                    if len(rd.generic_tyvars):
+                        ity = RecordInstantiation(rd, inst)
+                        self.add_instantiation(ity)
+
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        assert hasattr(node.value, '_xir_type')
+        vty = self._x2x._get_type(node.value._xir_type)
+        if vty.name and self._tyenv.is_generic_record(vty.name):
+            rd = self._tyenv.record_decls[vty.name]
+            if len(rd.generic_tyvars):
+                ity = RecordInstantiation(rd, vty)
+                self.add_instantiation(ity)
+        else:
+            pass
+
+        pass
+
+        self.generic_visit(node)
+
+    def get_instantiations(self, node, tyreps, tyenv):
+        self._ty = tyreps
+        self._tyenv = tyenv
+        self._x2x.types = self._ty
+        self.visit(node)

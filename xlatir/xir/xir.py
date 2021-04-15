@@ -352,7 +352,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         # disregard excess arguments (sign, type, width annotations) when generating type equations
         self.trim_args_ptxcompat = trim_args_ptxcompat
-
+        self.ptx_compat = self.trim_args_ptxcompat
+        
     def set_src_info(self, xsrc, typeenv):
         self.xsrc = xsrc
         self.typeenv = typeenv
@@ -378,11 +379,22 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_Attribute(self, node):
         if isinstance(node.value, ast.Name) and node.value.id == 'cc_reg':
+            # PTX compat
             if node.attr == 'cf':
                 # TODO: connect cc_reg's type to cc_reg.cf type without messing up carryflag
                 node._xir_type = self.get_or_gen_ty_var('cc_reg.cf')
                 return node._xir_type
+        else:
+            vty = self.visit(node.value)
 
+            assert isinstance(vty, TyVar)
+            aty = self.get_or_gen_ty_var(f'{vty.name}.{node.attr}')
+            node._xir_type = aty
+
+            rty = TyRecord(None, [(node.attr, aty)])
+            self.equations.append(TyEqn(vty, rty))
+
+            return node._xir_type
         raise NotImplementedError(f"Attribute node {node} not handled")
 
     def visit_For(self, node):
@@ -489,7 +501,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
         return None
 
     def visit_Tuple(self, node):
-        return TyProduct([self.visit(e) for e in node.elts])
+        if self.ptx_compat:
+            return TyProduct([self.visit(e) for e in node.elts])
+        else:
+            raise SyntaxError(f"Tuples are not supported")
+
 
     def visit_Return(self, node):
         if node.value:
