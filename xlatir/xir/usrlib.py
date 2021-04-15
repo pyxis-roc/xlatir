@@ -13,6 +13,7 @@
 import ast
 import astunparse
 import logging
+from .astcompat import AC
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +106,17 @@ class Decl2Type(object):
                 raise SyntaxError(f'Unknown type constant "{expr.id}"', li)
         elif isinstance(expr, ast.Tuple):
             return self.typing.TyProduct([self.py_type_expr_to_xirtype(t) for t in expr.elts])
-        elif isinstance(expr, (ast.Constant, ast.NameConstant)): # or could be ast.NamedConstant in older Python
-            if expr.value is None:
+        elif isinstance(expr, AC.isNameConstant):
+            if AC.value(expr) is None:
                 return self.typing.TyConstant('void')
             else:
-                raise NotImplementedError(f'Unrecognized annotation Constant {expr.value}')
+                raise NotImplementedError(f'Unrecognized annotation Constant {AC.value(expr)}')
         elif isinstance(expr, ast.Subscript):
             # only support u32[N] where N is a literal constant
             assert isinstance(expr.slice, ast.Index), f"Unsupported: {expr.slice}"
-            assert isinstance(expr.slice.value, (ast.Constant, ast.Num)), f"Unsupported size: {expr.slice.value}"
+            assert isinstance(expr.slice.value, AC.isNum), f"Unsupported size: {expr.slice.value}"
             ty = self.py_type_expr_to_xirtype(expr.value if hasattr(expr, 'value') else expr.n)
-            return self.typing.TyArray(ty, [int(expr.slice.value.value)])
+            return self.typing.TyArray(ty, [int(AC.value(expr.slice.value))])
         else:
             raise NotImplementedError(f'Unrecognized annotation expression type {expr}')
 

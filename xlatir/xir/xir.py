@@ -18,6 +18,7 @@ from .xirtyping import *
 import itertools
 import logging
 from .typeparser import AppropriateParser
+from .astcompat import AC
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +415,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
                     ret = anno.slice.value.elts[1]
 
                     assert isinstance(argtypes, ast.List), f"Expecting List as first argument of Callable (... not supported)"
-                    assert isinstance(ret, (ast.Constant, ast.Name)), f"Expecting constant/name as return type"
+                    assert isinstance(ret, AC.isNameConstant) or isinstance(ret, ast.Name), f"Expecting constant/name as return type"
 
                     argtypes = [self.anno_to_type(a) for a in argtypes.elts]
                     ret = self.anno_to_type(ret)
@@ -423,8 +424,8 @@ class TypeEqnGenerator(ast.NodeVisitor):
                     raise SyntaxError(f"Callable syntax incorrect: {anno}")
             else:
                 raise NotImplementedError(f"Unimplemented subscript type: {ast.dump(anno)}")
-        elif isinstance(anno, ast.Constant):
-            assert anno.value is None, f"Only None supported in type: {anno}"
+        elif isinstance(anno, AC.isNameConstant):
+            assert AC.value(anno) is None, f"Only None supported in type: {anno}"
             ty = TyConstant('void')
         else:
             raise NotImplementedError(f"Don't know how to handle type annotation {anno}/{anno.__class__}")
@@ -585,30 +586,36 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
         return ret
 
-    def visit_Str(self, node):
-        ty =  self.get_or_gen_ty_var(f"{node.s}_{self.literal_index}", literal=node.s)
-        node._xir_type = ty
-        return ty
+    def _visit_Literal(self, node):
+        value = AC.value(node)
 
-    def visit_Num(self, node):
-        #TODO: more nuanced?
-        ty =  self.get_or_gen_ty_var(f"{node.n}_{self.literal_index}", literal=node.n)
-        node._xir_type = ty
-        return ty
-
-    def visit_Expr(self, node):
-        return self.visit(node.value)
-
-    def visit_NameConstant(self, node):
-        if node.value == True or node.value == False:
+        if value is True or value is False:
             ty = TyConstant("bool")
-        elif node.value is None:
+        elif value is None:
             ty = TyConstant("None")
+        elif isinstance(value, (str, int, float)):
+            ty =  self.get_or_gen_ty_var(f"{value}_{self.literal_index}", literal=value)
         else:
+            raise NotImplementedError(f"Unknown literal {node} with value {value}")
             return None
 
         node._xir_type = ty
         return ty
+
+    def visit_Str(self, node): # 3.6
+        return self._visit_Literal(node)
+
+    def visit_Num(self, node): # 3.6
+        return self._visit_Literal(node)
+
+    def visit_Constant(self, node):
+        return self._visit_Literal(node)
+
+    def visit_Expr(self, node):
+        return self.visit(node.value)
+
+    def visit_NameConstant(self, node): # 3.6
+        return self._visit_Literal(node)
 
     def visit_Index(self, node):
         ty = self.visit(node.value)

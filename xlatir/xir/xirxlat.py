@@ -179,6 +179,15 @@ class XIRToX(ast.NodeVisitor):
     def visit_Str(self, node):
         return self.X.xlat_Str(node.s, node)
 
+    def visit_Constant(self, node):
+        ty = self.X.get_native_type(self._get_type(node._xir_type))
+        if isinstance(node.value, (int, float)):
+            return self.X.xlat_Num(node.value, ty, node)
+        elif isinstance(node.value, str):
+            return self.X.xlat_Str(node.value, node)
+        else:
+            raise NotImplementedError(f'Constant of type={node.value} not handled')
+
     def visit_Num(self, node):
         ty = self.X.get_native_type(self._get_type(node._xir_type))
         return self.X.xlat_Num(node.n, ty, node)

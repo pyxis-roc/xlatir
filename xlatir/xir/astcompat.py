@@ -32,6 +32,8 @@ class Python36Compat:
             return node.n
         elif isinstance(node, ast.NameConstant):
             return node.value
+        elif isinstance(node, ast.Str):
+            return node.s
         else:
             raise NotImplementedError(f'Unhandled value class {node.__class__.__name__}')
 
@@ -44,7 +46,7 @@ class Python36Compat:
             raise NotImplementedError(f'Do not know how to set value of class {node.__class__.__name__}')
 
     def mk_constant(self, value):
-        if isinstance(value, int):
+        if isinstance(value, (int, float)):
             return ast.Num(n=value)
         elif isinstance(value, str):
             return ast.Str(s=value)
@@ -74,7 +76,7 @@ class Python38Compat:
             raise NotImplementedError(f'Do not know how to set value of class {node.__class__.__name__}')
 
     def mk_constant(self, value):
-        if isinstance(value, (int, str)) or value is None or value is True or value is False:
+        if isinstance(value, (int, str, float)) or value is None or value is True or value is False:
             n = ast.Constant(value=value)
             if not hasattr(n, 'kind'): n.kind = None # 3.8 bug
             return n
