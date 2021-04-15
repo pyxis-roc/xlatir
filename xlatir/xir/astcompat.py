@@ -3,34 +3,91 @@
 # astcompat.py
 #
 # AST compatibility routines to handle AST differences between different Python3 AST versions
+
+import ast
+import sys
+
+# this module exports a member called AC.
 #
-# Need to handle: isinstance, ast.Visitor and ast.Transformer, as well as obtaining actual values.
+# Use AC.isNum to test for num like this: isinstance(node, ac.isNum)
+# Use AC.value(node) to get the value of a constant node
+# Use AC.setValue(node, value) to set the value of the node
+# Use AC.mkConstant(value) to create a new AST node of the correct type
 #
-# To handle `isinstance`, declare "Compat*" lists that identify the
-# class that represents the original class. For example:
+# This does not handle ast visitors or ast transformers.
 #
-# python3.6: CompatNum = (ast.Num,)
-# python3.8: CompatNum = (ast.Constant,)
-#
-# then in code always use: isinstance(node, CompatNum)
-#
-# To handle obtaining actual values, e.g. ast.Num.n vs
-# ast.Constant.value, we'll use a set of wrapper classes and functions:
-#
-# python3.6: mkCompatNum(x: ast.Num) => wrapperCompatNum(x)
-# python3.8: mkCompatNum(x: ast.Constant) => x
-#
-# where wrapperCompatNum(x) =>
-# class (ast.Node):
-#     def __init__(self, node):
-#          self._node = node
-#     @property
-#     def value(): # uses forward-compatible attribute, i.e. ast.Constant.value instead of ast.Num.n
-#         return self._node = node
-#
-#     note we only map existing attributes to new attributes (.n =>
-#     .value), so no .kind on wrapperCompatNum().
-#
-# To handle the various visitors, we must handle generic_visit as well
-# as visit properly. This means either the various wrapper* classes
-# keep up with the AST or we override generic_visit and visit. TBD.
+# Recommend patching those visitors, transformers to handle both the
+# hold classes and the new classes.
+
+class Python36Compat:
+    def __init__(self):
+        # deprecated in 3.8: ast.Num, ast.Str, ast.Bytes, ast.NameConstant and ast.Ellipsis
+        self.isNum = (ast.Num,)
+        self.isNameConstant = (ast.NameConstant,)
+        self.isConstant = (ast.Num, ast.Str, ast.Bytes, ast.NameConstant, ast.Ellipsis)
+
+    def value(self, node):
+        if isinstance(node, ast.Num):
+            return node.n
+        elif isinstance(node, ast.NameConstant):
+            return node.value
+        else:
+            raise NotImplementedError(f'Unhandled value class {node.__class__.__name__}')
+
+    def set_value(self, node, value):
+        if isinstance(node, ast.Num):
+            node.n = value
+        elif isinstance(node, ast.NameConstant):
+            node.value = value
+        else:
+            raise NotImplementedError(f'Do not know how to set value of class {node.__class__.__name__}')
+
+    def mk_constant(self, value):
+        if isinstance(value, int):
+            return ast.Num(n=value)
+        elif isinstance(value, str):
+            return ast.Str(s=value)
+        elif value is None or value is True or value is False:
+            return ast.NameConstant(value=value)
+        else:
+            raise NotImplementedError(f'Do not know how make constant {node.__class__.__name__}')
+
+class Python38Compat:
+    def __init__(self):
+        self.isNum = (ast.Constant,)
+        self.isNameConstant = (ast.Constant,)
+        self.isConstant = (ast.Constant,)
+
+    def value(self, node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        else:
+            raise NotImplementedError(f'Unhandled value class {node.__class__.__name__}')
+
+    def set_value(self, node, value):
+        if isinstance(node, ast.Constant):
+            node.value = value
+            if not hasattr(node, 'kind'): node.kind = None # 3.8 bug?
+        else:
+            raise NotImplementedError(f'Do not know how to set value of class {node.__class__.__name__}')
+
+    def mk_constant(self, value):
+        if isinstance(value, (int, str)) or value is None or value is True or value is False:
+            n = ast.Constant(value=value)
+            if not hasattr(n, 'kind'): n.kind = None # 3.8 bug
+            return n
+        else:
+            raise NotImplementedError(f'Do not know how make constant {node.__class__.__name__}')
+
+if sys.version_info.major == 3:
+    if sys.version_info.minor < 8:
+        AC = Python36Compat()
+    elif sys.version_info.major < 9:
+        AC = Python38Compat()
+    else:
+        # let higher versions opt-in
+        pass
+else:
+    # we don't work with 2
+    pass
+

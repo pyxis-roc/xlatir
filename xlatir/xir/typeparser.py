@@ -20,6 +20,8 @@ from .xirtyping import *
 #from .xirsrc import XIRSource, XIRSyntaxError
 from typing import Union, Tuple
 from collections import OrderedDict
+from .astcompat import AC
+
 def expect(node: ast.AST, classes: Tuple[ast.AST], xsrc):
     if not isinstance(classes, tuple):
         classes = (classes, )
@@ -229,13 +231,24 @@ class TypeExprParser(ast.NodeVisitor):
         except KeyError:
             raise self._xsrc._gen_syntax_error(f'Unrecognized name "{node.id}" in type expression. Not a type constant, variable or alias.', node)
 
-    def visit_Constant(self, node):
-        if isinstance(node.value, int):
-            return node.value
-        elif node.value is None:
+    def _visit_Literal(self, node):
+        value = AC.value(node)
+
+        if isinstance(value, int):
+            return value
+        elif value is None:
             return TyConstant('void')
 
         raise self._xsrc._gen_syntax_error(f'Unexpected non-integer literal in type expression', node)
+
+    def visit_NameConstant(self, node): # 3.6
+        return self._visit_Literal(node)
+
+    def visit_Num(self, node): # 3.6
+        return self._visit_Literal(node)
+
+    def visit_Constant(self, node):
+        return self._visit_Literal(node)
 
     def visit_List(self, node):
         return [self.visit(x) for x in node.elts]
@@ -296,7 +309,8 @@ class TypeExprParser(ast.NodeVisitor):
 
 
     def visit(self, node):
-        if isinstance(node, (ast.Name, ast.Subscript, ast.Index, ast.Constant, ast.Tuple, ast.List)):
+        if isinstance(node, (ast.Name, ast.Subscript, ast.Index, ast.Tuple, ast.List)) \
+           or isinstance(node, AC.isConstant):
             return super(TypeExprParser, self).visit(node)
         else:
             raise self._xsrc._gen_syntax_error(f'Invalid ast node {node.__class__.__name__} in type expression', node)

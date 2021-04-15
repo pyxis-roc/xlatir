@@ -72,7 +72,11 @@ class XIRSource(object):
 
                 # TODO: move this parsing to teparser
                 if usrlib.is_xir_declaration(s):
-                    usrdecls[s.name] = app.parse(s)
+                    try:
+                        usrdecls[s.name] = app.parse(s)
+                    except XIRSyntaxError as e:
+                        logging.error(f'{e.filename}:{e.lineno}: Failed to parse xir declaration: {e}')
+                        raise
                 else:
                     fdefs[s.name] = s
             elif isinstance(s, ast.Assign):
@@ -92,7 +96,6 @@ class XIRSource(object):
                         self.tyenv.type_vars[a.name] = a
                 except XIRSyntaxError as e:
                     logging.warning(f'Failed to parse assignment as type information: {e}, treating as global instead')
-
                     #TODO: we need to restrict this so that it is gl =
                     # constant [transitively], so we can strictly disambiguate between
                     # typedecls and constants, and catch syntax errors?
