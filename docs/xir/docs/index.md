@@ -17,3 +17,7 @@ GitHub and run `python3 setup.py develop --user`.
 
 XIR syntax is a strict subset of Python, but its semantics are subtly different. Read the [Introduction to XIR](intro/) to understand the differences.
 
+
+## XIR Reference
+
+  * [XIR Classes](classes)
