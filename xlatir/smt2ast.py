@@ -267,7 +267,7 @@ class SMT2Parser(object):
                   ('LPAREN', r'\('),
                   ('RPAREN', r'\)'),
                   ('SIMPLE_SYMBOL', r'[-~!@$%^&*_+=<>.?A-Za-z/][-~!@$%^&*_+=<>.?\w/]*'), # \w includes digits, this means first character can't be non-ascii letter
-                  ('QUOTED_SYMBOL', r'\|[^\\\|]\|'),
+                  ('QUOTED_SYMBOL', r'\|[^\\\|]+\|'),
                   ('WHITESPACE', r'[\t\r\n ]+'), # TODO: 9, 10, 13, 32
                   ('KEYWORD', r':[^\d][-~!@$%^&*_+=<>.?\w/]+'),
                   ('MISMATCH', r'.'),
