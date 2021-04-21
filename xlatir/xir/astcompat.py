@@ -46,12 +46,12 @@ class Python36Compat:
             raise NotImplementedError(f'Do not know how to set value of class {node.__class__.__name__}')
 
     def mk_constant(self, value):
-        if isinstance(value, (int, float)):
+        if value is None or value is True or value is False:
+            return ast.NameConstant(value=value)
+        elif isinstance(value, (int, float)):
             return ast.Num(n=value)
         elif isinstance(value, str):
             return ast.Str(s=value)
-        elif value is None or value is True or value is False:
-            return ast.NameConstant(value=value)
         else:
             raise NotImplementedError(f'Do not know how make constant {node.__class__.__name__}')
 
