@@ -169,8 +169,8 @@ class EvalConstExpr(ast.NodeTransformer):
         # short-circuit, todo generalize to Or?
         if isinstance(node.op, ast.And):
             print(ast.dump(node))
-            node.values = [x for x in node.values if not (isinstance(x, AC.isNameConstant) and AC.value(x) == True)]
-            if len([x for x in node.values if isinstance(x, AC.isNameConstant) and AC.value(x) == False]):
+            node.values = [x for x in node.values if not (isinstance(x, AC.isNameConstant) and AC.value(x) is True)]
+            if len([x for x in node.values if isinstance(x, AC.isNameConstant) and AC.value(x) is False]):
                 node.values = [AC.mk_constant(False)]
 
             if len(node.values) == 1:
@@ -266,43 +266,42 @@ class EvalFunc(ast.NodeTransformer):
 
         if not isinstance(node.func, ast.Name): return node
 
-        # TODO: astcompat
         if node.func.id == 'MUL':
-            if all([isinstance(x, ast.Num) for x in node.args[:2]]):
-                num1 = node.args[0].n
-                num2 = node.args[1].n
-                ty = node.args[2].s
-                wd = node.args[3].n
-                return ast.Num(n = utils.MUL(num1, num2, ty, wd))
+            if all([isinstance(x, AC.isNum) for x in node.args[:2]]):
+                num1 = AC.value(node.args[0], (int, float))
+                num2 = AC.value(node.args[1], (int, float))
+                ty = AC.value(node.args[2], (str,))
+                wd = AC.value(node.args[3], (int, float))
+                return AC.mk_constant(utils.MUL(num1, num2, ty, wd))
         elif node.func.id == 'MIN':
-            if all([isinstance(x, ast.Num) for x in node.args[:2]]):
-                num1 = node.args[0].n
-                num2 = node.args[1].n
-                return ast.Num(n = utils.MIN(num1, num2))
+            if all([isinstance(x, AC.isNum) for x in node.args[:2]]):
+                num1 = AC.value(node.args[0], (int, float))
+                num2 = AC.value(node.args[1], (int, float))
+                return AC.mk_constant(utils.MIN(num1, num2))
         elif node.func.id == 'SUB':
-            if all([isinstance(x, ast.Num) for x in node.args[:2]]):
-                num1 = node.args[0].n
-                num2 = node.args[1].n
-                ty = node.args[2].s
-                wd = node.args[3].n
-                return ast.Num(n = utils.SUB(num1, num2, ty, wd))
+            if all([isinstance(x, AC.isNum) for x in node.args[:2]]):
+                num1 = AC.value(node.args[0], (int, float))
+                num2 = AC.value(node.args[1], (int, float))
+                ty = AC.value(node.args[2], (str,))
+                wd = AC.value(node.args[3], (int, float))
+                return AC.mk_constant(utils.SUB(num1, num2, ty, wd))
         elif node.func.id == 'ADD':
-            if all([isinstance(x, ast.Num) for x in node.args[:2]]):
-                num1 = node.args[0].n
-                num2 = node.args[1].n
-                ty = node.args[2].s
-                wd = node.args[3].n
-                return ast.Num(n = utils.ADD(num1, num2, ty, wd))
+            if all([isinstance(x, AC.isNum) for x in node.args[:2]]):
+                num1 = AC.value(node.args[0], (int, float))
+                num2 = AC.value(node.args[1], (int, float))
+                ty = AC.value(node.args[2], (str,))
+                wd = AC.value(node.args[3], (int, float))
+                return AC.mk_constant(utils.ADD(num1, num2, ty, wd))
         elif node.func.id == 'generate_mask':
-            if all([isinstance(x, t) for x, t in [(node.args[0], ast.Str),
-                                                  (node.args[1], ast.Num),
-                                                  (node.args[2], ast.Num),
-                                                  (node.args[3], ast.Str)]]):
+            if all([isinstance(x, t) for x, t in [(node.args[0], AC.isStr),
+                                                  (node.args[1], AC.isNum),
+                                                  (node.args[2], AC.isNum),
+                                                  (node.args[3], AC.isStr)]]):
 
-                return ast.Num(n = utils.generate_mask(node.args[0].s,
-                                                       node.args[1].n,
-                                                       node.args[2].n,
-                                                       node.args[3].s))
+                return AC.mk_constant(utils.generate_mask(AC.value(node.args[0], (str,)),
+                                                          AC.value(node.args[1], (int, float)),
+                                                          AC.value(node.args[2], (int, float)),
+                                                          AC.value(node.args[3], (str,))))
         return self.generic_visit(node)
 
 class StripUnread(ast.NodeTransformer):
@@ -374,9 +373,9 @@ class StripCode(ast.NodeTransformer):
     def visit_IfExp(self, node):
         node = self.generic_visit(node)
         if isinstance(node.test, AC.isNameConstant):
-            if AC.value(node.test) == False:
+            if AC.value(node.test) is False:
                 return node.orelse
-            elif AC.value(node.test) == True:
+            elif AC.value(node.test) is True:
                 return node.body
 
         return node
@@ -480,7 +479,7 @@ class GatherConstants(ast.NodeVisitor):
                 self._non_constants[v] = node.value
             elif v not in self._non_constants:
                 if isinstance(node.value, AC.isNum):
-                    self._constants[v] = AC.value(node.value)
+                    self._constants[v] = AC.value(node.value, (int, float))
 
     def gather(self, node):
         self._constants = {}

@@ -27,15 +27,27 @@ class Python36Compat:
         self.isNameConstant = (ast.NameConstant,)
         self.isConstant = (ast.Num, ast.Str, ast.Bytes, ast.NameConstant, ast.Ellipsis)
 
-    def value(self, node):
+    def value(self, node, valchk = ()):
+        # valchk is a list of types for ast.Num and ast.Str, but a list of values for ast.NameConstant
+        # so (int,) for ast.Num will work,
+        # and (None, True) will for ast.NameConstant
+
         if isinstance(node, ast.Num):
-            return node.n
+            v = node.n
+            vok = isinstance(v, valchk) if len(valchk) > 0 else True
         elif isinstance(node, ast.NameConstant):
-            return node.value
+            v = node.value
+            vok = v in valchk if len(valchk) > 0 else True
         elif isinstance(node, ast.Str):
-            return node.s
+            v = node.s
+            vok = isinstance(v, valchk) if len(valchk) > 0 else True
         else:
             raise NotImplementedError(f'Unhandled value class {node.__class__.__name__}')
+
+        if not vok:
+            raise TypeError(f'{node} does not match expected type/values {valchk}')
+
+        return v
 
     def set_value(self, node, value):
         if isinstance(node, ast.Num):
@@ -62,9 +74,19 @@ class Python38Compat:
         self.isNameConstant = (ast.Constant,)
         self.isConstant = (ast.Constant,)
 
-    def value(self, node):
+    def value(self, node, valchk = ()):
         if isinstance(node, ast.Constant):
-            return node.value
+            v = node.value
+            if len(valchk):
+                if v is None or v is True or v is False:
+                    vok = v in valchk
+                else:
+                    vok = isinstance(v, valchk)
+
+                if not vok:
+                    raise TypeError(f'{node} does not match expected type/values {valchk}')
+
+            return v
         else:
             raise NotImplementedError(f'Unhandled value class {node.__class__.__name__}')
 
