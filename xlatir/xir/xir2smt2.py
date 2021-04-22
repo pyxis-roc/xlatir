@@ -1369,6 +1369,17 @@ class SMT2Xlator(xirxlat.Xlator):
 
         return "\n".join([str(s) for s in out])
 
+    def _gen_constants(self):
+        out = []
+        for s in self.x2x.tyenv.constants:
+            tv = self.x2x.tyenv.constants[s]
+            st = self._get_smt2_type(tv[0])
+            v = smt2_literal(AC.value(tv[1]), str(st))
+
+            out.append(f"(define-fun {s} () {st} {v})")
+
+        return "\n".join(out)
+
     def write_output(self, output, translations, defns, ptx = True):
         def include_file(inc, outf):
             inc = self.x2x.INC.locate(inc)
@@ -1413,6 +1424,8 @@ class SMT2Xlator(xirxlat.Xlator):
 
                 for sz in [32, 64]:
                     print(f"(define-sort f{sz} () Float{sz})", file=f)
+
+                print(self._gen_constants(), file=f)
 
                 if ptx: #TODO
                     include_file("ptx_utils.smt2", f)

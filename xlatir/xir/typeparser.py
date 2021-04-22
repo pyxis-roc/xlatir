@@ -111,6 +111,7 @@ class TypeEnv(object):
         self.type_aliases = {}
         self.record_decls = {}
         self._generic_records = {}
+        self.constants = OrderedDict()
     # TODO: handle duplicate names
 
     def is_generic_record(self, name):
@@ -155,6 +156,12 @@ class TypeEnv(object):
                 raise ValueError(f"Duplicate class definitions {a}")
             else:
                 self.record_decls[a] = ote.record_decls[a]
+
+        for a in ote.constants:
+            if a in self.constants:
+                raise ValueError(f"Duplicate constant {a}")
+            else:
+                self.constants[a] = ote.constants[a]
 
 class RecordDeclParser(ast.NodeVisitor):
     def visit_Name(self, node):

@@ -353,7 +353,7 @@ class TypeEqnGenerator(ast.NodeVisitor):
         # disregard excess arguments (sign, type, width annotations) when generating type equations
         self.trim_args_ptxcompat = trim_args_ptxcompat
         self.ptx_compat = self.trim_args_ptxcompat
-        
+
     def set_src_info(self, xsrc, typeenv):
         self.xsrc = xsrc
         self.typeenv = typeenv
@@ -778,6 +778,10 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def visit_Name(self, node):
         v = self.get_or_gen_ty_var(node.id)
+
+        if node.id in self.typeenv.constants:
+            self.equations.append(TyEqn(v, self.typeenv.constants[node.id][0]))
+
         node._xir_type = v
         return v
 

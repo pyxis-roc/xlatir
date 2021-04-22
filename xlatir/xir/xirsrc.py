@@ -10,12 +10,14 @@ from . import usrlib
 from . import xirtyping
 from . import typeparser
 import logging
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
 class XIRSource(object):
     def __init__(self):
         self.tyenv = typeparser.TypeEnv()
+        self.constants = OrderedDict()
 
     def load(self, srcfile):
 
@@ -113,8 +115,10 @@ class XIRSource(object):
                     # re-examine why this was needed, since only PTX uses it.
                     gl[s.targets[0].id] = s
             elif isinstance(s, ast.AnnAssign):
-                # This may be needed in the future for : type = definitions
-                raise NotImplementedError
+                a = app.parse(s.annotation)
+                if s.target.id in self.tyenv.constants:
+                    raise self._gen_syntax_error(f"Duplicate definition for constant {s.target.id}", s)
+                self.tyenv.constants[s.target.id] = (a, s.value)
             elif isinstance(s, (ast.Import, ast.ImportFrom)):
                 # TODO: set up namespaces, etc.
                 pass

@@ -724,12 +724,23 @@ class CXlator(xirxlat.Xlator):
             out.append(f"}};")
         return out
 
+    def xlat_constant_gen(self):
+        out = []
+        for s in self.x2x.tyenv.constants:
+            tv = self.x2x.tyenv.constants[s]
+            ct = self._get_c_type(tv[0])
+            out.append(f"const {ct} {s} = {AC.value(tv[1])};")
+
+        return out
+
     def write_output(self, output, translations, defns, ptx = True):
         structs = self.xlat_struct_gen()
+        constants = self.xlat_constant_gen()
+
         if ptx:
-            write_output_ptx(output, translations, structs + defns)
+            write_output_ptx(output, translations, structs + constants + defns)
         else:
-            write_output_general(output, translations, structs + defns)
+            write_output_general(output, translations, structs + constants + defns)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',
