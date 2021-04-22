@@ -121,7 +121,7 @@ class PyToXIRImp(ast.NodeTransformer):
 
         # TODO: add coordinates
         # expression context?
-        return ast.Call(ast.Name(func), args, {})
+        return ast.Call(ast.Name(id=func), args, {})
 
     def visit_AugAssign(self, node):
         node = self.generic_visit(node)
