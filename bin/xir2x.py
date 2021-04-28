@@ -27,6 +27,14 @@ import sys
 import warnings
 import itertools
 
+def debug_ih(show_builtins = False):
+    for n in sys.modules:
+        nn = sys.modules[n]
+        if not show_builtins and "(built-in)" in str(nn):
+            continue
+
+        print(f"{n}: {nn}")
+
 # DEPRECATED
 def load_execute_functions(semfile):
     """This loads the low-level semantics file produced by the semantics compiler"""
@@ -186,8 +194,12 @@ if __name__ == "__main__":
     p.add_argument('--pem', dest='pemodule', metavar='MODULEFILE', help='Import MODULEFILE as utils for partial evaluator')
     p.add_argument('-I', dest='include_dirs', metavar='DIR', help='Look for included files in this directory', action='append', default=[])
     p.add_argument('-L', dest='lib_dirs', metavar='DIR', help='Look for library files in DIR', action='append', default=[])
-
+    p.add_argument('--ih', dest="import_hell", action="store_true", help="Debug imported packages")
     args = p.parse_args()
+
+
+    if args.import_hell:
+        debug_ih()
 
     args.lib_dirs.insert(0, os.path.dirname(args.semfile))
     args.lib_dirs.insert(0, os.getcwd())
