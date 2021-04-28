@@ -19,6 +19,13 @@ To install:
 Note: this does not yet install the binaries into some `bin` directory
 accessible from the path.
 
+## Documentation
+
+XIR is documented using [MkDocs](https://www.mkdocs.org/).
+
+To view the documentation, install MkDocs, and then in the `docs/xir`
+directory, run `mkdocs serve`. The documentation will be available
+through your browser.
 
 ## XIR dialects
 
@@ -37,7 +44,7 @@ syntax definition).
 
 Therefore, all operations such as addition, subtraction must be
 performed using function calls. Since XIR is typed, declarations for
-these functions are provided by a "standard library" (`xirstdlib.pyi`)
+these functions are provided by a "standard library" (`xirbuiltins.pyi`)
 that accompanies XIR. For the most part, these declarations uses
 mypy-style type annotations. However, there are extensions (e.g. for
 constant-size array declarations) that are not recognized by mypy.
