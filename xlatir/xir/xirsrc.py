@@ -9,6 +9,7 @@ from . import anno as xiranno
 from . import usrlib
 from . import xirtyping
 from . import typeparser
+from .astcompat import AC
 import logging
 from collections import OrderedDict
 
@@ -52,6 +53,11 @@ class XIRSource(object):
         func = xirtyping.TyApp(tyr, [f[1] for f in tyr.fields_and_types])
         f = xirtyping.PolyTyDef(gvars, func)
         return f
+
+    def _get_constant(self, vn):
+        #TODO: handle errors here
+        val = ast.literal_eval(vn)
+        return AC.mk_constant(val)
 
     def parse(self, names = None):
         # We assume this is strict/plain XIR
@@ -118,7 +124,7 @@ class XIRSource(object):
                 a = app.parse(s.annotation)
                 if s.target.id in self.tyenv.constants:
                     raise self._gen_syntax_error(f"Duplicate definition for constant {s.target.id}", s)
-                self.tyenv.constants[s.target.id] = (a, s.value)
+                self.tyenv.constants[s.target.id] = (a, self._get_constant(s.value))
             elif isinstance(s, (ast.Import, ast.ImportFrom)):
                 # TODO: set up namespaces, etc.
                 pass
