@@ -1393,7 +1393,7 @@ class SMT2Xlator(xirxlat.Xlator):
             with open(output, "w") as f:
                 print("(set-logic QF_FPBV)", file=f) # need to support arrays too
                 print(self._gen_datatypes(), file=f)
-                print("; :begin global")
+                print("; :begin global", file=f)
 
                 if "Pair" not in self.gen_structs:
                     # legacy
