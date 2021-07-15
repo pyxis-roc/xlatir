@@ -520,11 +520,11 @@ class TypeEqnGenerator(ast.NodeVisitor):
 
     def _generate_poly_call_eqns(self, fn, args, typedef):
         ret = self.get_or_gen_ty_var(f"ret{self.ret}")
-        fnt = self.get_or_gen_ty_var(f"{fn}{self.ret}") # this is polymorphic ops
+        fnt = self.get_or_gen_ty_var(f"{fn}:{self.ret}") # this is polymorphic ops
 
         subst = {}
         for uqv in typedef.uqvars:
-            uqt = self.get_or_gen_ty_var(f"{uqv}{self.ret}")
+            uqt = self.get_or_gen_ty_var(f"{uqv}:{self.ret}")
             subst[uqv] = uqt.name
 
         self.ret += 1
