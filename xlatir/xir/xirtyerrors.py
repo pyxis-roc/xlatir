@@ -10,6 +10,7 @@ class SubsTy(ast.NodeTransformer):
             xt = find(ty, self.reps)
             return xt
         except KeyError:
+            if isinstance(ty, TyVar): return ty
             return None
 
     def _get_ty(self, ty):
@@ -17,10 +18,10 @@ class SubsTy(ast.NodeTransformer):
         if isinstance(xt, TyApp):
             return self._get_ty(xt.ret)
         elif isinstance(xt, TyVarLiteral):
-            if xt is ty: return "?"
+            if xt is ty: return xt.name
             return self._get_ty(xt)
         elif isinstance(xt, TyVar):
-            if xt is ty: return "?"
+            if xt is ty: return xt.name
             return self._get_ty(xt)
         elif isinstance(xt, TyConstant):
             return xt.value
