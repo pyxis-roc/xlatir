@@ -19,6 +19,7 @@ import itertools
 import logging
 from .typeparser import AppropriateParser
 from .astcompat import AC
+from .xirtyerrors import SubsTy
 
 logger = logging.getLogger(__name__)
 
@@ -847,7 +848,18 @@ def infer_types(insn_sem, type_decls = None, user_decls = None, stats = None, no
         if not unify(eq.lhs, eq.rhs, reps):
             for k, v in reps.items():
                 print(f"\t{k}: {v}")
+
+            dbgty = SubsTy()
+            print("***** TYPED AST")
+            print(astunparse.unparse(dbgty.rewrite(insn_sem, reps)))
             assert False, f"Failed to unify: {eq}"
+
+    if False:
+        # for debugging
+        dbgty = SubsTy()
+        print("***** TYPED AST")
+        print(astunparse.unparse(dbgty.rewrite(insn_sem, reps)))
+        assert False, f"Test failed to unify: {eq}"
 
     if type_decls is not None:
         reps = types_from_decls(eqg, reps, type_decls)
