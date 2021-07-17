@@ -636,8 +636,10 @@ class CXlator(xirxlat.Xlator):
         arglen = len(fnty) - 1
 
         if fnty[0] in self.x2x.tyenv.record_decls:
-            # this is a structure creation, so behave like erstwhile tuple
-            return list(args)
+            ret_ty = self.x2x._get_type(node._xir_type).ret
+            struct_ty = self._get_c_type(ret_ty)
+
+            return f"(({struct_ty}) {{{', '.join(args[:arglen])}}})" # C compound literal, C99
 
         if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
             # because we're using strings
@@ -649,6 +651,8 @@ class CXlator(xirxlat.Xlator):
 
     def xlat_Return(self, v, vty, node):
         if isinstance(v, list):
+            # this should no longer be required?
+
             if "{" in vty:
                 # compat, we used anonymous structs for Tuples
                 vty = vty[:vty.index("{")]
