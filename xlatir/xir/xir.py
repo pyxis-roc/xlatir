@@ -138,6 +138,7 @@ class HandleXIRHints(ast.NodeTransformer):
 class RewritePythonisms(ast.NodeTransformer):
     desugar_boolean_xor = True
     elim_x_value = False
+    add_fn_suffixes = False
 
     def _is_float_constant_constructor(self, n):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'float':
@@ -226,8 +227,12 @@ class RewritePythonisms(ast.NodeTransformer):
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
             if node.func.id in self.SUFFIX_FNS:
-                return self.add_fn_suffix(node)
+                if self.add_fn_suffixes:
+                    return self.add_fn_suffix(node)
+                else:
+                    return node
             elif node.func.id.startswith('extractAndSignOrZeroExt'):
+                # TODO: get rid of this
                 assert isinstance(node.args[2], ast.Num) and node.args[2].n == 32
                 assert isinstance(node.args[1], ast.NameConstant) and node.args[1].value in (True, False)
                 # This is not necessary, but could simplify implementations?
@@ -240,6 +245,7 @@ class RewritePythonisms(ast.NodeTransformer):
 
                 node.args = node.args[0:1] # this will happen before Assign
             elif node.func.id in ROUND_SAT_ARITH_FNS:
+                # TODO: get rid of this
                 if node.func.id == 'FMA_ROUND' or node.func.id == 'FMA_ROUND_SATURATE':
                     node.args.insert(3, node.args[-1])
                     node.args.pop()
@@ -251,6 +257,7 @@ class RewritePythonisms(ast.NodeTransformer):
                     node.args.pop()
 
             elif node.func.id == 'booleanOp':
+                # TODO: get rid of this
                 assert isinstance(node.args[2], ast.Str)
                 if node.args[2].s == 'and':
                     node = ast.BoolOp(op=ast.And(), values=[node.args[0], node.args[1]])
@@ -293,6 +300,7 @@ class RewritePythonisms(ast.NodeTransformer):
                 if not (isinstance(node.args[0], ast.Num) and isinstance(node.args[1], ast.Num)):
                     raise NotImplementedError(f"range with non-constant arguments not supported")
             elif node.func.id in ('SHL', 'SHR', 'SAR'):
+                # TODO: get rid of this
                 node = self.generic_visit(node)
                 #TODO: the greater than is because of PTX...
                 assert len(node.args) >= 2, f"{node.func.id} needs two arguments" 
@@ -307,6 +315,7 @@ class RewritePythonisms(ast.NodeTransformer):
                 assert isinstance(node.args[1], ast.Num), f"FROM_BITSTRING needs a constant size: {node.args[1]}"
                 node.func.id += "_" + str(node.args[1].n)
             elif self.elim_x_value and node.func.id == 'set_value':
+                # TODO: get rid of this
                 # ptx relies on set_value to set type on argument, once
                 # type annotations are on _global_*, we can get rid of self.noptx
                 # get rid of set_value, since it's not needed
