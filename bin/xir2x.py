@@ -177,6 +177,17 @@ def load_xir_source(src, libs, libdirs):
 
     return s, gl, semantics, usrdecls, gltyenv
 
+def load_whole_decls(xsrc, fdefs, usrdecls, gltyenv):
+    moddecls = xsrc.get_decls(fdefs, gltyenv)
+    k = set(usrdecls.keys())
+    u = set(moddecls.keys())
+    comm = k.intersection(u)
+
+    if comm:
+        print(f"ERROR: {comm} functions overlap with library functions.")
+        raise
+
+    usrdecls.update(moddecls)
 
 if __name__ == "__main__":
     import argparse
@@ -189,6 +200,7 @@ if __name__ == "__main__":
     p.add_argument('-i', dest="interactive", action="store_true", help="Interactive, fail immediately")
     p.add_argument('-d', dest="debug", action="store_true", help="Enable debugging logs")
     p.add_argument('--noptx', action='store_true', help="Do not assume PTX conventions")
+    p.add_argument('--whole', action='store_true', help="Whole unit translation, implies --noptx and -i")
     p.add_argument('-l', metavar='LIBFILE', dest='lib', action='append', help="Use LIB (full filename) as a source of user-defined declarations", default=[])
     p.add_argument('--pemdeps', dest='pedeps', metavar='MODULEFILE', action='append', help='Import MODULEFILE as a dependency for pemodule', default=[])
     p.add_argument('--pem', dest='pemodule', metavar='MODULEFILE', help='Import MODULEFILE as utils for partial evaluator')
@@ -197,14 +209,20 @@ if __name__ == "__main__":
     p.add_argument('--ih', dest="import_hell", action="store_true", help="Debug imported packages")
     args = p.parse_args()
 
-
     if args.import_hell:
         debug_ih()
+
+    if args.whole:
+        args.noptx = True
+        args.interactive = True
 
     args.lib_dirs.insert(0, os.path.dirname(args.semfile))
     args.lib_dirs.insert(0, os.getcwd())
 
     xsrc, gl, semantics, usrdecls, gltyenv = load_xir_source(args.semfile, args.lib, args.lib_dirs)
+
+    if args.whole:
+        load_whole_decls(xsrc, semantics, usrdecls, gltyenv)
 
     translator = xirxlat.XIRToX()
     translator.INC = srcutils.IncludeLocator(args.include_dirs)
