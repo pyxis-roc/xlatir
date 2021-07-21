@@ -150,8 +150,11 @@ class XIRToX(ast.NodeVisitor):
     def visit_Name(self, node):
         if hasattr(self, 'fn') and self.fn:
             if isinstance(node.ctx, ast.Store):
+                # TODO: auto-declare names encountered for the first time?
                 if node.id not in self.fn._xir_decls:
-                    self.fn._xir_decls[node.id] = self.X.get_declaration(node)
+                    t = self._get_type(node._xir_type)
+                    if not isinstance(t, TyApp): # since we don't support first-class functions
+                        self.fn._xir_decls[node.id] = self.X.get_declaration(node)
 
         return self.X.xlat_Name(node.id, node)
 
@@ -346,6 +349,7 @@ class XIRToX(ast.NodeVisitor):
             return self.X.xlat_Assign(self.visit(node.target), self.visit(node.value), node)
         else:
             # handle just a type 'declaration'; x : u32
+            self.visit(node.target)
             return self.X.xlat_Pass(ast.Pass())
 
     def visit_Assign(self, node):
@@ -402,7 +406,6 @@ class XIRToX(ast.NodeVisitor):
         # order is important!
         body = accumulate_body([self.visit(s) for s in node.body if not isinstance(s, ast.Assert)])
         decls = [(v, t) for (v, t) in self.fn._xir_decls.items() if t is not None]
-
         out = self.X.xlat_FunctionDef(func, args, retval, decls, body, node)
 
         self.fn = None
