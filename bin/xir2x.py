@@ -189,6 +189,7 @@ if __name__ == "__main__":
     p.add_argument('-i', dest="interactive", action="store_true", help="Interactive, fail immediately")
     p.add_argument('-d', dest="debug", action="store_true", help="Enable debugging logs")
     p.add_argument('--noptx', action='store_true', help="Do not assume PTX conventions")
+    p.add_argument('--rp', action='store_true', help="Rewrite Pythonisms")
     p.add_argument('-l', metavar='LIBFILE', dest='lib', action='append', help="Use LIB (full filename) as a source of user-defined declarations", default=[])
     p.add_argument('--pemdeps', dest='pedeps', metavar='MODULEFILE', action='append', help='Import MODULEFILE as a dependency for pemodule', default=[])
     p.add_argument('--pem', dest='pemodule', metavar='MODULEFILE', help='Import MODULEFILE as utils for partial evaluator')
@@ -250,7 +251,7 @@ if __name__ == "__main__":
             sem = semantics["execute_" + pi]
 
         xh.handle_hints(sem)
-        rp.visit(sem)
+        if args.rp: rp.visit(sem)
         sem = translator.X.pre_xlat_transform(sem)
 
         try:
