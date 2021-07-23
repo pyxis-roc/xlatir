@@ -59,6 +59,14 @@ class XIRSource(object):
         val = ast.literal_eval(vn)
         return AC.mk_constant(val)
 
+    def get_decls(self, fdefs, gltyenv):
+        app = typeparser.AppropriateParser(gltyenv, self)
+        out = {}
+        for fn in fdefs:
+            out[fn] = app.parse(fdefs[fn])
+
+        return out
+
     def parse(self, names = None):
         # We assume this is strict/plain XIR
 
