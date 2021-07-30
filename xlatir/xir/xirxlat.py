@@ -532,10 +532,19 @@ class PolymorphicInst(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node):
-        # TODO: this was checking node.value for _xir_type, but
-        # xir.py sets the type on node, not node.value ...
-        assert hasattr(node, '_xir_type')
-        vty = self._x2x._get_type(node._xir_type)
+
+        if not hasattr(node.value, '_xir_type'):
+            vty = self._x2x._get_type(node._xir_type)
+            if isinstance(vty, TyConstant) and vty.value == 'carryflag':
+                # PTX legacy for carryflag code
+                self.generic_visit(node)
+                return
+            else:
+                assert False, f"Invalid type for attribute {vty}"
+        else:
+            assert hasattr(node.value, '_xir_type')
+            vty = self._x2x._get_type(node.value._xir_type)
+
         if isinstance(vty, TyRecord) and vty.name and self._tyenv.is_generic_record(vty.name):
             rd = self._tyenv.record_decls[vty.name]
             if len(rd.generic_tyvars):
