@@ -3,7 +3,7 @@
 import xlatir.xir.xirlibc as xirlibc
 
 def test_ADD():
-    x = xirlibc.XIRLibC()
+    x = xirlibc.XIRBuiltinLibC()
     a1 = xirlibc.c_float()
     a2 = xirlibc.c_float()
     print(x.ADD(a1, a2))
