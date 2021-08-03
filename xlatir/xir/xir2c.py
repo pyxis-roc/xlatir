@@ -7,6 +7,7 @@ from .xirtyping import *
 import os
 from . import xirxlat
 from .astcompat import AC
+from .xirlibc import XIRBuiltinLibC
 
 XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'b16': 'uint16_t',
@@ -180,6 +181,9 @@ class Clib(object):
                    'rz': 'FE_TOWARDZERO', # towards zero
                    'rm': 'FE_DOWNWARD'} # to negative infinity
 
+    def __init__(self):
+        self.xlib = XIRBuiltinLibC()
+
     def _do_fnop(self, n, fnty, args, node):
         arglen = len(fnty) - 1
 
@@ -189,6 +193,13 @@ class Clib(object):
             opkey = fnty
 
         assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        try:
+            lc = self.xlib.dispatch(fnty, node._xir_type)
+            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
+        except KeyError:
+            print(f"xirlibc: keyerror: {fnty}")
+            pass
 
         return f"{XIR_TO_C_OPS[opkey]}({', '.join([a for a in args[:arglen]])})"
 
@@ -231,6 +242,13 @@ class Clib(object):
             opkey = fnty
 
         assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        try:
+            lc = self.xlib.dispatch(fnty, node._xir_type)
+            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
+        except KeyError:
+            print(f"xirlibc: keyerror: {fnty}")
+            pass
 
         roundMode = self.ROUND_MODES[args[arglen-1][1:-1]]
         return f"{XIR_TO_C_OPS[opkey]}({', '.join([a for a in args[:arglen-1]])}, {roundMode})"
@@ -280,6 +298,13 @@ class Clib(object):
 
         assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
 
+        try:
+            lc = self.xlib.dispatch(fnty, node._xir_type)
+            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
+        except KeyError:
+            print(f"xirlibc: keyerror: {fnty}")
+            pass
+
         return f"({args[0]} {XIR_TO_C_OPS[opkey]} {args[1]})"
 
     def _do_shift_op(self, n, fnty, args, node):
@@ -297,6 +322,14 @@ class Clib(object):
             opkey = fnty
 
         assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+
+        try:
+            lc = self.xlib.dispatch(fnty, node._xir_type)
+            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
+        except KeyError:
+            print(f"xirlibc: keyerror: {fnty}")
+            pass
+
 
         op = XIR_TO_C_OPS[opkey]
         if op in ('SHL', 'SHR'):
