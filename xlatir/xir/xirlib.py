@@ -17,6 +17,10 @@ class XIRLib:
        based on the types of arguments.
     """
 
+    def tychk(self, v, type_):
+        if not isinstance(v, type_):
+            raise TypeError(f"Expecting type {type_}, found {type(v)}")
+
     def get_dispatch_types(self, fnty, xirty):
         raise NotImplementedError
 
