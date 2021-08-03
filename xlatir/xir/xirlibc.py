@@ -50,6 +50,8 @@ class int64_t(CSigned):
 class c_bool(CBasicType):
     pass
 
+# this needs to reflect XIR_TO_C_TYPES in xir2c.py
+
 _SINGLETONS = {
     'float': c_float(),
     'double': double(),
@@ -63,10 +65,14 @@ _SINGLETONS = {
     'int64_t': int64_t(),
 
     'unsigned int': c_bool(), # TODO
-
+    'BIT_T': CUnsigned(),
+    'my_int128_t': CSigned(),
+    'my_uint128_t': CSigned(),
 }
 
 class XIRBuiltinLibC(XIRBuiltinLib):
+    type_dict = dict(_SINGLETONS)
+
     @singledispatchmethod
     def ADD(self, aty, bty):
         raise NotImplementedError(f"ADD({aty}, {bty}) not implemented.")
@@ -249,5 +255,5 @@ class XIRBuiltinLibC(XIRBuiltinLib):
         return "~"
 
     def get_dispatch_types(self, fnty, xirty):
-        return [fnty[0]] + [_SINGLETONS[x] for x in fnty[1:]]
+        return [fnty[0]] + [self.type_dict[x] for x in fnty[1:]]
 

@@ -39,36 +39,10 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   }
 
 #TODO: Rewrite this
-XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
-                ('SUB', '*', '*'): '-',
-                ('MUL', '*', '*'): '*',
-                ('DIV', '*', '*'): '/',
-                ('IDIV', '*', '*'): '/',
-                ('REM', '*', '*'): '%',
-                ('MOD', '*', '*'): '%',
-
-                ('SHR', 'uint16_t', 'uint32_t'): 'SHR',
-                ('SHR', 'uint32_t', 'uint32_t'): 'SHR',
-                ('SHR', 'uint64_t', 'uint32_t'): 'SHR',
-                ('SHR', '*', '*'): '>>',
-
-                ('SAR', 'int16_t', 'uint32_t'): 'SHR',
+XIR_TO_C_OPS = {('SAR', 'int16_t', 'uint32_t'): 'SHR',
                 ('SAR', 'int32_t', 'uint32_t'): 'SHR',
                 ('SAR', 'int64_t', 'uint32_t'): 'SHR',
                 ('SAR', '*', '*'): '>>',
-
-                ('SHL', 'uint32_t', 'uint32_t'): 'SHL',
-                ('SHL', 'uint64_t', 'uint32_t'): 'SHL',
-                ('SHL', 'uint16_t', 'uint32_t'): 'SHL',
-                ('SHL', '*', '*'): '<<',
-
-
-                ('GT', '*', '*'): '>',
-                ('LT', '*', '*'): '<',
-                ('LTE', '*', '*'): '<=',
-                ('NOTEQ', '*', '*'): '!=',
-                ('GTE', '*', '*'): '>=',
-                ('EQ', '*', '*'): '==',
 
                 ('MIN', 'float', 'float'): 'fminf_ptx',
                 ('MAX', 'float', 'float'): 'fmaxf_ptx',
@@ -98,12 +72,6 @@ XIR_TO_C_OPS = {('ADD', '*', '*'): '+',
                 ('MAX', '*', '*'): 'MAX',
                 ('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
                 ('MIN', '*', '*'): 'MIN',
-
-                ('AND', '*', '*'): '&',
-                ('OR', '*', '*'): '|',
-                ('XOR', '*', '*'): '^',
-                ('NOT', '*'): '~',
-                ('NOT', 'unsigned int'): '!',
 
                 ('compare_eq', '*', '*'): '==',
                 ('compare_ne', '*', '*'): '!=',
@@ -256,7 +224,8 @@ class Clib(object):
         else:
             wosat = n[:-len("_SATURATE")]
             assert hasattr(self, wosat), f"Unable to find non-saturating {wosat} version of {n}"
-            wosatcode = getattr(self, wosat)(wosat, fnty, args, node)
+            fnty2 = tuple([wosat] + list(fnty[1:]))
+            wosatcode = getattr(self, wosat)(wosat, fnty2, args, node)
 
             #TODO: actually perform a lookup - this is when passing ASTs would be better?
             return f"SATURATE({wosatcode})"
