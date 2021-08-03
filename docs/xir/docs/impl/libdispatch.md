@@ -36,6 +36,9 @@ Currently:
 
 ('ADD', '*', '*') = '+'
 
+Or
 
-
-
+('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
+('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
+			 	   	     	  Symbol("roundNearestTiesToEven"),
+					x, y),

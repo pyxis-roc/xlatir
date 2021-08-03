@@ -184,24 +184,35 @@ class Clib(object):
     def __init__(self):
         self.xlib = XIRBuiltinLibC()
 
-    def _do_fnop(self, n, fnty, args, node):
+    def _get_lib_op(self, fnty, node, n):
         arglen = len(fnty) - 1
 
+        # n is used only for legacy stuff ...
         if fnty not in XIR_TO_C_OPS:
             opkey = tuple([n] + ['*'] * arglen) # contains arity info
         else:
             opkey = fnty
 
-        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+        if opkey in XIR_TO_C_OPS:
+            x2cop = XIR_TO_C_OPS[opkey]
+        else:
+            x2cop = None
 
         try:
             lc = self.xlib.dispatch(fnty, node._xir_type)
-            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
+            if x2cop is not None:
+                assert x2cop == lc, f"XIR_TO_C_OPS[{opkey}] is {x2cop}, but dispatch gives {lc}"
+            return lc
         except KeyError:
             print(f"xirlibc: keyerror: {fnty}")
-            pass
+            assert x2cop is not None, f"Couldn't find {opkey} in XIR_TO_C_OPS or in dispatch for {fnty}"
+            return x2cop
 
-        return f"{XIR_TO_C_OPS[opkey]}({', '.join([a for a in args[:arglen]])})"
+    def _do_fnop(self, n, fnty, args, node):
+        arglen = len(fnty) - 1
+        lc = self._get_lib_op(fnty, node, n)
+
+        return f"{lc}({', '.join([a for a in args[:arglen]])})"
 
 
     def _do_mach_specific(self, n, fnty, args, node):
@@ -235,23 +246,9 @@ class Clib(object):
 
     def _do_fnop_round(self, n, fnty, args, node):
         arglen = len(fnty) - 1
-
-        if fnty not in XIR_TO_C_OPS:
-            opkey = tuple([n] + ['*'] * arglen) # contains arity info
-        else:
-            opkey = fnty
-
-        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
-
-        try:
-            lc = self.xlib.dispatch(fnty, node._xir_type)
-            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
-        except KeyError:
-            print(f"xirlibc: keyerror: {fnty}")
-            pass
-
+        lc = self._get_lib_op(fnty, node, n)
         roundMode = self.ROUND_MODES[args[arglen-1][1:-1]]
-        return f"{XIR_TO_C_OPS[opkey]}({', '.join([a for a in args[:arglen-1]])}, {roundMode})"
+        return f"{lc}({', '.join([a for a in args[:arglen-1]])}, {roundMode})"
 
     def _do_fnop_sat(self, n, fnty, args, node):
         if fnty[1] == 'int32_t':
@@ -288,24 +285,11 @@ class Clib(object):
         return f"(fpclassify({args[0]}) == FP_SUBNORMAL)"
 
     def _do_infix_op(self, n, fnty, args, node):
-        arglen = len(fnty) - 1
-        assert arglen == 2, f"Not supported {n}/{fnty} for infix op"
+        assert len(fnty) - 1 == 2, f"Not supported {n}/{fnty} for infix op"
 
-        if fnty not in XIR_TO_C_OPS:
-            opkey = tuple([n] + ['*'] * arglen) # contains arity info
-        else:
-            opkey = fnty
+        lc = self._get_lib_op(fnty, node, n)
 
-        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
-
-        try:
-            lc = self.xlib.dispatch(fnty, node._xir_type)
-            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
-        except KeyError:
-            print(f"xirlibc: keyerror: {fnty}")
-            pass
-
-        return f"({args[0]} {XIR_TO_C_OPS[opkey]} {args[1]})"
+        return f"({args[0]} {lc} {args[1]})"
 
     def _do_shift_op(self, n, fnty, args, node):
         # HACK
@@ -313,25 +297,10 @@ class Clib(object):
             n = n[:-4]
             fnty = tuple([n] + list(fnty[1:]))
 
-        arglen = len(fnty) - 1
-        assert arglen == 2, f"Not supported {n}/{fnty} for infix op"
+        assert len(fnty) - 1 == 2, f"Not supported {n}/{fnty} for infix op"
 
-        if fnty not in XIR_TO_C_OPS:
-            opkey = tuple([n] + ['*'] * arglen) # contains arity info
-        else:
-            opkey = fnty
+        op = self._get_lib_op(fnty, node, n)
 
-        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
-
-        try:
-            lc = self.xlib.dispatch(fnty, node._xir_type)
-            assert XIR_TO_C_OPS[opkey] == lc, f"xirlibc returns {lc}, but dictionary is {XIR_TO_C_OPS[opkey]}"
-        except KeyError:
-            print(f"xirlibc: keyerror: {fnty}")
-            pass
-
-
-        op = XIR_TO_C_OPS[opkey]
         if op in ('SHL', 'SHR'):
             return f"{op}({args[0]}, {args[1]})"
         else:
@@ -367,17 +336,12 @@ class Clib(object):
         assert n[-1] == 'u' # unordered
         n = n[:-1]
 
-        if fnty in XIR_TO_C_OPS:
-            opkey = fnty
-        else:
-            opkey = (n, '*', '*')
-
-        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
+        op = self._get_lib_op(fnty, node, n)
 
         a1 = args[0]
         a2 = args[1]
 
-        return f"isnan({a1}) || isnan({a2}) || (({a1}) {XIR_TO_C_OPS[opkey]} ({a2}))"
+        return f"isnan({a1}) || isnan({a2}) || (({a1}) {op} ({a2}))"
 
     compare_equ = _do_compare_unordered
     compare_neu = _do_compare_unordered
@@ -388,18 +352,18 @@ class Clib(object):
 
     def _do_compare(self, n, fnty, args, node):
         is_float = (fnty[1] == 'float' and fnty[2] == 'float') or (fnty[1] == 'double' and fnty[2] == 'double')
-        if fnty not in XIR_TO_C_OPS:
-            fnty = (fnty[0], '*', '*')
 
-        assert fnty in XIR_TO_C_OPS, f"Missing operator translation {fnty}"
+        assert fnty[0] == n # legacy check, remove when transitioned to dispatch
+
+        op = self._get_lib_op(fnty, node, n)
 
         if is_float:
             #TODO: use C99 float comparisons?
             a1 = args[0]
             a2 = args[1]
-            return f"(!(isnan({a1}) || isnan({a2}))) && (({a1}) {XIR_TO_C_OPS[fnty]} ({a2}))"
+            return f"(!(isnan({a1}) || isnan({a2}))) && (({a1}) {op} ({a2}))"
         else:
-            return f"({args[0]} {XIR_TO_C_OPS[fnty]} {args[1]})"
+            return f"({args[0]} {op} {args[1]})"
 
     compare_eq = _do_compare
     compare_ne = _do_compare
@@ -413,23 +377,17 @@ class Clib(object):
     compare_hs = _do_compare
 
     def compare_nan(self, n, fnty, args, node):
-        assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
+        _ = self._get_lib_op(fnty, node, n) # just checks types are okay, though error message is worse?
         return f"(isnan({args[0]}) || isnan({args[1]}))"
 
     def compare_num(self, n, fnty, args, node):
-        assert fnty in XIR_TO_C_OPS, f"Incorrect type for {n}"
+        _ = self._get_lib_op(fnty, node, n) # just checks types are okay, though error message is worse?
         return f"!(isnan({args[0]}) || isnan({args[1]}))"
 
 
     def _do_cast(self, n, fnty, args, node):
-        if fnty not in XIR_TO_C_OPS:
-            opkey = tuple([n] + ['*'] * len(args))
-        else:
-            opkey = fnty
-
-        assert opkey in XIR_TO_C_OPS, f"Missing operator {fnty}"
-
-        return f"(({XIR_TO_C_OPS[opkey]}) {args[0]})"
+        op = self._get_lib_op(fnty, node, n)
+        return f"(({op}) {args[0]})"
 
     zext_64 = _do_cast
 
