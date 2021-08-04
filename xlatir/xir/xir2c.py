@@ -38,9 +38,6 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'carryflag': 'int',
                   }
 
-#TODO: Remove this
-XIR_TO_C_OPS = {}
-
 class Clib(object):
     ROUND_MODES = {'rp': 'FE_UPWARD',  # to positive infinity
                    'rn': 'FE_TONEAREST', # towards nearest even
@@ -57,32 +54,17 @@ class Clib(object):
         return XIRBuiltinLibC()
 
     def _get_lib_op(self, fnty, node, n):
-        arglen = len(fnty) - 1
-
-        # n is used only for legacy stuff ...
-        if fnty not in XIR_TO_C_OPS:
-            opkey = tuple([n] + ['*'] * arglen) # contains arity info
-        else:
-            opkey = fnty
-
-        if opkey in XIR_TO_C_OPS:
-            x2cop = XIR_TO_C_OPS[opkey]
-        else:
-            x2cop = None
-
         for lib in self.xlib:
             try:
+                # this does first match
                 lc = lib.dispatch(fnty, node._xir_type)
-                if x2cop is not None:
-                    assert x2cop == lc, f"XIR_TO_C_OPS[{opkey}] is {x2cop}, but dispatch using {lib.__class__.__name__} gives {lc}"
                 return lc
             except KeyError:
                 print(f"{lib.__class__.__name__}: keyerror: {fnty}")
             except NotImplementedError:
                 print(f"{lib.__class__.__name__}: notimplemented: {fnty}")
 
-        assert x2cop is not None, f"Couldn't find {opkey} in XIR_TO_C_OPS or in libraries for {fnty}"
-        return x2cop
+        assert False, f"Couldn't find {fnty} in libraries"
 
     def _do_fnop(self, n, fnty, args, node):
         arglen = len(fnty) - 1
