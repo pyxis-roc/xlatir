@@ -39,41 +39,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   }
 
 #TODO: Rewrite this
-XIR_TO_C_OPS = {('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
-                ('MACHINE_SPECIFIC_execute_rem_divide_by_neg', '*', '*'): 'MACHINE_SPECIFIC_execute_rem_divide_by_neg',
-                ('MACHINE_SPECIFIC_execute_div_divide_by_zero_integer', '*'): '',
-
-                ('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
-
-                ('compare_eq', '*', '*'): '==',
-                ('compare_ne', '*', '*'): '!=',
-
-                # the unordered versions use the same as below
-                ('compare_lt', '*', '*'): '<', # for signed and unsigned (see set)
-                ('compare_le', '*', '*'): '<=', # for signed and unsigned (see set)
-                ('compare_gt', '*', '*'): '>', # for signed and unsigned (see set)
-                ('compare_ge', '*', '*'): '>=', # for signed and unsigned (see set)
-
-                ('compare_lo', 'uint32_t', 'uint32_t'): '<', # for unsigned (see set)
-                ('compare_ls', 'uint32_t', 'uint32_t'): '<=', # for unsigned (see set)
-                ('compare_hi', 'uint32_t', 'uint32_t'): '>', # for unsigned (see set)
-                ('compare_hs', 'uint32_t', 'uint32_t'): '>=', # for unsigned (see set)
-
-                ('compare_lo', 'uint16_t', 'uint16_t'): '<', # for unsigned (see set)
-                ('compare_ls', 'uint16_t', 'uint16_t'): '<=', # for unsigned (see set)
-                ('compare_hi', 'uint16_t', 'uint16_t'): '>', # for unsigned (see set)
-                ('compare_hs', 'uint16_t', 'uint16_t'): '>=', # for unsigned (see set)
-
-                ('compare_lo', 'uint64_t', 'uint64_t'): '<', # for unsigned (see set)
-                ('compare_ls', 'uint64_t', 'uint64_t'): '<=', # for unsigned (see set)
-                ('compare_hi', 'uint64_t', 'uint64_t'): '>', # for unsigned (see set)
-                ('compare_hs', 'uint64_t', 'uint64_t'): '>=', # for unsigned (see set)
-
-                ('compare_num', 'float', 'float'): '()', # for type checking only
-                ('compare_num', 'double', 'double'): '()',  # for type checking only
-
-                ('compare_nan', 'float', 'float'): '()', # for type checking only
-                ('compare_nan', 'double', 'double'): '()',  # for type checking only
+XIR_TO_C_OPS = {('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
 
                 ('set_memory', '*', '*'): 'set_memory',
                 ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
@@ -84,16 +50,6 @@ XIR_TO_C_OPS = {('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '
 
                 ('ADD_SATURATE', 'int32_t', 'int32_t'): 'ADD_SATURATE_s32',
                 ('SUB_SATURATE', 'int32_t', 'int32_t'): 'SUB_SATURATE_s32',
-
-                ('zext_64', '*'): 'uint64_t',
-                ('sext_64', '*'): 'int64_t',
-                ('sext_32', '*'): 'int32_t',
-                ('sext_16', '*'): 'int16_t',
-
-                #TODO: for signed types?
-                ('truncate_64', '*'): 'uint64_t',
-                ('truncate_32', '*'): 'uint32_t',
-                ('truncate_16', '*'): 'uint16_t',
 
 }
 
@@ -269,7 +225,8 @@ class Clib(object):
         assert n[-1] == 'u' # unordered
         n = n[:-1]
 
-        op = self._get_lib_op(fnty, node, n)
+        fnty2 = tuple([n] + list(fnty[1:]))
+        op = self._get_lib_op(fnty2, node, n)
 
         a1 = args[0]
         a2 = args[1]
