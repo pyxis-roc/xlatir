@@ -150,7 +150,13 @@ class Clib(object):
                    'rm': 'FE_DOWNWARD'} # to negative infinity
 
     def __init__(self):
-        self.xlib = XIRBuiltinLibC()
+        self.xlib = []
+
+    def add_lib(self, lib):
+        self.xlib.append(lib)
+
+    def get_builtin(self):
+        return XIRBuiltinLibC()
 
     def _get_lib_op(self, fnty, node, n):
         arglen = len(fnty) - 1
@@ -166,15 +172,17 @@ class Clib(object):
         else:
             x2cop = None
 
-        try:
-            lc = self.xlib.dispatch(fnty, node._xir_type)
-            if x2cop is not None:
-                assert x2cop == lc, f"XIR_TO_C_OPS[{opkey}] is {x2cop}, but dispatch gives {lc}"
-            return lc
-        except KeyError:
-            print(f"xirlibc: keyerror: {fnty}")
-            assert x2cop is not None, f"Couldn't find {opkey} in XIR_TO_C_OPS or in dispatch for {fnty}"
-            return x2cop
+        for lib in self.xlib:
+            try:
+                lc = lib.dispatch(fnty, node._xir_type)
+                if x2cop is not None:
+                    assert x2cop == lc, f"XIR_TO_C_OPS[{opkey}] is {x2cop}, but dispatch using {lib.__class__.__name__} gives {lc}"
+                return lc
+            except KeyError:
+                print(f"xirlibc: keyerror: {fnty}")
+
+        assert x2cop is not None, f"Couldn't find {opkey} in XIR_TO_C_OPS or in libraries for {fnty}"
+        return x2cop
 
     def _do_fnop(self, n, fnty, args, node):
         arglen = len(fnty) - 1

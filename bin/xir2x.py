@@ -189,6 +189,10 @@ def load_whole_decls(xsrc, fdefs, usrdecls, gltyenv):
 
     usrdecls.update(moddecls)
 
+def load_backend_libs(libs, backend, use_xirbuiltin = True):
+    if use_xirbuiltin:
+        backend.lib.add_lib(backend.lib.get_builtin())
+
 if __name__ == "__main__":
     import argparse
 
@@ -208,6 +212,9 @@ if __name__ == "__main__":
     p.add_argument('-I', dest='include_dirs', metavar='DIR', help='Look for included files in this directory', action='append', default=[])
     p.add_argument('-L', dest='lib_dirs', metavar='DIR', help='Look for library files in DIR', action='append', default=[])
     p.add_argument('--ih', dest="import_hell", action="store_true", help="Debug imported packages")
+    p.add_argument('-b', dest='backend_libs', metavar='MODULEFILE', help="Import MODULEFILE as library translator for backend", default=[], action='append')
+    p.add_argument('--no-xir-builtin-lib', dest='xir_builtin_lib', help="Disable built-in XIR library", action='store_false')
+
     args = p.parse_args()
 
     if args.import_hell:
@@ -239,6 +246,8 @@ if __name__ == "__main__":
         sys.setrecursionlimit(2500)
     else:
         assert False, f"Unrecognized language {args.language}"
+
+    load_backend_libs(args.backend_libs, translator.X, args.xir_builtin_lib)
 
     if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
         if args.noptx:
