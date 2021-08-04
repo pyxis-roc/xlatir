@@ -38,20 +38,8 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'carryflag': 'int',
                   }
 
-#TODO: Rewrite this
-XIR_TO_C_OPS = {('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
-
-                ('set_memory', '*', '*'): 'set_memory',
-                ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
-
-                ('ROUND', '*'): '', # TODO
-                ('SATURATE', 'int32_t'): '', #TODO
-                ('SATURATE', '*'): 'SATURATE', # not for int!
-
-                ('ADD_SATURATE', 'int32_t', 'int32_t'): 'ADD_SATURATE_s32',
-                ('SUB_SATURATE', 'int32_t', 'int32_t'): 'SUB_SATURATE_s32',
-
-}
+#TODO: Remove this
+XIR_TO_C_OPS = {}
 
 class Clib(object):
     ROUND_MODES = {'rp': 'FE_UPWARD',  # to positive infinity

@@ -31,6 +31,9 @@ class CSigned(CInteger):
 class CUnsigned(CInteger):
     pass
 
+class uint8_t(CUnsigned):
+    pass
+
 class uint16_t(CUnsigned):
     pass
 
@@ -40,6 +43,9 @@ class uint32_t(CUnsigned):
 class uint64_t(CUnsigned):
     pass
 
+
+class int8_t(CSigned):
+    pass
 
 class int16_t(CSigned):
     pass
@@ -59,10 +65,12 @@ SINGLETONS = {
     'float': c_float(),
     'double': double(),
 
+    'uint8_t': uint8_t(),
     'uint16_t': uint16_t(),
     'uint32_t': uint32_t(),
     'uint64_t': uint64_t(),
 
+    'int8_t': int8_t(),
     'int16_t': int16_t(),
     'int32_t': int32_t(),
     'int64_t': int64_t(),
