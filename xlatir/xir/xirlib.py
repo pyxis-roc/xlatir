@@ -28,9 +28,12 @@ class XIRLib:
         fn = fnty[0]
 
         if not hasattr(self, fn):
-            raise KeyError(f"Function {fn} not supported in XIRLib")
+            raise KeyError(f"Function {fn} not supported in {self.__class__.__name__}")
 
-        dty = self.get_dispatch_types(fnty, xirty)
+        try:
+            dty = self.get_dispatch_types(fnty, xirty)
+        except KeyError as e:
+            assert False, f"Type {e} not found in {fnty} when getting dispatch types"
 
         assert hasattr(self, dty[0]), f"No method {dty[0]} in {self.__class__.__name__}"
 

@@ -13,10 +13,13 @@ class CType:
 class CBasicType(CType):
     pass
 
-class c_float(CBasicType):
+class CFP(CBasicType):
     pass
 
-class double(CBasicType):
+class c_float(CFP):
+    pass
+
+class double(CFP):
     pass
 
 class CInteger(CBasicType):
@@ -52,7 +55,7 @@ class c_bool(CBasicType):
 
 # this needs to reflect XIR_TO_C_TYPES in xir2c.py
 
-_SINGLETONS = {
+SINGLETONS = {
     'float': c_float(),
     'double': double(),
 
@@ -71,7 +74,7 @@ _SINGLETONS = {
 }
 
 class XIRBuiltinLibC(XIRBuiltinLib):
-    type_dict = dict(_SINGLETONS)
+    type_dict = dict(SINGLETONS)
 
     @singledispatchmethod
     def ADD(self, aty, bty):

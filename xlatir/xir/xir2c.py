@@ -39,39 +39,11 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   }
 
 #TODO: Rewrite this
-XIR_TO_C_OPS = {('SAR', 'int16_t', 'uint32_t'): 'SHR',
-                ('SAR', 'int32_t', 'uint32_t'): 'SHR',
-                ('SAR', 'int64_t', 'uint32_t'): 'SHR',
-                ('SAR', '*', '*'): '>>',
-
-                ('MIN', 'float', 'float'): 'fminf_ptx',
-                ('MAX', 'float', 'float'): 'fmaxf_ptx',
-                ('LOG2', 'float'): 'LOG2',
-                ('LOG2', 'double'): 'LOG2',
-                ('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
+XIR_TO_C_OPS = {('MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned', '*'): '', #unsigned only!
                 ('MACHINE_SPECIFIC_execute_rem_divide_by_neg', '*', '*'): 'MACHINE_SPECIFIC_execute_rem_divide_by_neg',
                 ('MACHINE_SPECIFIC_execute_div_divide_by_zero_integer', '*'): '',
 
-                ('FTZ', 'float'): 'FTZ',
-                ('FTZ', 'double'): 'FTZ',
-
-                ('FMA', 'float', 'float', 'float'): 'FMA',
-                ('FMA', 'double', 'double', 'double'): 'FMA',
-
-                ('SINE', 'float'): 'SINE',
-                ('SINE', 'double'): 'SINE',
-
-                ('COSINE', 'float'): 'COSINE',
-                ('COSINE', 'double'): 'COSINE',
-
-                ('COPYSIGN', 'float'): 'COPYSIGN',
-                ('COPYSIGN', 'double'): 'COPYSIGN',
-
-                ('MIN', 'double', 'double'): 'fmin_ptx',
-                ('MAX', 'double', 'double'): 'fmax_ptx',
-                ('MAX', '*', '*'): 'MAX',
                 ('min', '*', '*'): 'MIN', # this is varargs, but restrict it to 2?
-                ('MIN', '*', '*'): 'MIN',
 
                 ('compare_eq', '*', '*'): '==',
                 ('compare_ne', '*', '*'): '!=',
@@ -103,33 +75,15 @@ XIR_TO_C_OPS = {('SAR', 'int16_t', 'uint32_t'): 'SHR',
                 ('compare_nan', 'float', 'float'): '()', # for type checking only
                 ('compare_nan', 'double', 'double'): '()',  # for type checking only
 
-                ('POW', 'float', 'float'): 'powf',
-                ('POW', 'double', 'double'): 'pow',
-                ('SQRT', 'float'): 'sqrtf',
-                ('SQRT', 'double'): 'sqrt',
-
                 ('set_memory', '*', '*'): 'set_memory',
                 ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
 
-                ('ABSOLUTE', 'int32_t'): 'abs',
-                ('ABSOLUTE', 'int64_t'): 'labs', # depends on 64-bit model
-                ('ABSOLUTE', 'int16_t'): 'abs',
-                ('ABSOLUTE', 'float'): 'fabsf',
-                ('ABSOLUTE', 'double'): 'fabs',
                 ('ROUND', '*'): '', # TODO
                 ('SATURATE', 'int32_t'): '', #TODO
                 ('SATURATE', '*'): 'SATURATE', # not for int!
 
                 ('ADD_SATURATE', 'int32_t', 'int32_t'): 'ADD_SATURATE_s32',
                 ('SUB_SATURATE', 'int32_t', 'int32_t'): 'SUB_SATURATE_s32',
-
-                ('ADD_ROUND', '*', '*', '*'): 'ADD_ROUND',
-                ('RCP_ROUND', '*', '*'): 'RCP_ROUND',
-                ('MUL_ROUND', '*', '*', '*'): 'MUL_ROUND',
-                ('SUB_ROUND', '*', '*', '*'): 'SUB_ROUND',
-                ('DIV_ROUND', '*', '*', '*'): 'DIV_ROUND',
-                ('FMA_ROUND', '*', '*', '*', '*'): 'FMA_ROUND',
-                ('SQRT_ROUND', '*', '*'): 'SQRT_ROUND',
 
                 ('zext_64', '*'): 'uint64_t',
                 ('sext_64', '*'): 'int64_t',
@@ -179,7 +133,9 @@ class Clib(object):
                     assert x2cop == lc, f"XIR_TO_C_OPS[{opkey}] is {x2cop}, but dispatch using {lib.__class__.__name__} gives {lc}"
                 return lc
             except KeyError:
-                print(f"xirlibc: keyerror: {fnty}")
+                print(f"{lib.__class__.__name__}: keyerror: {fnty}")
+            except NotImplementedError:
+                print(f"{lib.__class__.__name__}: notimplemented: {fnty}")
 
         assert x2cop is not None, f"Couldn't find {opkey} in XIR_TO_C_OPS or in libraries for {fnty}"
         return x2cop
@@ -378,6 +334,7 @@ class Clib(object):
 
 class CXlator(xirxlat.Xlator):
     desugar_boolean_xor = True
+    name = "c"
 
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor

@@ -82,26 +82,31 @@ def load_usrlib_declarations(semantics, libs):
 
     return usrdecls, out, d2t
 
-def load_pemod(pemodeps, pemod):
-    def loader(mod, modfile):
-        spec = importlib.util.spec_from_file_location(mod, modfile)
-        assert spec is not None, f'Cannot load {mod} from {modfile}'
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[mod] = module
-        spec.loader.exec_module(module)
-        return module
+
+
+def modloader(mod, modfile):
+    """mod is name of loaded module, modfile is the file"""
 
     import importlib
     import importlib.util
 
+    spec = importlib.util.spec_from_file_location(mod, modfile)
+    assert spec is not None, f'Cannot load {mod} from {modfile}'
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_pemod(pemodeps, pemod):
     for pd in pemodeps:
         assert pd[-3:] == ".py"
         mod = os.path.basename(pd[:-3]) # remove .py
-        loader(mod, pd)
+        modloader(mod, pd)
 
     assert pemod[-3:] == ".py"
     pemodname = os.path.basename(pemod[:-3]) # remove .py
-    utilsmod = loader(pemodname, pemod)
+    utilsmod = modloader(pemodname, pemod)
     xirpeval.set_utils(utilsmod)
 
 def setup_ptx_typeenv(te):
@@ -192,6 +197,14 @@ def load_whole_decls(xsrc, fdefs, usrdecls, gltyenv):
 def load_backend_libs(libs, backend, use_xirbuiltin = True):
     if use_xirbuiltin:
         backend.lib.add_lib(backend.lib.get_builtin())
+
+    for p in libs:
+        mod = os.path.basename(p)
+        assert mod[-3:] == ".py", f"Module {p} must end in .py"
+        mod = mod[:-3] # strip .py
+        libmod = modloader(mod, p)
+        for l in libmod.get_libs(backend.name):
+            backend.lib.add_lib(l)
 
 if __name__ == "__main__":
     import argparse
