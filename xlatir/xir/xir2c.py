@@ -58,6 +58,8 @@ class Clib(object):
             try:
                 # this does first match
                 lc = lib.dispatch(fnty, node._xir_type)
+                if isinstance(lc, str):
+                    print(f"WARNING: {fnty} returns str from {lib.__class__.__name__}")
                 return lc
             except KeyError:
                 print(f"{lib.__class__.__name__}: keyerror: {fnty}")
@@ -70,7 +72,10 @@ class Clib(object):
         arglen = len(fnty) - 1
         lc = self._get_lib_op(fnty, node, n)
 
-        return f"{lc}({', '.join([a for a in args[:arglen]])})"
+        if isinstance(lc, str):
+            return f"{lc}({', '.join([a for a in args[:arglen]])})"
+        else:
+            return lc(*args[:arglen])
 
 
     def _do_mach_specific(self, n, fnty, args, node):
@@ -147,8 +152,10 @@ class Clib(object):
         assert len(fnty) - 1 == 2, f"Not supported {n}/{fnty} for infix op"
 
         lc = self._get_lib_op(fnty, node, n)
-
-        return f"({args[0]} {lc} {args[1]})"
+        if isinstance(lc, str):
+            return f"({args[0]} {lc} {args[1]})"
+        else:
+            return lc(args[0], args[1])
 
     def _do_shift_op(self, n, fnty, args, node):
         # HACK
@@ -160,11 +167,14 @@ class Clib(object):
 
         op = self._get_lib_op(fnty, node, n)
 
-        if op in ('SHL', 'SHR'):
-            return f"{op}({args[0]}, {args[1]})"
+        if isinstance(op, str):
+            if op in ('SHL', 'SHR'):
+                return f"{op}({args[0]}, {args[1]})"
+            else:
+                assert op in ('<<', '>>'), f"Unrecognized infix shift operator {op}"
+                return f"({args[0]} {op} {args[1]})"
         else:
-            assert op in ('<<', '>>'), f"Unrecognized infix shift operator {op}"
-            return f"({args[0]} {op} {args[1]})"
+            return op(args[0], args[1])
 
     GTE = _do_infix_op
     GT = _do_infix_op

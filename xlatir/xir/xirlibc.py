@@ -81,6 +81,15 @@ SINGLETONS = {
     'my_uint128_t': CSigned(),
 }
 
+def BinOpInfix(op):
+    return lambda x, y: f"({x} {op} {y})"
+
+def UnOpPrefix(op):
+    return lambda x: f"{op}({x})"
+
+def FnCall(fn, nargs):
+    return lambda *args: f"{fn}({', '.join(args[:nargs])})"
+
 class XIRBuiltinLibC(XIRBuiltinLib):
     type_dict = dict(SINGLETONS)
 
@@ -92,7 +101,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
     # 3.8 handles this fine
     @ADD.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "+"
+        return BinOpInfix("+")
 
 
     @singledispatchmethod
@@ -102,7 +111,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @SUB.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "-"
+        return BinOpInfix("-")
 
     @singledispatchmethod
     def MUL(self, aty, bty):
@@ -110,7 +119,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @MUL.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "*"
+        return BinOpInfix("*")
 
     @singledispatchmethod
     def DIV(self, aty, bty):
@@ -118,7 +127,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @DIV.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "/"
+        return BinOpInfix("/")
 
     @singledispatchmethod
     def IDIV(self, aty, bty):
@@ -126,7 +135,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @IDIV.register(CInteger)
     def _(self, aty: CInteger, bty: CInteger):
-        return "/"
+        return BinOpInfix("/")
 
     @singledispatchmethod
     def REM(self, aty, bty):
@@ -134,7 +143,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @REM.register(CInteger)
     def _(self, aty: CInteger, bty: CInteger):
-        return "%"
+        return BinOpInfix("%")
 
     @singledispatchmethod
     def MOD(self, aty, bty):
@@ -142,7 +151,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @MOD.register(CInteger)
     def _(self, aty: CInteger, bty: CInteger):
-        return "%"
+        return BinOpInfix("%")
 
     @singledispatchmethod
     def SHR(self, aty, bty):
@@ -153,14 +162,14 @@ class XIRBuiltinLibC(XIRBuiltinLib):
         # dispatch on second argument doesn't quite mimic '*', '*'
         # TODO: eliminate >>?
         if isinstance(bty, uint32_t):
-            return "SHR"
+            return FnCall("SHR", 2)
         else:
-            return ">>"
+            return BinOpInfix(">>")
 
     # this mimics the original dictionary, but makes little sense?
     @SHR.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return ">>"
+        return BinOpInfix(">>")
 
     @singledispatchmethod
     def SHL(self, aty, bty):
@@ -171,14 +180,14 @@ class XIRBuiltinLibC(XIRBuiltinLib):
         # dispatch on second argument doesn't quite mimic '*', '*'
         # TODO: eliminate >>?
         if isinstance(bty, uint32_t):
-            return "SHL"
+            return FnCall("SHL", 2)
         else:
-            return "<<"
+            return BinOpInfix("<<")
 
     # this mimics the original dictionary, but makes little sense?
     @SHL.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "<<"
+        return BinOpInfix("<<")
 
     @singledispatchmethod
     def GT(self, aty, bty):
@@ -186,7 +195,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @GT.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return ">"
+        return BinOpInfix(">")
 
     @singledispatchmethod
     def LT(self, aty, bty):
@@ -194,7 +203,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @LT.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "<"
+        return BinOpInfix("<")
 
     @singledispatchmethod
     def LTE(self, aty, bty):
@@ -202,7 +211,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @LTE.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "<="
+        return BinOpInfix("<=")
 
     @singledispatchmethod
     def NOTEQ(self, aty, bty):
@@ -210,7 +219,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @NOTEQ.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "!="
+        return BinOpInfix("!=")
 
     @singledispatchmethod
     def GTE(self, aty, bty):
@@ -218,7 +227,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @GTE.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return ">="
+        return BinOpInfix(">=")
 
     @singledispatchmethod
     def EQ(self, aty, bty):
@@ -226,7 +235,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @EQ.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "=="
+        return BinOpInfix("==")
 
     @singledispatchmethod
     def OR(self, aty, bty):
@@ -234,7 +243,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @OR.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "|"
+        return BinOpInfix("|")
 
     @singledispatchmethod
     def XOR(self, aty, bty):
@@ -242,7 +251,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @XOR.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "^"
+        return BinOpInfix("^")
 
     @singledispatchmethod
     def AND(self, aty, bty):
@@ -250,7 +259,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
 
     @AND.register(CBasicType)
     def _(self, aty: CBasicType, bty: CBasicType):
-        return "&"
+        return BinOpInfix("&")
 
     @singledispatchmethod
     def NOT(self, aty):
@@ -259,11 +268,11 @@ class XIRBuiltinLibC(XIRBuiltinLib):
     # order of registration doesn't matter?
     @NOT.register(c_bool)
     def _(self, aty: c_bool):
-        return "!"
+        return UnOpPrefix("!")
 
     @NOT.register(CBasicType)
     def _(self, aty: CBasicType):
-        return "~"
+        return UnOpPrefix("~")
 
     def get_dispatch_types(self, fnty, xirty):
         return [fnty[0]] + [self.type_dict[x] for x in fnty[1:]]
