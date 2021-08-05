@@ -140,25 +140,16 @@ class Clib(object):
     def subnormal_check(self, n, fnty, args, node):
         return f"(fpclassify({args[0]}) == FP_SUBNORMAL)"
 
-    def _do_infix_op(self, n, fnty, args, node):
-        assert len(fnty) - 1 == 2, f"Not supported {n}/{fnty} for infix op"
+    GTE = _do_lib_op
+    GT = _do_lib_op
+    LT = _do_lib_op
+    LTE = _do_lib_op
+    EQ = _do_lib_op
+    NOTEQ = _do_lib_op
 
-        lc = self._get_lib_op(fnty, node, n)
-        if isinstance(lc, str):
-            return f"({args[0]} {lc} {args[1]})"
-        else:
-            return lc(args[0], args[1])
-
-    GTE = _do_infix_op
-    GT = _do_infix_op
-    LT = _do_infix_op
-    LTE = _do_infix_op
-    EQ = _do_infix_op
-    NOTEQ = _do_infix_op
-
-    OR = _do_infix_op
-    AND = _do_infix_op
-    XOR = _do_infix_op
+    OR = _do_lib_op
+    AND = _do_lib_op
+    XOR = _do_lib_op
     SHR = _do_lib_op
     SHR_LIT = _do_lib_op
     SAR = _do_lib_op
@@ -166,13 +157,13 @@ class Clib(object):
     SHL = _do_lib_op
     SHL_LIT = _do_lib_op
 
-    ADD = _do_infix_op
-    SUB = _do_infix_op
-    MUL = _do_infix_op
-    DIV = _do_infix_op
-    IDIV = _do_infix_op
-    REM = _do_infix_op
-    MOD = _do_infix_op
+    ADD = _do_lib_op
+    SUB = _do_lib_op
+    MUL = _do_lib_op
+    DIV = _do_lib_op
+    IDIV = _do_lib_op
+    REM = _do_lib_op
+    MOD = _do_lib_op
 
     compare_equ = _do_lib_op
     compare_neu = _do_lib_op
