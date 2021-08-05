@@ -78,44 +78,25 @@ class Clib(object):
         arglen = len(fnty) - 1
         return op(*args[:arglen])
 
-    def _do_fnop(self, n, fnty, args, node):
-        arglen = len(fnty) - 1
-        lc = self._get_lib_op(fnty, node, n)
+    POW = _do_lib_op
+    MIN = _do_lib_op
+    MAX = _do_lib_op
+    LOG2 = _do_lib_op
+    MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_lib_op
+    MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_lib_op
+    MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_lib_op
 
-        if isinstance(lc, str):
-            return f"{lc}({', '.join([a for a in args[:arglen]])})"
-        else:
-            return lc(*args[:arglen])
+    COSINE = _do_lib_op
+    SINE = _do_lib_op
 
-
-    def _do_mach_specific(self, n, fnty, args, node):
-        if n == "MACHINE_SPECIFIC_execute_div_divide_by_zero_integer":
-            if fnty[1][0] == "u":
-                return f"~(({fnty[1]}) 0)"
-            else:
-                return f"~((u{fnty[1]}) 0)"
-        else:
-            raise NotImplementedError(f"Can't handle {n}")
-
-    POW = _do_fnop
-    MIN = _do_fnop
-    MAX = _do_fnop
-    LOG2 = _do_fnop
-    MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop
-    MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_fnop
-    MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_mach_specific
-
-    COSINE = _do_fnop
-    SINE = _do_fnop
-
-    set_memory = _do_fnop
-    FTZ = _do_fnop
-    logical_op3 = _do_fnop
-    min = _do_fnop
-    ABSOLUTE = _do_fnop
-    ROUND = _do_fnop
-    SATURATE = _do_fnop
-    NOT = _do_fnop # because not is a prefix op
+    set_memory = _do_lib_op
+    FTZ = _do_lib_op
+    logical_op3 = _do_lib_op
+    min = _do_lib_op
+    ABSOLUTE = _do_lib_op
+    ROUND = _do_lib_op
+    SATURATE = _do_lib_op
+    NOT = _do_lib_op # because not is a prefix op
 
     ADD_ROUND = _do_lib_op
     SUB_ROUND = _do_lib_op
@@ -133,12 +114,8 @@ class Clib(object):
     MUL_ROUND_SATURATE = _do_lib_op
     FMA_ROUND_SATURATE = _do_lib_op
 
-    def ISNAN(self, n, fnty, args, mode):
-        #TODO: check types
-        return f"isnan({args[0]})"
-
-    def subnormal_check(self, n, fnty, args, node):
-        return f"(fpclassify({args[0]}) == FP_SUBNORMAL)"
+    ISNAN = _do_lib_op
+    subnormal_check = _do_lib_op
 
     GTE = _do_lib_op
     GT = _do_lib_op
@@ -186,17 +163,15 @@ class Clib(object):
     compare_nan = _do_lib_op
     compare_num = _do_lib_op
 
-    _do_cast = _do_lib_op
+    zext_64 = _do_lib_op
 
-    zext_64 = _do_cast
+    sext_16 = _do_lib_op
+    sext_32 = _do_lib_op
+    sext_64 = _do_lib_op
 
-    sext_16 = _do_cast
-    sext_32 = _do_cast
-    sext_64 = _do_cast
-
-    truncate_16 = _do_cast
-    truncate_32 = _do_cast
-    truncate_64 = _do_cast
+    truncate_16 = _do_lib_op
+    truncate_32 = _do_lib_op
+    truncate_64 = _do_lib_op
 
 class CXlator(xirxlat.Xlator):
     desugar_boolean_xor = True
