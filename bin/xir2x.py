@@ -195,6 +195,10 @@ def load_whole_decls(xsrc, fdefs, usrdecls, gltyenv):
     usrdecls.update(moddecls)
 
 def load_backend_libs(libs, backend, use_xirbuiltin = True):
+    if not hasattr(backend.lib, 'get_builtin'):
+        print(f"WARNING: {backend} does not support backend libraries")
+        return
+
     if use_xirbuiltin:
         backend.lib.add_lib(backend.lib.get_builtin())
 
