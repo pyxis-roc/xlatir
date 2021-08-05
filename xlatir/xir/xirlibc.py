@@ -88,7 +88,14 @@ def UnOpPrefix(op):
     return lambda x: f"{op}({x})"
 
 def FnCall(fn, nargs):
-    return lambda *args: f"{fn}({', '.join(args[:nargs])})"
+    def cc(*args):
+        assert len(args) == nargs, f"{fn}: Expecting {nargs} arguments, got {len(args)}"
+        return f"{fn}({', '.join(args[:nargs])})"
+
+    return cc
+
+def CastOp(op):
+    return lambda x: f"(({op}) {x})"
 
 class XIRBuiltinLibC(XIRBuiltinLib):
     type_dict = dict(SINGLETONS)
@@ -157,6 +164,7 @@ class XIRBuiltinLibC(XIRBuiltinLib):
     def SHR(self, aty, bty):
         raise NotImplementedError(f"SHR({aty}, {bty}) not implemented.")
 
+    # TODO: why unsigned?
     @SHR.register(CUnsigned)
     def _(self, aty: CUnsigned, bty: uint32_t):
         # dispatch on second argument doesn't quite mimic '*', '*'

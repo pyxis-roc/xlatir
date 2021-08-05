@@ -68,6 +68,12 @@ class Clib(object):
 
         assert False, f"Couldn't find {fnty} in libraries"
 
+    def _do_lib_op(self, n, fnty, args, node):
+        op = self._get_lib_op(fnty, node, n)
+        assert not isinstance(op, str), f"Don't support legacy string value {op} returned by lookup for {fnty}"
+        arglen = len(fnty) - 1
+        return op(*args[:arglen])
+
     def _do_fnop(self, n, fnty, args, node):
         arglen = len(fnty) - 1
         lc = self._get_lib_op(fnty, node, n)
@@ -111,7 +117,11 @@ class Clib(object):
         arglen = len(fnty) - 1
         lc = self._get_lib_op(fnty, node, n)
         roundMode = self.ROUND_MODES[args[arglen-1][1:-1]]
-        return f"{lc}({', '.join([a for a in args[:arglen-1]])}, {roundMode})"
+
+        if isinstance(lc, str):
+            return f"{lc}({', '.join([a for a in args[:arglen-1]])}, {roundMode})"
+        else:
+            return lc(*(args[:arglen-1] + [roundMode]))
 
     def _do_fnop_sat(self, n, fnty, args, node):
         if fnty[1] == 'int32_t':
@@ -157,25 +167,6 @@ class Clib(object):
         else:
             return lc(args[0], args[1])
 
-    def _do_shift_op(self, n, fnty, args, node):
-        # HACK
-        if n.endswith('_LIT'):
-            n = n[:-4]
-            fnty = tuple([n] + list(fnty[1:]))
-
-        assert len(fnty) - 1 == 2, f"Not supported {n}/{fnty} for infix op"
-
-        op = self._get_lib_op(fnty, node, n)
-
-        if isinstance(op, str):
-            if op in ('SHL', 'SHR'):
-                return f"{op}({args[0]}, {args[1]})"
-            else:
-                assert op in ('<<', '>>'), f"Unrecognized infix shift operator {op}"
-                return f"({args[0]} {op} {args[1]})"
-        else:
-            return op(args[0], args[1])
-
     GTE = _do_infix_op
     GT = _do_infix_op
     LT = _do_infix_op
@@ -186,12 +177,12 @@ class Clib(object):
     OR = _do_infix_op
     AND = _do_infix_op
     XOR = _do_infix_op
-    SHR = _do_shift_op
-    SHR_LIT = _do_shift_op
-    SAR = _do_shift_op
-    SAR_LIT = _do_shift_op
-    SHL = _do_shift_op
-    SHL_LIT = _do_shift_op
+    SHR = _do_lib_op
+    SHR_LIT = _do_lib_op
+    SAR = _do_lib_op
+    SAR_LIT = _do_lib_op
+    SHL = _do_lib_op
+    SHL_LIT = _do_lib_op
 
     ADD = _do_infix_op
     SUB = _do_infix_op
@@ -201,63 +192,28 @@ class Clib(object):
     REM = _do_infix_op
     MOD = _do_infix_op
 
-    def _do_compare_unordered(self, n, fnty, args, node):
-        assert n[-1] == 'u' # unordered
-        n = n[:-1]
+    compare_equ = _do_lib_op
+    compare_neu = _do_lib_op
+    compare_ltu = _do_lib_op
+    compare_leu = _do_lib_op
+    compare_gtu = _do_lib_op
+    compare_geu = _do_lib_op
 
-        fnty2 = tuple([n] + list(fnty[1:]))
-        op = self._get_lib_op(fnty2, node, n)
+    compare_eq = _do_lib_op
+    compare_ne = _do_lib_op
+    compare_lt = _do_lib_op
+    compare_le = _do_lib_op
+    compare_gt = _do_lib_op
+    compare_ge = _do_lib_op
+    compare_lo = _do_lib_op
+    compare_ls = _do_lib_op
+    compare_hi = _do_lib_op
+    compare_hs = _do_lib_op
 
-        a1 = args[0]
-        a2 = args[1]
+    compare_nan = _do_lib_op
+    compare_num = _do_lib_op
 
-        return f"isnan({a1}) || isnan({a2}) || (({a1}) {op} ({a2}))"
-
-    compare_equ = _do_compare_unordered
-    compare_neu = _do_compare_unordered
-    compare_ltu = _do_compare_unordered
-    compare_leu = _do_compare_unordered
-    compare_gtu = _do_compare_unordered
-    compare_geu = _do_compare_unordered
-
-    def _do_compare(self, n, fnty, args, node):
-        is_float = (fnty[1] == 'float' and fnty[2] == 'float') or (fnty[1] == 'double' and fnty[2] == 'double')
-
-        assert fnty[0] == n # legacy check, remove when transitioned to dispatch
-
-        op = self._get_lib_op(fnty, node, n)
-
-        if is_float:
-            #TODO: use C99 float comparisons?
-            a1 = args[0]
-            a2 = args[1]
-            return f"(!(isnan({a1}) || isnan({a2}))) && (({a1}) {op} ({a2}))"
-        else:
-            return f"({args[0]} {op} {args[1]})"
-
-    compare_eq = _do_compare
-    compare_ne = _do_compare
-    compare_lt = _do_compare
-    compare_le = _do_compare
-    compare_gt = _do_compare
-    compare_ge = _do_compare
-    compare_lo = _do_compare
-    compare_ls = _do_compare
-    compare_hi = _do_compare
-    compare_hs = _do_compare
-
-    def compare_nan(self, n, fnty, args, node):
-        _ = self._get_lib_op(fnty, node, n) # just checks types are okay, though error message is worse?
-        return f"(isnan({args[0]}) || isnan({args[1]}))"
-
-    def compare_num(self, n, fnty, args, node):
-        _ = self._get_lib_op(fnty, node, n) # just checks types are okay, though error message is worse?
-        return f"!(isnan({args[0]}) || isnan({args[1]}))"
-
-
-    def _do_cast(self, n, fnty, args, node):
-        op = self._get_lib_op(fnty, node, n)
-        return f"(({op}) {args[0]})"
+    _do_cast = _do_lib_op
 
     zext_64 = _do_cast
 
