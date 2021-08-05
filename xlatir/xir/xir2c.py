@@ -48,16 +48,20 @@ class Clib(object):
         self.xlib = []
 
     def add_lib(self, lib):
+        lib.parent = self
         self.xlib.append(lib)
 
     def get_builtin(self):
         return XIRBuiltinLibC()
 
     def _get_lib_op(self, fnty, node, n):
+
+        xirty = node._xir_type if node is not None else None
+
         for lib in self.xlib:
             try:
                 # this does first match
-                lc = lib.dispatch(fnty, node._xir_type)
+                lc = lib.dispatch(fnty, xirty)
                 if isinstance(lc, str):
                     print(f"WARNING: {fnty} returns str from {lib.__class__.__name__}")
                 return lc
@@ -113,43 +117,21 @@ class Clib(object):
     SATURATE = _do_fnop
     NOT = _do_fnop # because not is a prefix op
 
-    def _do_fnop_round(self, n, fnty, args, node):
-        arglen = len(fnty) - 1
-        lc = self._get_lib_op(fnty, node, n)
-        roundMode = self.ROUND_MODES[args[arglen-1][1:-1]]
+    ADD_ROUND = _do_lib_op
+    SUB_ROUND = _do_lib_op
+    MUL_ROUND = _do_lib_op
+    DIV_ROUND = _do_lib_op
+    FMA_ROUND = _do_lib_op
+    RCP_ROUND = _do_lib_op
+    SQRT_ROUND = _do_lib_op
 
-        if isinstance(lc, str):
-            return f"{lc}({', '.join([a for a in args[:arglen-1]])}, {roundMode})"
-        else:
-            return lc(*(args[:arglen-1] + [roundMode]))
-
-    def _do_fnop_sat(self, n, fnty, args, node):
-        if fnty[1] == 'int32_t':
-            return self._do_fnop(n, fnty, args, node)
-        else:
-            wosat = n[:-len("_SATURATE")]
-            assert hasattr(self, wosat), f"Unable to find non-saturating {wosat} version of {n}"
-            fnty2 = tuple([wosat] + list(fnty[1:]))
-            wosatcode = getattr(self, wosat)(wosat, fnty2, args, node)
-
-            #TODO: actually perform a lookup - this is when passing ASTs would be better?
-            return f"SATURATE({wosatcode})"
-
-    ADD_ROUND = _do_fnop_round
-    SUB_ROUND = _do_fnop_round
-    MUL_ROUND = _do_fnop_round
-    DIV_ROUND = _do_fnop_round
-    FMA_ROUND = _do_fnop_round
-    RCP_ROUND = _do_fnop_round
-    SQRT_ROUND = _do_fnop_round
-
-    ADD_SATURATE = _do_fnop_sat
-    ADD_ROUND_SATURATE = _do_fnop_sat
-    SUB_SATURATE = _do_fnop_sat
-    SUB_ROUND_SATURATE = _do_fnop_sat
-    MUL_SATURATE = _do_fnop_sat
-    MUL_ROUND_SATURATE = _do_fnop_sat
-    FMA_ROUND_SATURATE = _do_fnop_sat
+    ADD_SATURATE = _do_lib_op
+    ADD_ROUND_SATURATE = _do_lib_op
+    SUB_SATURATE = _do_lib_op
+    SUB_ROUND_SATURATE = _do_lib_op
+    MUL_SATURATE = _do_lib_op
+    MUL_ROUND_SATURATE = _do_lib_op
+    FMA_ROUND_SATURATE = _do_lib_op
 
     def ISNAN(self, n, fnty, args, mode):
         #TODO: check types
