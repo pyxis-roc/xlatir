@@ -378,6 +378,13 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 }
 
 class SMT2lib(object):
+    def can_xlat(self, n):
+        return hasattr(self, n)
+
+    def do_xlat(self, n, fnty, args, node):
+        fnxlat = getattr(self, n)
+        return fnxlat(n, fnty, args, node)
+
     def _normalize_types(self, ty, builtin = True):
         if builtin:
             if ty.v[0] == "b" or ty.v[0] == "u":

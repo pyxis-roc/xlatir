@@ -54,8 +54,14 @@ class Clib(object):
     def get_builtin(self):
         return XIRBuiltinLibC()
 
-    def _get_lib_op(self, fnty, node, n):
+    def can_xlat(self, n):
+        return hasattr(self, n)
 
+    def do_xlat(self, n, fnty, args, node):
+        fnxlat = getattr(self, n)
+        return fnxlat(n, fnty, args, node)
+
+    def _get_lib_op(self, fnty, node, n):
         xirty = node._xir_type if node is not None else None
 
         for lib in self.xlib:

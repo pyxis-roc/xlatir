@@ -322,9 +322,9 @@ class XIRToX(ast.NodeVisitor):
         fnty = self._get_op_type(n, node._xir_type)
 
         if hasattr(self.X, 'lib'):
-            if hasattr(self.X.lib, n):
-                fnxlat = getattr(self.X.lib, n)
-                return fnxlat(n, fnty, [self.visit(a) for a in node.args[:len(fnty)-1]], node)
+            if self.X.lib.can_xlat(n):
+                return self.X.lib.do_xlat(n, fnty,
+                                          [self.visit(a) for a in node.args[:len(fnty)-1]], node)
 
         return self.X.xlat_Call(n, fnty, [self.visit(a) for a in node.args[:len(fnty)-1]], node)
 
