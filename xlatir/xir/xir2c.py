@@ -39,11 +39,6 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   }
 
 class Clib(object):
-    ROUND_MODES = {'rp': 'FE_UPWARD',  # to positive infinity
-                   'rn': 'FE_TONEAREST', # towards nearest even
-                   'rz': 'FE_TOWARDZERO', # towards zero
-                   'rm': 'FE_DOWNWARD'} # to negative infinity
-
     def __init__(self):
         self.xlib = []
 
@@ -55,11 +50,10 @@ class Clib(object):
         return XIRBuiltinLibC()
 
     def can_xlat(self, n):
-        return hasattr(self, n)
+        for lib in self.xlib:
+            if hasattr(lib, n): return True
 
-    def do_xlat(self, n, fnty, args, node):
-        fnxlat = getattr(self, n)
-        return fnxlat(n, fnty, args, node)
+        return False
 
     def _get_lib_op(self, fnty, node, n):
         xirty = node._xir_type if node is not None else None
@@ -78,106 +72,11 @@ class Clib(object):
 
         assert False, f"Couldn't find {fnty} in libraries"
 
-    def _do_lib_op(self, n, fnty, args, node):
+    def do_xlat(self, n, fnty, args, node):
         op = self._get_lib_op(fnty, node, n)
         assert not isinstance(op, str), f"Don't support legacy string value {op} returned by lookup for {fnty}"
         arglen = len(fnty) - 1
         return op(*args[:arglen])
-
-    POW = _do_lib_op
-    MIN = _do_lib_op
-    MAX = _do_lib_op
-    LOG2 = _do_lib_op
-    MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_lib_op
-    MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_lib_op
-    MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_lib_op
-
-    COSINE = _do_lib_op
-    SINE = _do_lib_op
-
-    set_memory = _do_lib_op
-    FTZ = _do_lib_op
-    logical_op3 = _do_lib_op
-    min = _do_lib_op
-    ABSOLUTE = _do_lib_op
-    ROUND = _do_lib_op
-    SATURATE = _do_lib_op
-    NOT = _do_lib_op # because not is a prefix op
-
-    ADD_ROUND = _do_lib_op
-    SUB_ROUND = _do_lib_op
-    MUL_ROUND = _do_lib_op
-    DIV_ROUND = _do_lib_op
-    FMA_ROUND = _do_lib_op
-    RCP_ROUND = _do_lib_op
-    SQRT_ROUND = _do_lib_op
-
-    ADD_SATURATE = _do_lib_op
-    ADD_ROUND_SATURATE = _do_lib_op
-    SUB_SATURATE = _do_lib_op
-    SUB_ROUND_SATURATE = _do_lib_op
-    MUL_SATURATE = _do_lib_op
-    MUL_ROUND_SATURATE = _do_lib_op
-    FMA_ROUND_SATURATE = _do_lib_op
-
-    ISNAN = _do_lib_op
-    subnormal_check = _do_lib_op
-
-    GTE = _do_lib_op
-    GT = _do_lib_op
-    LT = _do_lib_op
-    LTE = _do_lib_op
-    EQ = _do_lib_op
-    NOTEQ = _do_lib_op
-
-    OR = _do_lib_op
-    AND = _do_lib_op
-    XOR = _do_lib_op
-    SHR = _do_lib_op
-    SHR_LIT = _do_lib_op
-    SAR = _do_lib_op
-    SAR_LIT = _do_lib_op
-    SHL = _do_lib_op
-    SHL_LIT = _do_lib_op
-
-    ADD = _do_lib_op
-    SUB = _do_lib_op
-    MUL = _do_lib_op
-    DIV = _do_lib_op
-    IDIV = _do_lib_op
-    REM = _do_lib_op
-    MOD = _do_lib_op
-
-    compare_equ = _do_lib_op
-    compare_neu = _do_lib_op
-    compare_ltu = _do_lib_op
-    compare_leu = _do_lib_op
-    compare_gtu = _do_lib_op
-    compare_geu = _do_lib_op
-
-    compare_eq = _do_lib_op
-    compare_ne = _do_lib_op
-    compare_lt = _do_lib_op
-    compare_le = _do_lib_op
-    compare_gt = _do_lib_op
-    compare_ge = _do_lib_op
-    compare_lo = _do_lib_op
-    compare_ls = _do_lib_op
-    compare_hi = _do_lib_op
-    compare_hs = _do_lib_op
-
-    compare_nan = _do_lib_op
-    compare_num = _do_lib_op
-
-    zext_64 = _do_lib_op
-
-    sext_16 = _do_lib_op
-    sext_32 = _do_lib_op
-    sext_64 = _do_lib_op
-
-    truncate_16 = _do_lib_op
-    truncate_32 = _do_lib_op
-    truncate_64 = _do_lib_op
 
 class CXlator(xirxlat.Xlator):
     desugar_boolean_xor = True
