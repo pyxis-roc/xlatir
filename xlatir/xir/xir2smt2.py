@@ -748,6 +748,7 @@ def eliminate_xir_attr_ref(dag):
 
 class SMT2Xlator(xirxlat.Xlator):
     desugar_boolean_xor = False
+    name = "smt2"
 
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
