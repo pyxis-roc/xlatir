@@ -101,6 +101,9 @@ class XIRToX(ast.NodeVisitor):
         ty = xir.find(tyterm, self.types)
         if isinstance(ty, TyApp):
             ty = TyApp(self._get_type(ty.ret), [self._get_type(a) for a in ty.args])
+        elif isinstance(ty, TyRecord):
+            ty = TyRecord(ty.name,
+                          [(f, self._get_type(t)) for (f, t) in ty.fields_and_types])
 
         # TODO: other types
         assert isinstance(ty, TyTerm)

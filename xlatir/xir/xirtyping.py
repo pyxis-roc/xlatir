@@ -279,7 +279,7 @@ class RecordDecl(object):
         for (df, dt), (if_, it) in zip(self.fields_and_types, inst.fields_and_types):
             if isinstance(dt, TyVar):
                 # must be fully resolved ...
-                assert not isinstance(it, TyVar), f"Can't substitute TyVar {it.name} for {df}"
+                assert not isinstance(it, TyVar), f"Can't substitute a variable TyVar {it.name} for {df} (must be fully resolved)"
                 gn = it.get_suffix()
                 suffix.append((dt.name, gn))
 
