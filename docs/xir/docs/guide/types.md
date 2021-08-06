@@ -154,9 +154,7 @@ y = x[0]
 
 ### Structures
 
-[this is still in the design phase]
-
-XIR will allow definitions of structures like so:
+XIR allows definitions of structures like so:
 
 ```python
 class ArithWithCarry(Generic[T]):
@@ -181,10 +179,7 @@ def ADD_CARRY_u32(a: u32, b: u32) -> u32_carry:
 
 ```
 
-The implementation will be done in two phases. In the first phase,
-non-generic structures will be supported, and then generic structures.
-
-TODO: Type inference, structurally similar classes, but with different names.
+Read more in the [documentation on classes](../classes).
 
 ### Recursive Data Types
 

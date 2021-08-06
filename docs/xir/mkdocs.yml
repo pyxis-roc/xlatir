@@ -1,5 +1,7 @@
 site_name: XIR
 nav:
   - Home: index.md
+  - Guide: guide
+  - Reference: ref
   - About: about.md
 #theme: readthedocs
