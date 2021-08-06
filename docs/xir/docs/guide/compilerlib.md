@@ -1,7 +1,7 @@
 # Compiler Libraries
 
 By default, a function call in XIR is translated into a function call by the compiler backend (i.e. C or SMT2).
-A _compiler library_ allows a IR designer to hook into the backend and control the translation of functions.
+A _compiler library_ allows a IR designer to hook into the backend and control the translation of function calls.
 This feature is used by the `xirbuiltins.pyi` library to translate function calls like `ADD(a, b)` to `a + b` in C or `(fp.add a b)` in SMT2, for example.
 
 To use this feature for your own IR, you need to:
@@ -60,14 +60,14 @@ To load and use the library, use the `-b` flag on `xir2x.py`.
 xir2x.py -b /path/to/module ...
 ```
 
-The library for XIR builtins is loaded automatically. You can override this library, see the `xir2x.py` documentation.
+The library for XIR builtins is loaded automatically. You can override this library, see the `xir2x.py` command-line documentation.
 
 Multiple libraries can be specified, and are looked up in the order they were specified on the
 command line, and the first successful translation is used by the compiler.
 
 Note: `xir2x.py` always loads the XIR builtin library first, so it cannot be overriden.
 
-## Design suggestions
+## Implementation design of a compiler library
 
 Using some new Python features (specifically, `singledispatch`), it is possible to let Python do the type-based dispatch instead of cluttering up the code with `if` statements.
 
