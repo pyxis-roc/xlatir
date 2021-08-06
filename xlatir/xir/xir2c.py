@@ -313,10 +313,7 @@ class CXlator(xirxlat.Xlator):
 
             return f"(({struct_ty}) {{{', '.join(args[:arglen])}}})" # C compound literal, C99
 
-        if fn == 'ADD_CARRY' or fn == 'SUB_CARRY':
-            # because we're using strings
-            return f"{fn}({', '.join(args[:arglen])}, __OVERFLOW__)"
-        elif fn.startswith("BITSTRING_") or fn.startswith("FROM_BITSTRING_"):
+        if fn.startswith("BITSTRING_") or fn.startswith("FROM_BITSTRING_"):
             return args[0]
         else:
             return f"{fn}({', '.join(args[:arglen])})"
@@ -339,9 +336,7 @@ class CXlator(xirxlat.Xlator):
             return f"return"
 
     def xlat_Assign(self, lhs, rhs, node):
-        if isinstance(lhs, list) and (rhs.startswith("ADD_CARRY") or rhs.startswith("SUB_CARRY")):
-            return f"{lhs[0]} = {rhs}".replace("__OVERFLOW__", "&" + lhs[1])
-        elif isinstance(lhs, tuple):
+        if isinstance(lhs, tuple):
             lhs_type = self._get_c_type(node.targets[0]._xir_type)
             assert isinstance(node.targets[0], ast.Subscript) and lhs_type == "BIT_T"
             var, index = lhs
