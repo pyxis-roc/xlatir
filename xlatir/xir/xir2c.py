@@ -118,10 +118,11 @@ class CXlator(xirxlat.Xlator):
                 inst = self.x2x.polyinst.find(t)
                 assert inst is not None
                 struct_name = inst.name
+                self.gen_structs[struct_name] = inst.inst # we need the specific instantiation, since otherwise the typevars in T are "global"
             else:
                 struct_name = t.name
+                self.gen_structs[struct_name] = t # TODO
 
-            self.gen_structs[struct_name] = t # TODO
             if not declname:
                 return f"struct {struct_name}"
             else:
