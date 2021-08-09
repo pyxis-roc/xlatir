@@ -20,6 +20,7 @@ from collections import namedtuple
 from xlatir.imp2func.passmgr import I2FConfig, InterPassContext, PassManager
 from xlatir.imp2func.passes import *
 from .astcompat import AC
+from .xirlibsmt2 import XIRBuiltinLibSMT2
 
 #import astunparse
 
@@ -378,12 +379,40 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
 }
 
 class SMT2lib(object):
+    def __init__(self):
+        self.xlib = []
+
+    def add_lib(self, lib):
+        lib.parent = self
+        self.xlib.append(lib)
+
+    def get_builtin(self):
+        return XIRBuiltinLibSMT2()
+
     def can_xlat(self, n):
         return hasattr(self, n)
 
     def do_xlat(self, n, fnty, args, node):
         fnxlat = getattr(self, n)
         return fnxlat(n, fnty, args, node)
+
+    def _get_lib_op(self, fnty, node, n):
+        xirty = node._xir_type if node is not None else None
+
+        for lib in self.xlib:
+            try:
+                # this does first match
+                lc = lib.dispatch(fnty, xirty)
+                if isinstance(lc, str):
+                    print(f"WARNING: {fnty} returns str from {lib.__class__.__name__}")
+                return lc
+            except KeyError:
+                print(f"{lib.__class__.__name__}: keyerror: {fnty}")
+            except NotImplementedError:
+                print(f"{lib.__class__.__name__}: notimplemented: {fnty}")
+
+        assert False, f"Couldn't find {fnty} in libraries"
+
 
     def _normalize_types(self, ty, builtin = True):
         if builtin:
