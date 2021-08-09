@@ -733,7 +733,8 @@ class CXlator(xirxlat.Xlator):
         for s in self.x2x.tyenv.constants:
             tv = self.x2x.tyenv.constants[s]
             ct = self._get_c_type(tv[0])
-            out.append(f"const {ct} {s} = {AC.value(tv[1])};")
+            # since this is put in a header file
+            out.append(f"static const {ct} {s} = {AC.value(tv[1])};")
 
         return out
 
@@ -846,6 +847,7 @@ def write_output_general(outfile, translations, defns):
 
     print(f"Writing {header}")
     with open(os.path.join(os.path.dirname(outfile), header), "w") as f:
+        f.write("#pragma once")
         f.write("#include <stdlib.h>\n\n")
         f.write("#include <stdint.h>\n\n")
         f.write("#include <math.h>\n\n")
