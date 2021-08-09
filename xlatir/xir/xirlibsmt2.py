@@ -131,6 +131,31 @@ def BoolNotBinOp(name):
     fn = BinOp(name)
     return lambda x, y: bool_to_pred(SExprList(Symbol("not"), fn(x, y)))
 
+def do_SHIFT(aty, bty, fn):
+    assert isinstance(aty, BV)
+    assert isinstance(bty, BV)
+
+    width1 = aty.w
+    width2 = bty.w
+
+    if width1 == width2:
+        return fn
+    else:
+        # PTX requires shift amount be a unsigned 32-bit value for
+        # the shr/shl instructions. SMT2 requires that the shift
+        # argument be the same type as first argument.
+
+        if width1 > width2:
+            # source argument bigger than shift, so enlarge shift
+            a1 = lambda y: SExprList(SExprList(Symbol("_"), Symbol("zero_extend"),
+                                          Decimal(width1-width2)), y)
+        else:
+            # source argument smaller than shift, so truncate shift
+            a1 = lambda y: SExprList(SExprList(Symbol("_"), Symbol("extract"),
+                                               Decimal(width1-1), Decimal(0)), y)
+
+        return lambda x, y: fn(x, a1(y))
+
 class XIRBuiltinLibSMT2(XIRBuiltinLib):
     type_dict = dict(SINGLETONS)
 
@@ -215,30 +240,6 @@ class XIRBuiltinLibSMT2(XIRBuiltinLib):
     # TODO: investigate since this could be bvsmod and is machine-specific
     MOD = REM
 
-    def _do_SHIFT(self, aty, bty, fn):
-        assert isinstance(aty, BV)
-        assert isinstance(bty, BV)
-
-        width1 = aty.w
-        width2 = bty.w
-
-        if width1 == width2:
-            return fn
-        else:
-            # PTX requires shift amount be a unsigned 32-bit value for
-            # the shr/shl instructions. SMT2 requires that the shift
-            # argument be the same type as first argument.
-
-            if width1 > width2:
-                # source argument bigger than shift, so enlarge shift
-                a1 = lambda y: SExprList(SExprList(Symbol("_"), Symbol("zero_extend"),
-                                              Decimal(width1-width2)), y)
-            else:
-                # source argument smaller than shift, so truncate shift
-                a1 = lambda y: SExprList(SExprList(Symbol("_"), Symbol("extract"),
-                                                   Decimal(width1-1), Decimal(0)), y)
-
-            return lambda x, y: fn(x, a1(y))
 
     @singledispatchmethod
     def SHR(self, aty, bty):
@@ -246,11 +247,11 @@ class XIRBuiltinLibSMT2(XIRBuiltinLib):
 
     @SHR.register(Unsigned)
     def _(self, aty: Unsigned, bty: BV):
-        return self._do_SHIFT(aty, bty, BinOp("bvlshr"))
+        return do_SHIFT(aty, bty, BinOp("bvlshr"))
 
     @SHR.register(Signed)
     def _(self, aty: Signed, bty: BV):
-        return self._do_SHIFT(aty, bty, BinOp("bvashr"))
+        return do_SHIFT(aty, bty, BinOp("bvashr"))
 
     @singledispatchmethod
     def SHL(self, aty, bty):
@@ -258,7 +259,7 @@ class XIRBuiltinLibSMT2(XIRBuiltinLib):
 
     @SHL.register(BV)
     def _(self, aty: BV, bty: BV):
-        return self._do_SHIFT(aty, bty, BinOp("bvshl"))
+        return do_SHIFT(aty, bty, BinOp("bvshl"))
 
     @singledispatchmethod
     def GT(self, aty, bty):

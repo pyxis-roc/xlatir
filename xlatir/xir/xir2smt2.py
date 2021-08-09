@@ -92,23 +92,7 @@ def extract_cf(x):
     # actually do a proper type check?
     return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
 
-XIR_TO_SMT2_OPS = {('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
-                   ('ADD_CARRY', 's16', 's16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
-
-                   ('ADD_CARRY', 'u32', 'u32', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
-                   ('ADD_CARRY', 's32', 's32', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
-
-                   ('ADD_CARRY', 'u64', 'u64', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)),
-                   ('ADD_CARRY', 's64', 's64', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
-
-
-                   ('SUB_CARRY', 'u32', 'u32', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)),
-                   ('SUB_CARRY', 's32', 's32', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
-
-                   ('SUB_CARRY', 'u64', 'u64', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)),
-                   ('SUB_CARRY', 's64', 's64', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
-
-                   ('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24_s32"), x, y),
+XIR_TO_SMT2_OPS = {('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24_s32"), x, y),
                    ('MUL24', 'u32', 'u32'): lambda x, y: SExprList(Symbol("MUL24_u32"), x, y),
 
                    ('MULWIDE', 's16', 's16'): lambda x, y: SExprList(Symbol("MULWIDE_s16"), x, y),
@@ -120,26 +104,8 @@ XIR_TO_SMT2_OPS = {('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SEx
                    ('MULWIDE', 's64', 's64'): lambda x, y: SExprList(Symbol("MULWIDE_s64"), x, y),
                    ('MULWIDE', 'u64', 'u64'): lambda x, y: SExprList(Symbol("MULWIDE_u64"), x, y),
 
-                   ('COPYSIGN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("copysign_f32"), x, y),
-                   ('COPYSIGN', 'f64', 'f64'): lambda x, y: SExprList(Symbol("copysign_f64"), x, y),
-
-                   ('RCP_ROUND', 'f32', 'str'): lambda x, m: RCP('f32', x, m),
-                   ('RCP_ROUND', 'f64', 'str'): lambda x, m: RCP('f64', x, m),
                    ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
                    ('RCP', 'f64'): lambda x: RCP('f64', x, Symbol('rn')),
-
-                   ("MACHINE_SPECIFIC_execute_rem_divide_by_neg", "signed", "signed"): lambda x, y: SExprList(Symbol("bvsrem"), x, SExprList(Symbol("bvneg"), y)), # this is probably the same as bvsrem?
-
-                   ('SAR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
-                   ('SAR', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
-
-                   # to avoid casts
-                   ('SAR', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
-                   ('SAR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
-
-                   # ('NOTEQ', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
-                   # ('NOTEQ', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
-                   # ('NOTEQ', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("fp.eq"), x, y))),
 
                    ('MIN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MIN_f32"), x, y),
                    ('MAX', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MAX_f32"), x, y),
@@ -214,27 +180,10 @@ XIR_TO_SMT2_OPS = {('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SEx
                    ('compare_hi', 'uint64_t', 'uint64_t'): '>', # for unsigned (see set)
                    ('compare_hs', 'uint64_t', 'uint64_t'): '>=', # for unsigned (see set)
 
-                   ('compare_num', 'f32', 'f32'): '()', # for type checking only
-                   ('compare_num', 'f64', 'f64'): '()',  # for type checking only
-
-                   ('compare_nan', 'f32', 'f32'): '()', # for type checking only
-                   ('compare_nan', 'f64', 'f64'): '()',  # for type checking only
-
                    ('POW', 'float', 'float'): 'powf',
                    ('POW', 'double', 'double'): 'pow',
 
                    ('set_memory', '*', '*'): 'set_memory',
-                   ('logical_op3', 'uint32_t', 'uint32_t', 'uint32_t', 'uint8_t'): 'logical_op3',
-
-                   ('ABSOLUTE', 's32'): lambda x: SExprList(Symbol('abs_s32'), x),
-                   ('ABSOLUTE', 's64'): lambda x: SExprList(Symbol('abs_s64'), x),
-                   ('ABSOLUTE', 's16'): lambda x: SExprList(Symbol('abs_s16'), x),
-
-                   ('ABSOLUTE', 'f32'): lambda x: SExprList(Symbol("fp.abs"), x),
-                   ('ABSOLUTE', 'f64'): lambda x: SExprList(Symbol("fp.abs"), x),
-
-                   ('LOG2', 'f32'): lambda x: SExprList(Symbol("log2_f32"), x),
-                   ('LOG2', 'f64'): lambda x: SExprList(Symbol("log2_f64"), x),
 
                    ('POW', 'f32', 'f32'): lambda x, y: SExprList(Symbol("pow_f32"), x, y),
                    ('POW', 'f64', 'f64'): lambda x, y: SExprList(Symbol("pow_f64"), x, y),
@@ -247,46 +196,6 @@ XIR_TO_SMT2_OPS = {('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SEx
 
                    ('SATURATE', 'f32'): lambda x: SExprList(Symbol('SATURATE_f32'), x),
                    ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x),
-
-                   ('ADD_ROUND', '*', '*', '*'): generic_round('fp.add', 2),
-                   ('SUB_ROUND', '*', '*', '*'): generic_round('fp.sub', 2),
-                   ('MUL_ROUND', '*', '*', '*'): generic_round('fp.mul', 2),
-                   ('DIV_ROUND', '*', '*', '*'): generic_round('fp.div', 2),
-                   ('FMA_ROUND', '*', '*', '*', '*'): generic_round('fp.fma', 3),
-
-                   ('SQRT_ROUND', 'f32', 'str'): generic_round('sqrt_round_f32', 1),
-                   ('SQRT_ROUND', 'f64', 'str'): generic_round('sqrt_round_f64', 1),
-
-                   ('SQRT', 'f32'): lambda x: SExprList(Symbol('sqrt_f32'), x),
-                   ('SQRT', 'f64'): lambda x: SExprList(Symbol('sqrt_f64'), x),
-
-                   ('SINE', 'f32'): lambda x: SExprList(Symbol('sin_f32'), x),
-                   ('SINE', 'f64'): lambda x: SExprList(Symbol('sin_f64'), x),
-
-                   ('COSINE', 'f32'): lambda x: SExprList(Symbol('cos_f32'), x),
-                   ('COSINE', 'f64'): lambda x: SExprList(Symbol('cos_f64'), x),
-
-                   # this mirrors machine-specific, but should probably outsource to smt2 file
-                   ("MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned", "*"): lambda x: x,
-
-                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "u16"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16"),
-                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "u32"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32"),
-                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "u64"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64"),
-
-                   # these still point to uX for convenience
-                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "s16"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u16"),
-                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "s32"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u32"),
-                   ("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer", "s64"): lambda _: Symbol("MACHINE_SPECIFIC_execute_div_divide_by_zero_integer_u64"),
-
-                   ("zext_64", 'b32'): lambda x: SExprList(SExprList(Symbol('_'),
-                                                                     Symbol('zero_extend'),
-                                                                     Decimal(32)), x),
-                   ("zext_64", 'u32'): lambda x: SExprList(SExprList(Symbol('_'),
-                                                                     Symbol('zero_extend'),
-                                                                     Decimal(32)), x),
-                   ("zext_64", 'u16'): lambda x: SExprList(SExprList(Symbol('_'),
-                                                                     Symbol('zero_extend'),
-                                                                     Decimal(48)), x),
 
                    ("sext_16", 'b16'): lambda x: x,
                    ("sext_16", 'u16'): lambda x: x,
@@ -399,26 +308,12 @@ class SMT2lib(object):
     MAX = _do_min_max
     set_memory = _nie
     FTZ = _do_fnop
-    #logical_op3 = _nie
     min = _do_fnop_builtin
-    ABSOLUTE = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
-    COPYSIGN = _do_fnop
     booleanOp_xor = _do_fnop_builtin
 
-    ADD_ROUND = _do_fnop_builtin
-    SUB_ROUND = _do_fnop_builtin
-    MUL_ROUND = _do_fnop_builtin
-    DIV_ROUND = _do_fnop_builtin
-    FMA_ROUND = _do_fnop_builtin
-    RCP_ROUND = _do_fnop # because we want different routines for f32/f64 even though fp.div is builtin
-    SQRT_ROUND = _do_fnop
     RCP = _do_fnop # approx
-    LOG2 = _do_fnop
-    SQRT = _do_fnop
-    SINE = _do_fnop
-    COSINE = _do_fnop
     MUL24 = _do_fnop
     MULWIDE = _do_fnop
 
@@ -447,48 +342,6 @@ class SMT2lib(object):
     MUL_SATURATE = _do_fnop_sat
     DIV_SATURATE = _do_fnop_sat
 
-    def subnormal_check(self, n, fnty, args, node):
-        return bool_to_pred(SExprList(Symbol("fp.isSubnormal"), *args))
-
-    def _do_SHIFT(self, n, fnty, args, node):
-        if n.endswith('_LIT'):
-            n = n[:-4]
-            fnty = tuple([n] + list(fnty[1:]))
-            return self.do_xlat(n, fnty, args, node)
-
-        assert fnty[1].v[0] in ('u', 'b', 's'), fnty[1].v[0]
-        assert fnty[2].v[0] in ('u', 'b', 's'), fnty[2].v[0]
-
-        width1 = int(fnty[1].v[1:])
-        width2 = int(fnty[2].v[1:])
-
-        if width1 == width2:
-            return self._do_fnop_builtin(n, fnty, args, node)
-        else:
-            # PTX requires shift amount be a unsigned 32-bit value for
-            # the shr/shl instructions. SMT2 requires that the shift
-            # argument be the same type as first argument.
-
-            if width1 > width2:
-                # source argument bigger than shift, so enlarge shift
-                args[1] = SExprList(SExprList(Symbol("_"), Symbol("zero_extend"),
-                                              Decimal(width1-width2)), args[1])
-            else:
-                # source argument smaller than shift, so truncate shift
-                args[1] = SExprList(SExprList(Symbol("_"), Symbol("extract"),
-                                              Decimal(width1-1), Decimal(0)), args[1])
-
-            return self._do_fnop_builtin(n, fnty, args, node)
-
-    SAR = _do_SHIFT
-    SHR_LIT = _do_SHIFT
-    SHL_LIT = _do_SHIFT
-    SAR_LIT = _do_SHIFT
-
-    ADD_CARRY = _do_fnop
-    SUB_CARRY = _do_fnop
-
-    zext_64 = _do_fnop
     truncate_16 = _do_fnop_builtin
     truncate_32 = _do_fnop_builtin
     truncate_64 = _do_fnop_builtin
@@ -497,10 +350,6 @@ class SMT2lib(object):
     sext_16 = _do_fnop
     sext_32 = _do_fnop
     sext_64 = _do_fnop
-
-    def ISNAN(self, n, fnty, args, mode):
-        #TODO: check types
-        return bool_to_pred(SExprList(Symbol("fp.isNaN"), *args))
 
     def _do_compare_unordered(self, n, fnty, args, node):
         assert n[-1] == 'u' # unordered
@@ -563,25 +412,6 @@ class SMT2lib(object):
     compare_ls = _do_compare_2
     compare_hi = _do_compare_2
     compare_hs = _do_compare_2
-
-    def compare_nan(self, n, fnty, args, node):
-        assert (n, fnty[1].v, fnty[2].v) in XIR_TO_SMT2_OPS, f"Incorrect type for {n} {fnty}"
-
-        return bool_to_pred(SExprList(Symbol("or"),
-                                      SExprList(Symbol("fp.isNaN"), args[0]),
-                                      SExprList(Symbol("fp.isNaN"), args[1])))
-
-    def compare_num(self, n, fnty, args, node):
-        assert (n, fnty[1].v, fnty[2].v) in XIR_TO_SMT2_OPS, f"Incorrect type for {n} {fnty}"
-
-        return bool_to_pred(SExprList(Symbol("not"),
-                                      SExprList(Symbol("or"),
-                                                SExprList(Symbol("fp.isNaN"), args[0]),
-                                                SExprList(Symbol("fp.isNaN"), args[1]))))
-
-    MACHINE_SPECIFIC_execute_rem_divide_by_zero_unsigned = _do_fnop_builtin
-    MACHINE_SPECIFIC_execute_rem_divide_by_neg = _do_fnop_builtin
-    MACHINE_SPECIFIC_execute_div_divide_by_zero_integer = _do_fnop
 
 def create_dag(statements, _debug_trace = False):
     # value numbering
