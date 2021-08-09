@@ -92,8 +92,7 @@ def extract_cf(x):
     # actually do a proper type check?
     return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
 
-XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x, y),
-                   ('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
+XIR_TO_SMT2_OPS = {('ADD_CARRY', 'u16', 'u16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
                    ('ADD_CARRY', 's16', 's16', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u16"), x, y, extract_cf(z)),
 
                    ('ADD_CARRY', 'u32', 'u32', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u32"), x, y, extract_cf(z)),
@@ -103,25 +102,11 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('ADD_CARRY', 's64', 's64', 'carryflag'): lambda x, y, z: SExprList(Symbol("ADD_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
 
 
-                   ('ADD', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.add"),
-                                                                     Symbol("roundNearestTiesToEven"), # TODO
-                                                                     x, y),
-                   ('SUB', '*', '*'): lambda x, y: SExprList(Symbol("bvsub"), x, y),
-
                    ('SUB_CARRY', 'u32', 'u32', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)),
                    ('SUB_CARRY', 's32', 's32', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u32"), x, y, extract_cf(z)), # it is always u32
 
                    ('SUB_CARRY', 'u64', 'u64', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)),
                    ('SUB_CARRY', 's64', 's64', 'carryflag'): lambda x, y, z: SExprList(Symbol("SUB_CARRY_u64"), x, y, extract_cf(z)), # it is always u64
-
-                   ('SUB', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.sub"),
-                                                                     Symbol("roundNearestTiesToEven"), # TODO
-                                                                     x, y),
-
-                   ('MUL', '*', '*'): lambda x, y: SExprList(Symbol("bvmul"), x, y),
-                   ('MUL', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.mul"),
-                                                                     Symbol("roundNearestTiesToEven"),
-                                                                     x, y),
 
                    ('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24_s32"), x, y),
                    ('MUL24', 'u32', 'u32'): lambda x, y: SExprList(Symbol("MUL24_u32"), x, y),
@@ -135,15 +120,6 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('MULWIDE', 's64', 's64'): lambda x, y: SExprList(Symbol("MULWIDE_s64"), x, y),
                    ('MULWIDE', 'u64', 'u64'): lambda x, y: SExprList(Symbol("MULWIDE_u64"), x, y),
 
-                   ('DIV', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvudiv"), x, y),
-                   ('DIV', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsdiv"), x, y),
-
-                   ('IDIV', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvudiv"), x, y),
-                   ('IDIV', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsdiv"), x, y),
-
-                   ('DIV', 'float', 'float'): lambda x, y: SExprList(Symbol("fp.div"),
-                                                                     Symbol("roundNearestTiesToEven"),
-                                                                     x, y),
                    ('COPYSIGN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("copysign_f32"), x, y),
                    ('COPYSIGN', 'f64', 'f64'): lambda x, y: SExprList(Symbol("copysign_f64"), x, y),
 
@@ -152,22 +128,7 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
                    ('RCP', 'f64'): lambda x: RCP('f64', x, Symbol('rn')),
 
-                   ('REM', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvurem"), x, y),
-                   # TODO: investigate since this could be bvsmod and is machine-specific
-                   ('REM', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsrem"), x, y),
-
-                   ('MOD', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvurem"), x, y),
-                   # TODO: investigate since this could be bvsmod and is machine-specific
-                   ('MOD', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvsrem"), x, y),
-
                    ("MACHINE_SPECIFIC_execute_rem_divide_by_neg", "signed", "signed"): lambda x, y: SExprList(Symbol("bvsrem"), x, SExprList(Symbol("bvneg"), y)), # this is probably the same as bvsrem?
-
-                   ('SHR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
-                   ('SHR', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
-
-                   # to avoid casts
-                   ('SHR', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvlshr"), x, y),
-                   ('SHR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
 
                    ('SAR', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
                    ('SAR', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
@@ -176,37 +137,9 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                    ('SAR', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
                    ('SAR', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvashr"), x, y),
 
-                   ('SHL', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
-                   ('SHL', 'signed', 'unsigned'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
-
-                   # to avoid casts
-                   ('SHL', 'unsigned', 'signed'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
-                   ('SHL', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvshl"), x, y),
-
-
-                   ('GT', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvugt'), x, y)),
-                   ('GT', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsgt'), x, y)),
-                   ('GT', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.gt'), x, y)),
-
-                   ('LT', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvult'), x, y)),
-                   ('LT', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvslt'), x, y)),
-                   ('LT', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.lt'), x, y)),
-
-                   ('NOTEQ', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
-                   ('NOTEQ', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
-                   ('NOTEQ', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("fp.eq"), x, y))),
-
-
-                   ('GTE', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvuge'), x, y)),
-                   ('GTE', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsge'), x, y)),
-                   ('GTE', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.geq'), x, y)),
-
-                   ('LTE', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol('bvule'), x, y)),
-                   ('LTE', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol('bvsle'), x, y)),
-                   ('LTE', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol('fp.leq'), x, y)),
-
-
-                   ('EQ', '*', '*'): lambda x, y: bool_to_pred(SExprList(Symbol("="), x, y)),
+                   # ('NOTEQ', 'unsigned', 'unsigned'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
+                   # ('NOTEQ', 'signed', 'signed'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("="), x, y))),
+                   # ('NOTEQ', 'float', 'float'): lambda x, y: bool_to_pred(SExprList(Symbol("not"), SExprList(Symbol("fp.eq"), x, y))),
 
                    ('MIN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MIN_f32"), x, y),
                    ('MAX', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MAX_f32"), x, y),
@@ -234,12 +167,6 @@ XIR_TO_SMT2_OPS = {('ADD', '*', '*'): lambda x, y: SExprList(Symbol("bvadd"), x,
                                                                            SExprList(Symbol("bvult"), x, y), x, y),
                    ('min', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
                                                                            SExprList(Symbol("bvslt"), x, y), x, y),
-
-
-                   ('AND', '*', '*'): lambda x, y: SExprList(Symbol('bvand'), x, y),
-                   ('OR', '*', '*'): lambda x, y: SExprList(Symbol('bvor'), x, y),
-                   ('XOR', '*', '*'): lambda x, y: SExprList(Symbol('bvxor'), x, y),
-                   ('NOT', '*'): lambda x: SExprList(Symbol('bvnot'), x),
 
                    ('booleanOp_xor', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
                    ('booleanOp_xor', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
@@ -390,11 +317,20 @@ class SMT2lib(object):
         return XIRBuiltinLibSMT2()
 
     def can_xlat(self, n):
+        for lib in self.xlib:
+            if hasattr(lib, n): return True
+
         return hasattr(self, n)
 
     def do_xlat(self, n, fnty, args, node):
-        fnxlat = getattr(self, n)
-        return fnxlat(n, fnty, args, node)
+        if hasattr(self, n):
+            fnxlat = getattr(self, n)
+            return fnxlat(n, fnty, args, node)
+        else:
+            op = self._get_lib_op(fnty, node, n)
+            assert not isinstance(op, str), f"Operator for {fnty} is a string"
+            arglen = len(fnty) - 1
+            return op(*args[:arglen])
 
     def _get_lib_op(self, fnty, node, n):
         xirty = node._xir_type if node is not None else None
@@ -468,7 +404,6 @@ class SMT2lib(object):
     ABSOLUTE = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
-    NOT = _do_fnop_builtin
     COPYSIGN = _do_fnop
     booleanOp_xor = _do_fnop_builtin
 
@@ -492,9 +427,9 @@ class SMT2lib(object):
             return self._do_fnop(n, fnty, args, node)
         else:
             wosat = n[:-len("_SATURATE")]
-            assert hasattr(self, wosat), f"Unable to find non-saturating {wosat} version of {n}"
+            #assert hasattr(self, wosat), f"Unable to find non-saturating {wosat} version of {n}"
             wosat_fnty = tuple([wosat] + list(fnty[1:]))
-            wosatcode = getattr(self, wosat)(wosat, wosat_fnty, args, node)
+            wosatcode = self.do_xlat(wosat, wosat_fnty, args, node)
 
             sat_fnty = ('SATURATE', fnty[1])
 
@@ -519,6 +454,7 @@ class SMT2lib(object):
         if n.endswith('_LIT'):
             n = n[:-4]
             fnty = tuple([n] + list(fnty[1:]))
+            return self.do_xlat(n, fnty, args, node)
 
         assert fnty[1].v[0] in ('u', 'b', 's'), fnty[1].v[0]
         assert fnty[2].v[0] in ('u', 'b', 's'), fnty[2].v[0]
@@ -544,33 +480,13 @@ class SMT2lib(object):
 
             return self._do_fnop_builtin(n, fnty, args, node)
 
-    GTE = _do_fnop_builtin
-    GT = _do_fnop_builtin
-    LT = _do_fnop_builtin
-    LTE = _do_fnop_builtin
-    EQ = _do_fnop_builtin
-    NOTEQ = _do_fnop_builtin
-
-    OR = _do_fnop_builtin
-    AND = _do_fnop_builtin
-    XOR = _do_fnop_builtin
-    SHR = _do_SHIFT
-    SHL = _do_SHIFT
     SAR = _do_SHIFT
-
     SHR_LIT = _do_SHIFT
     SHL_LIT = _do_SHIFT
     SAR_LIT = _do_SHIFT
 
-    ADD = _do_fnop_builtin
     ADD_CARRY = _do_fnop
     SUB_CARRY = _do_fnop
-    SUB = _do_fnop_builtin
-    MUL = _do_fnop_builtin
-    DIV = _do_fnop_builtin
-    IDIV = _do_fnop_builtin
-    REM = _do_fnop_builtin
-    MOD = _do_fnop_builtin
 
     zext_64 = _do_fnop
     truncate_16 = _do_fnop_builtin
