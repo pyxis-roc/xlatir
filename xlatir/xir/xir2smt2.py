@@ -114,10 +114,6 @@ XIR_TO_SMT2_OPS = {('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24
                    ('POW', 'f64', 'f64'): lambda x, y: SExprList(Symbol("pow_f64"), x, y),
 
                    ('ROUND', '*'): lambda x: x, # TODO
-                   ('ADD_SATURATE', 's32', 's32'): lambda x, y: SExprList(Symbol('ADD_SATURATE_s32'),
-                                                                          x, y),
-                   ('SUB_SATURATE', 's32', 's32'): lambda x, y: SExprList(Symbol('SUB_SATURATE_s32'),
-                                                                          x, y),
 
                    ('SATURATE', 'f32'): lambda x: SExprList(Symbol('SATURATE_f32'), x),
                    ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x),
@@ -253,10 +249,7 @@ class SMT2lib(object):
     DIV_ROUND_SATURATE = _do_fnop_sat
     FMA_ROUND_SATURATE = _do_fnop_sat
 
-    ADD_SATURATE = _do_fnop_sat
-    SUB_SATURATE = _do_fnop_sat
-    MUL_SATURATE = _do_fnop_sat
-    DIV_SATURATE = _do_fnop_sat
+    DIV_SATURATE = _do_fnop_sat  # ???
 
     truncate_16 = _do_fnop_builtin
     truncate_32 = _do_fnop_builtin
