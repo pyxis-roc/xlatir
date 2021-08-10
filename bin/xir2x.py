@@ -268,14 +268,14 @@ if __name__ == "__main__":
 
     load_backend_libs(args.backend_libs, translator.X, args.xir_builtin_lib)
 
+    arglines = []
     if args.backend_args:
         with open(args.backend_args, "r") as f:
-            arglines = []
             # this is fancier than standard @ syntax
             for l in f.readlines():
                 arglines.extend(shlex.split(l.strip()))
 
-            translator.X.set_args(arglines)
+    translator.X.set_args(arglines)
 
     if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
         if args.noptx:

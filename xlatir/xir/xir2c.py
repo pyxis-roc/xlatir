@@ -492,8 +492,8 @@ def write_output_general(outfile, inc, translations, defns):
     print(f"Writing {header}")
     with open(os.path.join(os.path.dirname(outfile), header), "w") as f:
         f.write("#pragma once\n")
-        f.write("#include <stdlib.h>\n\n")
-        f.write("#include <stdint.h>\n\n")
-        f.write("#include <math.h>\n\n")
+        f.write("#include <stdlib.h>\n")
+        f.write("#include <stdint.h>\n")
+        f.write("#include <math.h>\n")
         f.write('\n')
         f.write("\n".join(defns))
