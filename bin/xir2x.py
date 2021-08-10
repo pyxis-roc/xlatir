@@ -26,6 +26,7 @@ import logging
 import sys
 import warnings
 import itertools
+import shlex
 
 def debug_ih(show_builtins = False):
     for n in sys.modules:
@@ -231,6 +232,7 @@ if __name__ == "__main__":
     p.add_argument('--ih', dest="import_hell", action="store_true", help="Debug imported packages")
     p.add_argument('-b', dest='backend_libs', metavar='MODULEFILE', help="Import MODULEFILE as library translator for backend", default=[], action='append')
     p.add_argument('--no-xir-builtin-lib', dest='xir_builtin_lib', help="Disable built-in XIR library", action='store_false')
+    p.add_argument('--backend-args', dest='backend_args', metavar="ARGFILE", help="Read backend args from ARGFILE")
 
     args = p.parse_args()
 
@@ -265,6 +267,15 @@ if __name__ == "__main__":
         assert False, f"Unrecognized language {args.language}"
 
     load_backend_libs(args.backend_libs, translator.X, args.xir_builtin_lib)
+
+    if args.backend_args:
+        with open(args.backend_args, "r") as f:
+            arglines = []
+            # this is fancier than standard @ syntax
+            for l in f.readlines():
+                arglines.extend(shlex.split(l.strip()))
+
+            translator.X.set_args(arglines)
 
     if not args.ptxinsn or (len(args.ptxinsn) == 1 and args.ptxinsn[0] == 'all'):
         if args.noptx:

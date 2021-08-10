@@ -184,6 +184,9 @@ class SMT2Xlator(xirxlat.Xlator):
         self.lhs_types = {}
         self.gen_structs = {}
 
+    def set_args(self, args):
+        pass
+
     def pre_xlat_transform(self, s):
         self._use_imp2 = False
         s = self._ref_return_fixer.fix_returns(s)

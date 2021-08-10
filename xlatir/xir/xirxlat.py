@@ -18,6 +18,9 @@ class Xlator(object):
     def __init__(self, x2x):
         self.x2x = x2x # parent ast.NodeVisitor
 
+    def set_args(self, args):
+        raise NotImplementedError
+
     def get_declaration(self, node, declname = None):
         # must return a declaration
         raise NotImplementedError

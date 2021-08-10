@@ -52,6 +52,16 @@ class CXlator(xirxlat.Xlator):
         self.lib = Clib()
         self.gen_structs = {}
 
+    def set_args(self, args):
+        p = argparse.ArgumentParser(description="Parse C backend arguments")
+        p.add_argument("--li", dest="local_includes", action="append", help="Add local include", default=[])
+        p.add_argument("--si", dest="system_includes", action="append", help="Add system includes", default=[])
+
+        pa = p.parse_args(args)
+
+        self.local_includes = pa.local_includes
+        self.system_includes = pa.system_includes
+
     def pre_xlat_transform(self, s):
         return s
 
@@ -374,10 +384,13 @@ class CXlator(xirxlat.Xlator):
         structs = self.xlat_struct_gen()
         constants = self.xlat_constant_gen()
 
+        inc = [f'#include <{f}>' for f in self.system_includes]
+        inc.extend([f'#include "{f}"' for f in self.local_includes])
+
         if ptx:
-            write_output_ptx(output, translations, structs + constants + defns)
+            write_output_ptx(output, inc, translations, structs + constants + defns)
         else:
-            write_output_general(output, translations, structs + constants + defns)
+            write_output_general(output, inc, translations, structs + constants + defns)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',
@@ -443,7 +456,7 @@ debug_exclude = set(['execute_ld_param_u64',
 
 ]) # temporary
 
-def write_output_ptx(outfile, translations, defns):
+def write_output_ptx(outfile, inc, translations, defns):
     header = os.path.basename(outfile)[:-2] + ".h"
     print(f"Writing {outfile}")
     with open(outfile, "w") as f:
@@ -451,7 +464,7 @@ def write_output_ptx(outfile, translations, defns):
         f.write("#include <stdint.h>\n")
         f.write("#include <math.h>\n")
         f.write(f'#include "{header}"\n')
-        f.write('#include "ptxc_utils.h"\n')
+        f.write("\n".join(inc))
         f.write("\n\n".join(translations))
 
     print(f"Writing {header}")
@@ -459,14 +472,12 @@ def write_output_ptx(outfile, translations, defns):
         f.write("#include <stdlib.h>\n\n")
         f.write("#include <stdint.h>\n\n")
         f.write("#include <math.h>\n\n")
-        f.write('#include "lop3_lut.h"\n')
-        f.write('#include "readbyte_prmt.h"\n')
         f.write("struct cc_register { int cf;};\n")
 
         f.write('\n')
         f.write("\n".join(defns))
 
-def write_output_general(outfile, translations, defns):
+def write_output_general(outfile, inc, translations, defns):
     # non-ptx write_output
     header = os.path.basename(outfile)[:-2] + ".h"
     print(f"Writing {outfile}")
@@ -475,6 +486,7 @@ def write_output_general(outfile, translations, defns):
         f.write("#include <stdint.h>\n")
         f.write("#include <math.h>\n")
         f.write(f'#include "{header}"\n')
+        f.write("\n".join(inc))
         f.write("\n\n".join(translations))
 
     print(f"Writing {header}")
