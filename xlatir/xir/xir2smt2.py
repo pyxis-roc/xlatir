@@ -20,6 +20,7 @@ from collections import namedtuple
 from xlatir.imp2func.passmgr import I2FConfig, InterPassContext, PassManager
 from xlatir.imp2func.passes import *
 from .astcompat import AC
+from .xirlib import MultilibDispatcher
 from .xirlibsmt2 import XIRBuiltinLibSMT2
 
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
@@ -54,45 +55,9 @@ def bool_to_pred(x):
 def pred_to_bool(x):
     return SExprList(Symbol("pred_to_bool"), x)
 
-class SMT2lib(object):
-    def __init__(self):
-        self.xlib = []
-
-    def add_lib(self, lib):
-        lib.parent = self
-        self.xlib.append(lib)
-
+class SMT2lib(MultilibDispatcher):
     def get_builtin(self):
         return XIRBuiltinLibSMT2()
-
-    def can_xlat(self, n):
-        for lib in self.xlib:
-            if hasattr(lib, n) and not (n in lib.unsupported): return True
-
-        return hasattr(self, n)
-
-    def do_xlat(self, n, fnty, args, node):
-        op = self._get_lib_op(fnty, node, n)
-        assert not isinstance(op, str), f"Operator for {fnty} is a string"
-        arglen = len(fnty) - 1
-        return op(*args[:arglen])
-
-    def _get_lib_op(self, fnty, node, n):
-        xirty = node._xir_type if node is not None else None
-
-        for lib in self.xlib:
-            try:
-                # this does first match
-                lc = lib.dispatch(fnty, xirty)
-                if isinstance(lc, str):
-                    print(f"WARNING: {fnty} returns str from {lib.__class__.__name__}")
-                return lc
-            except KeyError:
-                print(f"{lib.__class__.__name__}: keyerror: {fnty}")
-            except NotImplementedError as e:
-                print(f"{lib.__class__.__name__}: notimplemented: {fnty} ({e})")
-
-        assert False, f"Couldn't find {fnty} in libraries"
 
 def create_dag(statements, _debug_trace = False):
     # value numbering
