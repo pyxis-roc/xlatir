@@ -78,33 +78,7 @@ def extract_cf(x):
     # actually do a proper type check?
     return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
 
-XIR_TO_SMT2_OPS = {('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24_s32"), x, y),
-                   ('MUL24', 'u32', 'u32'): lambda x, y: SExprList(Symbol("MUL24_u32"), x, y),
-
-                   ('MULWIDE', 's16', 's16'): lambda x, y: SExprList(Symbol("MULWIDE_s16"), x, y),
-                   ('MULWIDE', 'u16', 'u16'): lambda x, y: SExprList(Symbol("MULWIDE_u16"), x, y),
-
-                   ('MULWIDE', 's32', 's32'): lambda x, y: SExprList(Symbol("MULWIDE_s32"), x, y),
-                   ('MULWIDE', 'u32', 'u32'): lambda x, y: SExprList(Symbol("MULWIDE_u32"), x, y),
-
-                   ('MULWIDE', 's64', 's64'): lambda x, y: SExprList(Symbol("MULWIDE_s64"), x, y),
-                   ('MULWIDE', 'u64', 'u64'): lambda x, y: SExprList(Symbol("MULWIDE_u64"), x, y),
-
-                   ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
-                   ('RCP', 'f64'): lambda x: RCP('f64', x, Symbol('rn')),
-
-                   ('FTZ', 'f32'): lambda x: SExprList(Symbol('FTZ_f32'), x),
-                   ('FTZ', 'f64'): lambda x: SExprList(Symbol('FTZ_f64'), x),
-
-                   ('booleanOp_xor', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
-                   ('booleanOp_xor', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
-
-                   ('booleanOp_xor', 'pred', 'pred'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
-
-                   ('set_memory', '*', '*'): 'set_memory',
-
-                   ('ROUND', '*'): lambda x: x, # TODO
-}
+XIR_TO_SMT2_OPS = {}
 
 class SMT2lib(object):
     def __init__(self):
@@ -119,7 +93,7 @@ class SMT2lib(object):
 
     def can_xlat(self, n):
         for lib in self.xlib:
-            if hasattr(lib, n): return True
+            if hasattr(lib, n) and not (n in lib.unsupported): return True
 
         return hasattr(self, n)
 
@@ -190,14 +164,6 @@ class SMT2lib(object):
         return op(*args[:arglen])
 
     set_memory = _nie
-    FTZ = _do_fnop
-    ROUND = _do_fnop_builtin # should be _do_fnop after implementation
-    booleanOp_xor = _do_fnop_builtin
-
-    RCP = _do_fnop # approx
-    MUL24 = _do_fnop
-    MULWIDE = _do_fnop
-
 
 def create_dag(statements, _debug_trace = False):
     # value numbering
