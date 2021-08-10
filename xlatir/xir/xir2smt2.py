@@ -57,16 +57,6 @@ def bool_to_pred(x):
 def pred_to_bool(x):
     return SExprList(Symbol("pred_to_bool"), x)
 
-def generic_round(fn, nargs):
-    if nargs == 1:
-        return lambda x, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x)
-    elif nargs == 2:
-        return lambda x, y, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x, y)
-    elif nargs == 3:
-        return lambda x, y, z, m: SExprList(Symbol(fn), Symbol(ROUND_MODES_SMT2[m.v]), x, y, z)
-    else:
-        raise NotImplementedError(f"nargs={nargs} not implemented")
-
 def truncate(width):
     return lambda x: SExprList(SExprList(Symbol('_'), Symbol('extract'),
                                          Decimal(width - 1), Decimal(0)), x)
@@ -107,78 +97,13 @@ XIR_TO_SMT2_OPS = {('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24
                    ('RCP', 'f32'): lambda x: RCP('f32', x, Symbol('rn')),
                    ('RCP', 'f64'): lambda x: RCP('f64', x, Symbol('rn')),
 
-                   ('MIN', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MIN_f32"), x, y),
-                   ('MAX', 'f32', 'f32'): lambda x, y: SExprList(Symbol("MAX_f32"), x, y),
-
-                   ('MIN', 'f64', 'f64'): lambda x, y: SExprList(Symbol("MIN_f64"), x, y),
-                   ('MAX', 'f64', 'f64'): lambda x, y: SExprList(Symbol("MAX_f64"), x, y),
-
                    ('FTZ', 'f32'): lambda x: SExprList(Symbol('FTZ_f32'), x),
                    ('FTZ', 'f64'): lambda x: SExprList(Symbol('FTZ_f64'), x),
-
-                   ('MIN', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
-                                                                           SExprList(Symbol("bvult"), x, y), x, y),
-                   ('MIN', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
-                                                                           SExprList(Symbol("bvslt"), x, y), x, y),
-                   #('MIN', 'double', 'double'): 'fmin',
-                   #('MAX', 'double', 'double'): 'fmax',
-
-                   ('MAX', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
-                                                                           SExprList(Symbol("bvult"), x, y), y, x),
-                   ('MAX', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
-                                                                           SExprList(Symbol("bvslt"), x, y), y, x),
-
-
-                   ('min', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("ite"),
-                                                                           SExprList(Symbol("bvult"), x, y), x, y),
-                   ('min', 'signed', 'signed'): lambda x, y: SExprList(Symbol("ite"),
-                                                                           SExprList(Symbol("bvslt"), x, y), x, y),
 
                    ('booleanOp_xor', 'signed', 'signed'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
                    ('booleanOp_xor', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
 
                    ('booleanOp_xor', 'pred', 'pred'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
-
-                   ('compare_eq', '*', '*'): lambda x, y: SExprList(Symbol('='), x, y),
-                   ('compare_eq', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.eq'), x, y),
-                   ('compare_ne', '*', '*'): lambda x, y: SExprList(Symbol("not"),
-                                                                    SExprList(Symbol('='), x, y)),
-                   ('compare_ne', 'float', 'float'): lambda x, y: SExprList(
-                       Symbol("and"),
-                       SExprList(Symbol("not"), SExprList(Symbol("or"),
-                                                          SExprList(Symbol("fp.isNaN"), x),
-                                                          SExprList(Symbol("fp.isNaN"), y))),
-                                 SExprList(Symbol("not"), SExprList(Symbol('fp.eq'), x, y))),
-
-                   # the unordered versions use the same as below
-                   ('compare_lt', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvult'), x, y),
-                   ('compare_lt', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvslt'), x, y),
-                   ('compare_lt', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.lt'), x, y),
-
-                   ('compare_le', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvule'), x, y),
-                   ('compare_le', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsle'), x, y),
-                   ('compare_le', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.leq'), x, y),
-
-                   ('compare_gt', 'unsigned', 'unsigned'): lambda x, y: SExprList(Symbol('bvugt'), x, y),
-                   ('compare_gt', 'signed', 'signed'): lambda x, y: SExprList(Symbol('bvsgt'), x, y),
-                   ('compare_gt', 'float', 'float'): lambda x, y: SExprList(Symbol('fp.gt'), x, y),
-
-                   ('compare_ge', '*', '*'): '>=', # for signed and unsigned (see set)
-
-                   ('compare_lo', 'uint32_t', 'uint32_t'): '<', # for unsigned (see set)
-                   ('compare_ls', 'uint32_t', 'uint32_t'): '<=', # for unsigned (see set)
-                   ('compare_hi', 'uint32_t', 'uint32_t'): '>', # for unsigned (see set)
-                   ('compare_hs', 'uint32_t', 'uint32_t'): '>=', # for unsigned (see set)
-
-                   ('compare_lo', 'uint16_t', 'uint16_t'): '<', # for unsigned (see set)
-                   ('compare_ls', 'uint16_t', 'uint16_t'): '<=', # for unsigned (see set)
-                   ('compare_hi', 'uint16_t', 'uint16_t'): '>', # for unsigned (see set)
-                   ('compare_hs', 'uint16_t', 'uint16_t'): '>=', # for unsigned (see set)
-
-                   ('compare_lo', 'uint64_t', 'uint64_t'): '<', # for unsigned (see set)
-                   ('compare_ls', 'uint64_t', 'uint64_t'): '<=', # for unsigned (see set)
-                   ('compare_hi', 'uint64_t', 'uint64_t'): '>', # for unsigned (see set)
-                   ('compare_hs', 'uint64_t', 'uint64_t'): '>=', # for unsigned (see set)
 
                    ('POW', 'float', 'float'): 'powf',
                    ('POW', 'double', 'double'): 'pow',
@@ -253,8 +178,8 @@ class SMT2lib(object):
                 return lc
             except KeyError:
                 print(f"{lib.__class__.__name__}: keyerror: {fnty}")
-            except NotImplementedError:
-                print(f"{lib.__class__.__name__}: notimplemented: {fnty}")
+            except NotImplementedError as e:
+                print(f"{lib.__class__.__name__}: notimplemented: {fnty} ({e})")
 
         assert False, f"Couldn't find {fnty} in libraries"
 
@@ -297,18 +222,9 @@ class SMT2lib(object):
         op = self._get_op(fnty, builtin = False)
         return op(*args[:arglen])
 
-    def _do_min_max(self, n, fnty, args, node):
-        if self._normalize_types(fnty[1]) == 'float':
-            return self._do_fnop(n, fnty, args, node)
-        else:
-            return self._do_fnop_builtin(n, fnty, args, node)
-
     POW = _do_fnop
-    MIN = _do_min_max
-    MAX = _do_min_max
     set_memory = _nie
     FTZ = _do_fnop
-    min = _do_fnop_builtin
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
     SATURATE = _do_fnop
     booleanOp_xor = _do_fnop_builtin
@@ -350,68 +266,6 @@ class SMT2lib(object):
     sext_16 = _do_fnop
     sext_32 = _do_fnop
     sext_64 = _do_fnop
-
-    def _do_compare_unordered(self, n, fnty, args, node):
-        assert n[-1] == 'u' # unordered
-        n = n[:-1]
-
-        fnty2 = (n, fnty[1], fnty[2])
-        x = getattr(self, n)(n, fnty2, args, node)
-
-        if is_call(x, "bool_to_pred"):
-            x = x.v[1]
-
-        a1 = args[0]
-        a2 = args[1]
-
-        return bool_to_pred(SExprList(Symbol("or"),
-                                      SExprList(Symbol("fp.isNaN"), a1),
-                                      SExprList(Symbol("fp.isNaN"), a2),
-                                      x))
-
-    compare_equ = _do_compare_unordered
-    compare_neu = _do_compare_unordered
-    compare_ltu = _do_compare_unordered
-    compare_leu = _do_compare_unordered
-    compare_gtu = _do_compare_unordered
-    compare_geu = _do_compare_unordered
-
-    def _do_compare(self, n, fnty, args, node):
-        op = self._get_op(fnty, generic=True)
-
-        return bool_to_pred(op(args[0], args[1]))
-
-    def _do_compare_2(self, n, fnty, args, node):
-        fnty2 = tuple([fnty[0]] + [self._normalize_types(ty) for ty in fnty[1:]])
-
-        op = n[-2:]
-        if op in ('lt', 'le', 'gt', 'ge'):
-            assert fnty[1].v == fnty[2].v, f"Incorrect type signature for compare {fnty}"
-            if fnty2[1] == "unsigned":
-                op = "bvu" + op
-            elif fnty2[1] == "signed":
-                op = "bvs" + op
-            elif fnty2[1] == "float":
-                op = "fp." + op
-                if op[-1] == "e": op += "q" # le -> leq, ge -> geq
-        elif op in ('lo', 'ls', 'hi', 'hs'):
-            xlat = {'lo': 'lt', 'ls': 'le', 'hi': 'gt', 'hs': 'ge'}
-            op = "bvu" + xlat[op]
-        else:
-            raise NotImplementedError(f"Unknown comparison operator {op}")
-
-        return bool_to_pred(SExprList(Symbol(op), args[0], args[1]))
-
-    compare_eq = _do_compare
-    compare_ne = _do_compare
-    compare_lt = _do_compare_2
-    compare_le = _do_compare_2
-    compare_gt = _do_compare_2
-    compare_ge = _do_compare_2
-    compare_lo = _do_compare_2
-    compare_ls = _do_compare_2
-    compare_hi = _do_compare_2
-    compare_hs = _do_compare_2
 
 def create_dag(statements, _debug_trace = False):
     # value numbering
