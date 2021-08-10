@@ -57,10 +57,6 @@ def bool_to_pred(x):
 def pred_to_bool(x):
     return SExprList(Symbol("pred_to_bool"), x)
 
-def truncate(width):
-    return lambda x: SExprList(SExprList(Symbol('_'), Symbol('extract'),
-                                         Decimal(width - 1), Decimal(0)), x)
-
 def RCP(ty, x, rm = Symbol('rn')):
     if ty == 'f32':
         exp = 8
@@ -105,31 +101,9 @@ XIR_TO_SMT2_OPS = {('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24
 
                    ('booleanOp_xor', 'pred', 'pred'): lambda x, y: SExprList(Symbol("bvxor"), x, y),
 
-                   ('POW', 'float', 'float'): 'powf',
-                   ('POW', 'double', 'double'): 'pow',
-
                    ('set_memory', '*', '*'): 'set_memory',
 
-                   ('POW', 'f32', 'f32'): lambda x, y: SExprList(Symbol("pow_f32"), x, y),
-                   ('POW', 'f64', 'f64'): lambda x, y: SExprList(Symbol("pow_f64"), x, y),
-
                    ('ROUND', '*'): lambda x: x, # TODO
-
-                   ("sext_16", 'b16'): lambda x: x,
-                   ("sext_16", 'u16'): lambda x: x,
-                   ("sext_16", 's16'): lambda x: x,
-
-                   ("sext_32", 'b32'): lambda x: x,
-                   ("sext_32", 'u32'): lambda x: x,
-                   ("sext_32", 's32'): lambda x: x,
-
-                   ("sext_64", 'b64'): lambda x: x,
-                   ("sext_64", 'u64'): lambda x: x,
-                   ("sext_64", 's64'): lambda x: x,
-
-                   ("truncate_16", '*'): truncate(16),
-                   ("truncate_32", '*'): truncate(32),
-                   ("truncate_64", '*'): truncate(64),
 }
 
 class SMT2lib(object):
@@ -215,7 +189,6 @@ class SMT2lib(object):
         op = self._get_op(fnty, builtin = False)
         return op(*args[:arglen])
 
-    POW = _do_fnop
     set_memory = _nie
     FTZ = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
@@ -225,14 +198,6 @@ class SMT2lib(object):
     MUL24 = _do_fnop
     MULWIDE = _do_fnop
 
-    truncate_16 = _do_fnop_builtin
-    truncate_32 = _do_fnop_builtin
-    truncate_64 = _do_fnop_builtin
-
-    # TODO: check for use as a sign indicator and strip such uses (i.e. output width == input width)
-    sext_16 = _do_fnop
-    sext_32 = _do_fnop
-    sext_64 = _do_fnop
 
 def create_dag(statements, _debug_trace = False):
     # value numbering
