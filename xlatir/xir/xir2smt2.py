@@ -115,9 +115,6 @@ XIR_TO_SMT2_OPS = {('MUL24', 's32', 's32'): lambda x, y: SExprList(Symbol("MUL24
 
                    ('ROUND', '*'): lambda x: x, # TODO
 
-                   ('SATURATE', 'f32'): lambda x: SExprList(Symbol('SATURATE_f32'), x),
-                   ('SATURATE', 'f64'): lambda x: SExprList(Symbol('SATURATE_f64'), x),
-
                    ("sext_16", 'b16'): lambda x: x,
                    ("sext_16", 'u16'): lambda x: x,
                    ("sext_16", 's16'): lambda x: x,
@@ -222,34 +219,11 @@ class SMT2lib(object):
     set_memory = _nie
     FTZ = _do_fnop
     ROUND = _do_fnop_builtin # should be _do_fnop after implementation
-    SATURATE = _do_fnop
     booleanOp_xor = _do_fnop_builtin
 
     RCP = _do_fnop # approx
     MUL24 = _do_fnop
     MULWIDE = _do_fnop
-
-    def _do_fnop_sat(self, n, fnty, args, node):
-        if fnty[1].v == 's32':
-            return self._do_fnop(n, fnty, args, node)
-        else:
-            wosat = n[:-len("_SATURATE")]
-            #assert hasattr(self, wosat), f"Unable to find non-saturating {wosat} version of {n}"
-            wosat_fnty = tuple([wosat] + list(fnty[1:]))
-            wosatcode = self.do_xlat(wosat, wosat_fnty, args, node)
-
-            sat_fnty = ('SATURATE', fnty[1])
-
-            # pass none since we don't really have a saturate node (but maybe we should?)
-            return self.SATURATE('SATURATE', sat_fnty, [wosatcode], None)
-
-    ADD_ROUND_SATURATE = _do_fnop_sat
-    SUB_ROUND_SATURATE = _do_fnop_sat
-    MUL_ROUND_SATURATE = _do_fnop_sat
-    DIV_ROUND_SATURATE = _do_fnop_sat
-    FMA_ROUND_SATURATE = _do_fnop_sat
-
-    DIV_SATURATE = _do_fnop_sat  # ???
 
     truncate_16 = _do_fnop_builtin
     truncate_32 = _do_fnop_builtin
