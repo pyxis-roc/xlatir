@@ -22,8 +22,6 @@ from xlatir.imp2func.passes import *
 from .astcompat import AC
 from .xirlibsmt2 import XIRBuiltinLibSMT2
 
-#import astunparse
-
 ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rm': 'RTN', # negative inf
                     'rz': 'RTZ', # zero
@@ -50,35 +48,11 @@ DATA_TYPES = dict([(dt.name, dt) for dt in DATA_TYPES_LIST])
 
 FIELDS_TO_DT = dict([(dt.fieldtypes, Symbol(dt.name)) for dt in DATA_TYPES_LIST])
 
-
 def bool_to_pred(x):
     return SExprList(Symbol("bool_to_pred"), x)
 
 def pred_to_bool(x):
     return SExprList(Symbol("pred_to_bool"), x)
-
-def RCP(ty, x, rm = Symbol('rn')):
-    if ty == 'f32':
-        exp = 8
-        signi = 24
-    elif ty == 'f64':
-        exp = 11
-        signi = 53
-    else:
-        raise NotImplementedError(f"Unknown type for rcp {ty}")
-
-    return SExprList(Symbol("fp.div"),
-                     Symbol(ROUND_MODES_SMT2[rm.v]),
-                     SExprList(SExprList(Symbol("_"), Symbol("to_fp"), Decimal(exp), Decimal(signi)),
-                               Symbol(ROUND_MODES_SMT2['rn']),
-                               Hexadecimal(1, width=(exp+signi)//4)),
-                     x)
-
-def extract_cf(x):
-    # actually do a proper type check?
-    return SExprList(SExprList(Symbol("_"), Symbol("extract"), Decimal(0), Decimal(0)), x)
-
-XIR_TO_SMT2_OPS = {}
 
 class SMT2lib(object):
     def __init__(self):
@@ -98,14 +72,10 @@ class SMT2lib(object):
         return hasattr(self, n)
 
     def do_xlat(self, n, fnty, args, node):
-        if hasattr(self, n):
-            fnxlat = getattr(self, n)
-            return fnxlat(n, fnty, args, node)
-        else:
-            op = self._get_lib_op(fnty, node, n)
-            assert not isinstance(op, str), f"Operator for {fnty} is a string"
-            arglen = len(fnty) - 1
-            return op(*args[:arglen])
+        op = self._get_lib_op(fnty, node, n)
+        assert not isinstance(op, str), f"Operator for {fnty} is a string"
+        arglen = len(fnty) - 1
+        return op(*args[:arglen])
 
     def _get_lib_op(self, fnty, node, n):
         xirty = node._xir_type if node is not None else None
@@ -123,47 +93,6 @@ class SMT2lib(object):
                 print(f"{lib.__class__.__name__}: notimplemented: {fnty} ({e})")
 
         assert False, f"Couldn't find {fnty} in libraries"
-
-
-    def _normalize_types(self, ty, builtin = True):
-        if builtin:
-            if ty.v[0] == "b" or ty.v[0] == "u":
-                return "unsigned"
-            elif ty.v[0] == "s":
-                return "signed"
-            elif ty.v[0] == "f":
-                return "float"
-
-        return str(ty)
-
-    def _get_op(self, fnty, generic = False, builtin = True):
-        fnty2 = tuple([fnty[0]] + [self._normalize_types(ty,
-                                                         builtin = builtin)
-                                   for ty in fnty[1:]])
-
-        if fnty2 not in XIR_TO_SMT2_OPS and generic:
-            fnty2 = tuple([fnty[0]] + ['*'] * (len(fnty)-1))
-
-        assert fnty2 in XIR_TO_SMT2_OPS, f"{fnty} [{fnty2}] not in XIR_TO_SMT2_OPS"
-        return XIR_TO_SMT2_OPS[fnty2]
-
-    def _nie(self, *args, **kwargs):
-        raise NotImplementedError(args[0])
-
-    def _do_fnop_builtin(self, n, fnty, args, node):
-        """For functions that are built-in to a logic [i.e. they are generic]"""
-        arglen = len(fnty) - 1
-        op = self._get_op(fnty, generic = True)
-        return op(*args[:arglen])
-
-    def _do_fnop(self, n, fnty, args, node):
-        """For functions that are user-defined and don't have generic capabilities"""
-
-        arglen = len(fnty) - 1
-        op = self._get_op(fnty, builtin = False)
-        return op(*args[:arglen])
-
-    set_memory = _nie
 
 def create_dag(statements, _debug_trace = False):
     # value numbering
@@ -688,7 +617,7 @@ class SMT2Xlator(xirxlat.Xlator):
         else:
             if fnty[0] in self.x2x.tyenv.record_decls:
                 fn = "mk-" + fn
-                
+
             arglen = len(fnty) - 1
             return SExprList(Symbol(fn), *args[:arglen])
 
