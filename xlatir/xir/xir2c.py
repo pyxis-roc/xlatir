@@ -51,7 +51,7 @@ class Clib(object):
 
     def can_xlat(self, n):
         for lib in self.xlib:
-            if hasattr(lib, n): return True
+            if hasattr(lib, n) and not (n in lib.supported): return True
 
         return False
 

@@ -43,6 +43,8 @@ class XIRLib:
 class XIRBuiltinLib(XIRLib):
     """Abstract base class for the XIR Builtin Library."""
 
+    unsupported = frozenset()
+
     def ADD(self, aty, bty):
         raise NotImplementedError(f"ADD not implemented.")
 
