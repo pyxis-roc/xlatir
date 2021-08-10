@@ -8,6 +8,7 @@ import os
 from . import xirxlat
 from .astcompat import AC
 from .xirlibc import XIRBuiltinLibC
+from .xirlib import MultilibDispatcher
 
 XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'b16': 'uint16_t',
@@ -38,45 +39,9 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'carryflag': 'int',
                   }
 
-class Clib(object):
-    def __init__(self):
-        self.xlib = []
-
-    def add_lib(self, lib):
-        lib.parent = self
-        self.xlib.append(lib)
-
+class Clib(MultilibDispatcher):
     def get_builtin(self):
         return XIRBuiltinLibC()
-
-    def can_xlat(self, n):
-        for lib in self.xlib:
-            if hasattr(lib, n): return True
-
-        return False
-
-    def _get_lib_op(self, fnty, node, n):
-        xirty = node._xir_type if node is not None else None
-
-        for lib in self.xlib:
-            try:
-                # this does first match
-                lc = lib.dispatch(fnty, xirty)
-                if isinstance(lc, str):
-                    print(f"WARNING: {fnty} returns str from {lib.__class__.__name__}")
-                return lc
-            except KeyError:
-                print(f"{lib.__class__.__name__}: keyerror: {fnty}")
-            except NotImplementedError:
-                print(f"{lib.__class__.__name__}: notimplemented: {fnty}")
-
-        assert False, f"Couldn't find {fnty} in libraries"
-
-    def do_xlat(self, n, fnty, args, node):
-        op = self._get_lib_op(fnty, node, n)
-        assert not isinstance(op, str), f"Don't support legacy string value {op} returned by lookup for {fnty}"
-        arglen = len(fnty) - 1
-        return op(*args[:arglen])
 
 class CXlator(xirxlat.Xlator):
     desugar_boolean_xor = True
