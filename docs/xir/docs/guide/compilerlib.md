@@ -42,9 +42,14 @@ def get_libs(backend):
 This code will override the C translation of `BINARYFN`.
 The C backend (in `xir2c.py`) will examine the libraries loaded looking for a method called `BINARYFN`.
 The types of the arguments (here, `aty` and `bty`) are then passed to this method, if found.
-The method must return an appropriate translation.
-For the C backend, the translation is a function that returns a string when given the actual arguments.
-Here, `BINARYFN` examines the types and if the type is `uint32_t`, it translates it to `BF_u32`, otherwise it prevents the translation by raising a `NotImplementedError`.
+The method must return a function, an _AST constructor_, with the same number of arguments as the function being translated.
+
+The argument to the AST constructor will be the ASTs of each of the function's arguments and the return value must be an AST itself specifying the translation.
+The structure of ASTs depends on the backend. For the C backend, ASTs are currently plain Python strings.
+So the AST constructor for the C backend is a function that returns a string when given strings for each of its arguments.
+
+In the example above, `BINARYFN` examines the types and if the type is `uint32_t`, it translates it to `BF_u32`, otherwise it prevents the translation by raising a `NotImplementedError`.
+The `BF_u32` AST constructor is a lambda function with two (string) arguments that returns a string as well.
 
 The `get_dispatch_types` function allows you to convert the types used by the backend (i.e. strings in the C backend) to alternative forms for more advanced implementations.
 In this example, the function is a no-op, returning the input function type.
