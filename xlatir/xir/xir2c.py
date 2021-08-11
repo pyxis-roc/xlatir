@@ -35,7 +35,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'cc_reg_ref': 'struct cc_register *',
                   'b1': 'BIT_T', # NOT REALLY, but used as a indicator
                   # temporary until we find a better way
-                  'str': 'str',
+                  'str': 'const char *', #TODO, this isn't used except by RM
                   'carryflag': 'int',
                   }
 
