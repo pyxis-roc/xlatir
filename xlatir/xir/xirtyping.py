@@ -99,6 +99,29 @@ class TyConstant(TyTerm):
     def get_suffix(self):
         return self.value
 
+class TyConstantAlias(TyConstant):
+    def __init__(self, alias, value):
+        self.alias = alias
+        self.value = value
+
+    def __eq__(self, other):
+        # different aliases that resolve to the same type are compatible
+        return self is other or isinstance(other, TyConstant) and other.value == self.value
+
+    def __str__(self):
+        return f"TyConstantAlias({self.alias}, {self.value})"
+
+    __repr__ = __str__
+
+    def copy(self, subst = None):
+        return TyConstantAlias(self.alias, self.value)
+
+    def get_typevars(self):
+        return []
+
+    def get_suffix(self):
+        return self.alias
+
 class TyPtr(TyTerm):
     def __init__(self, pointee_type):
         self.pty = pointee_type
