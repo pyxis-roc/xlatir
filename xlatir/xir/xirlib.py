@@ -16,6 +16,7 @@ class XIRLib:
        This is used by a user-defined library to specialize functions
        based on the types of arguments.
     """
+    unsupported = set()
 
     def tychk(self, v, type_):
         if not isinstance(v, type_):
