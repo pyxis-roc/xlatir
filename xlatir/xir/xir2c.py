@@ -140,11 +140,14 @@ class CXlator(xirxlat.Xlator):
 
         if isinstance(t, TyConstantAlias):
             self.gen_aliases[t.alias] = t
+            cty = t.alias
+        else:
+            cty = XIR_TO_C_TYPES[t.value]
 
         if declname:
-            return f"{XIR_TO_C_TYPES[t.value]} {declname}"
+            return f"{cty} {declname}"
         else:
-            return XIR_TO_C_TYPES[t.value]
+            return cty
 
     def get_declaration(self, node, declname = None):
         if isinstance(self.x2x._get_type(node._xir_type), TyArray):
