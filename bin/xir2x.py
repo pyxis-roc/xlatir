@@ -121,6 +121,7 @@ def setup_ptx_typeenv(te):
     te.type_constants.add('b16')
     te.type_constants.add('b32')
     te.type_constants.add('b64')
+    te.type_constants.add('s8')
     te.type_constants.add('s16')
     te.type_constants.add('s32')
     te.type_constants.add('s64')
