@@ -29,20 +29,20 @@ ROUND_MODES_SMT2 = {'rp': 'RTP', # positive inf
                     'rn': 'RNE'} # nearest even, no support in PTX for RNA
 
 
-DT = namedtuple('datatype', 'name constructor fields fieldtypes sort_cons')
+DT = namedtuple('datatype', 'name constructor fields fieldtypes sort_cons deftypes')
 
-DATA_TYPES_LIST = [DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred'), 'Pair'),
-                   DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',), 'CCRegister'),
-                   DT('s16_carry', 'mk-pair', ('first', 'second'), ('s16', 'carryflag'), 'Pair'),
-                   DT('u16_carry', 'mk-pair', ('first', 'second'), ('u16', 'carryflag'), 'Pair'),
-                   DT('s32_carry', 'mk-pair', ('first', 'second'), ('s32', 'carryflag'), 'Pair'),
-                   DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag'), 'Pair'),
-                   DT('u64_carry', 'mk-pair', ('first', 'second'), ('u64', 'carryflag'), 'Pair'),
-                   DT('s64_carry', 'mk-pair', ('first', 'second'), ('s64', 'carryflag'), 'Pair'),
-                   DT('u32_cc_reg', 'mk-pair', ('first', 'second'), ('u32', 'cc_reg'), 'Pair'),
-                   DT('s32_cc_reg', 'mk-pair', ('first', 'second'), ('s32', 'cc_reg'), 'Pair'),
-                   DT('s64_cc_reg', 'mk-pair', ('first', 'second'), ('s64', 'cc_reg'), 'Pair'),
-                   DT('u64_cc_reg', 'mk-pair', ('first', 'second'), ('u64', 'cc_reg'), 'Pair'),
+DATA_TYPES_LIST = [DT('predpair', 'mk-pair', ('first', 'second'), ('pred', 'pred'), 'Pair', None),
+                   DT('cc_reg', 'mk-ccreg', ('cf',), ('carryflag',), 'CCRegister', None),
+                   DT('s16_carry', 'mk-pair', ('first', 'second'), ('s16', 'carryflag'), 'Pair', None),
+                   DT('u16_carry', 'mk-pair', ('first', 'second'), ('u16', 'carryflag'), 'Pair', None),
+                   DT('s32_carry', 'mk-pair', ('first', 'second'), ('s32', 'carryflag'), 'Pair', None),
+                   DT('u32_carry', 'mk-pair', ('first', 'second'), ('u32', 'carryflag'), 'Pair', None),
+                   DT('u64_carry', 'mk-pair', ('first', 'second'), ('u64', 'carryflag'), 'Pair', None),
+                   DT('s64_carry', 'mk-pair', ('first', 'second'), ('s64', 'carryflag'), 'Pair', None),
+                   DT('u32_cc_reg', 'mk-pair', ('first', 'second'), ('u32', 'cc_reg'), 'Pair', None),
+                   DT('s32_cc_reg', 'mk-pair', ('first', 'second'), ('s32', 'cc_reg'), 'Pair', None),
+                   DT('s64_cc_reg', 'mk-pair', ('first', 'second'), ('s64', 'cc_reg'), 'Pair', None),
+                   DT('u64_cc_reg', 'mk-pair', ('first', 'second'), ('u64', 'cc_reg'), 'Pair', None),
                    ]
 
 DATA_TYPES = dict([(dt.name, dt) for dt in DATA_TYPES_LIST])
@@ -223,8 +223,14 @@ class SMT2Xlator(xirxlat.Xlator):
         fields = tuple([x[0] for x in inst.inst.fields_and_types])
         ftypes = tuple([x[1].get_suffix() for x in inst.inst.fields_and_types])
         sort_cons = inst.decl.name
+        deftypes = []
 
-        dt = DT(name, cons, fields, ftypes, sort_cons)
+        if len(inst.decl.generic_tyvars):
+            for dft, ift in zip(inst.decl.fields_and_types, inst.inst.fields_and_types):
+                if isinstance(dft[1], TyVar):
+                    deftypes.append(ift[1].get_suffix())
+
+        dt = DT(name, cons, fields, ftypes, sort_cons, tuple(deftypes))
 
         if dt.name not in DATA_TYPES:
             DATA_TYPES_LIST.append(dt)
@@ -824,16 +830,8 @@ class SMT2Xlator(xirxlat.Xlator):
         try:
             with open(output, "w") as f:
                 print("(set-logic QF_FPBV)", file=f) # need to support arrays too
-                print(self._gen_datatypes(), file=f)
+
                 print("; :begin global", file=f)
-
-                if "Pair" not in self.gen_structs:
-                    # legacy
-                    print("(declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )", file=f)
-
-                if "CCRegister" not in self.gen_structs:
-                    # legacy
-                    print("(declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))", file=f)
 
                 #TODO: get rid of below too
                 print(textwrap.dedent("""\
@@ -846,13 +844,26 @@ class SMT2Xlator(xirxlat.Xlator):
                 (define-fun pred_to_bool ((x pred)) Bool (= x #b1))
                 """), file=f)
 
+                print(self._gen_datatypes(), file=f)
+
+                if "Pair" not in self.gen_structs:
+                    # legacy
+                    print("(declare-datatypes ( (Pair 2) ) ( (par (T1 T2) ( (mk-pair (first T1) (second T2)) )) ) )", file=f)
+
+                if "CCRegister" not in self.gen_structs:
+                    # legacy
+                    print("(declare-datatypes ( (CCRegister 1) ) ((par (T1) ((mk-ccreg (cf T1))))))", file=f)
+
+
                 for sz in [16, 32, 64, 128]:
                     for prefix in ['b', 's', 'u']:
                         print(f"(define-sort {prefix}{sz} () (_ BitVec {sz}))", file=f)
 
                 for dt in DATA_TYPES_LIST:
                     #(define-sort predpair () (Pair pred pred))
-                    print(f"(define-sort {dt.name} () ({dt.sort_cons} {' '.join(dt.fieldtypes)}))", file=f)
+                    ftypes = dt.fieldtypes if dt.deftypes is None else dt.deftypes
+                    # ftypes can be []
+                    print(f"(define-sort {dt.name} () ({dt.sort_cons} {' '.join(ftypes)}))", file=f)
 
                 for sz in [32, 64]:
                     print(f"(define-sort f{sz} () Float{sz})", file=f)
