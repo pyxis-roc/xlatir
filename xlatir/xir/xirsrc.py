@@ -117,7 +117,10 @@ class XIRSource(object):
                 try:
                     a = app.parse(s)
                     if isinstance(a, xirtyping.TyAlias):
-                        self.tyenv.type_aliases[a.name] = a.value
+                        if isinstance(a.value, xirtyping.TyConstant): # only for constants now
+                            self.tyenv.type_aliases[a.name] = xirtyping.TyConstantAlias(a.name, a.value.value)
+                        else:
+                            self.tyenv.type_aliases[a.name] = a.value
                     else:
                         self.tyenv.type_vars[a.name] = a
                 except XIRSyntaxError as e:

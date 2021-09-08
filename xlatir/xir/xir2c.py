@@ -35,7 +35,7 @@ XIR_TO_C_TYPES = {'b8': 'uint8_t',
                   'cc_reg_ref': 'struct cc_register *',
                   'b1': 'BIT_T', # NOT REALLY, but used as a indicator
                   # temporary until we find a better way
-                  'str': 'str',
+                  'str': 'const char *', #TODO, this isn't used except by RM
                   'carryflag': 'int',
                   }
 
@@ -51,6 +51,7 @@ class CXlator(xirxlat.Xlator):
         self.x2x = x2x # parent ast.NodeVisitor
         self.lib = Clib()
         self.gen_structs = {}
+        self.gen_aliases = {}
 
     def set_args(self, args):
         p = argparse.ArgumentParser(description="Parse C backend arguments")
@@ -137,10 +138,16 @@ class CXlator(xirxlat.Xlator):
 
             assert isinstance(t, TyConstant), f"Non-TyConstant type: {t}"
 
-        if declname:
-            return f"{XIR_TO_C_TYPES[t.value]} {declname}"
+        if isinstance(t, TyConstantAlias):
+            self.gen_aliases[t.alias] = t
+            cty = t.alias
         else:
-            return XIR_TO_C_TYPES[t.value]
+            cty = XIR_TO_C_TYPES[t.value]
+
+        if declname:
+            return f"{cty} {declname}"
+        else:
+            return cty
 
     def get_declaration(self, node, declname = None):
         if isinstance(self.x2x._get_type(node._xir_type), TyArray):
@@ -360,6 +367,17 @@ class CXlator(xirxlat.Xlator):
 
         return output
 
+    def xlat_alias_gen(self):
+        out = []
+        for a in self.gen_aliases:
+            # TODO: only supports TyConstant for now
+            assert isinstance(self.gen_aliases[a], TyConstantAlias), f"Don't support {type(self.gen_aliases[a])} aliases for now"
+
+            ct = self._get_c_type(TyConstant(self.gen_aliases[a].value))
+            out.append(f"typedef {ct} {a};")
+
+        return out
+
     def xlat_struct_gen(self):
         out = []
         for s in self.gen_structs:
@@ -381,6 +399,7 @@ class CXlator(xirxlat.Xlator):
         return out
 
     def write_output(self, output, translations, defns, ptx = True):
+        typedefs = self.xlat_alias_gen()
         structs = self.xlat_struct_gen()
         constants = self.xlat_constant_gen()
 
@@ -388,9 +407,9 @@ class CXlator(xirxlat.Xlator):
         inc.extend([f'#include "{f}"' for f in self.local_includes])
 
         if ptx:
-            write_output_ptx(output, inc, translations, structs + constants + defns)
+            write_output_ptx(output, inc, translations, typedefs + structs + constants + defns)
         else:
-            write_output_general(output, inc, translations, structs + constants + defns)
+            write_output_general(output, inc, translations, typedefs + structs + constants + defns)
 
 debug_exclude = set(['execute_ld_param_u64',
                      'execute_ld_param_u16',
