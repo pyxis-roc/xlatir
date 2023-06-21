@@ -3,6 +3,13 @@
 # xirxlat.py
 #
 # Utilities for helping with translating XIR to other languages
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
 
 from . import xir
 import ast

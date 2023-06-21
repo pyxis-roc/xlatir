@@ -8,7 +8,13 @@
 # used thus:
 #
 # from xlatxir.xir.anno import *
-
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
 import ast
 
 XIR_IGNORE = 'xirignore'

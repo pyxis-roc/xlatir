@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
 import argparse
 from . import xir
 import ast

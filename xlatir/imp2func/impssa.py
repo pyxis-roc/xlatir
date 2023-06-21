@@ -7,6 +7,10 @@
 # Author: Sreepathi Pai
 #
 # Copyright (C) 2020, University of Rochester
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
 
 from .. import smt2ast
 from .impdfanalysis import Dominators, ReachingDefinitions, get_reads_and_writes, Stmt, is_phi, CFGDumperPass

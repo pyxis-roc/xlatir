@@ -3,6 +3,13 @@
 # astcompat.py
 #
 # AST compatibility routines to handle AST differences between different Python3 AST versions
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
 
 import ast
 import sys

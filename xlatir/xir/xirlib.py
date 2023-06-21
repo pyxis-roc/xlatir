@@ -9,6 +9,12 @@
 # that will form the abstract base class for that library. Then,
 # instantiate it for each backend.
 #
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
 
 class XIRLib:
     """Generic library implementation.

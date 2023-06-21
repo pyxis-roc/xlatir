@@ -2,6 +2,10 @@
 #
 # passmgr.py
 # A simple pass-based framework for imp2func
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
 
 import logging
 

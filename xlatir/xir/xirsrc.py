@@ -2,6 +2,13 @@
 #
 # xirsrc.py
 # Load XIR source files in a uniform manner.
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
 
 import ast
 from .syntax import XIRSyntaxError, SourceInfo

@@ -8,6 +8,11 @@
 # Ultimately, we want to move support for intrinsics out of the
 # compiler and into user-defined per-language libraries (which can
 # include a standard set of XIR libraries, much like SMT-LIB theories).
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+
 
 
 import ast

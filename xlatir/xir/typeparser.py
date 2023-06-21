@@ -2,6 +2,10 @@
 #
 # typeparser.py
 # XIR type declarations and annotations parser.
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
 
 #
 # TypeDeclaration := TypeVarDecl | ClassTypeDecl | AliasDecl

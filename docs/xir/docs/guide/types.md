@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # Types in XIR
 
 This is preliminary documentation on using types in XIR.

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # Introduction
 
 XIR functions are translated to native functions based on the name of

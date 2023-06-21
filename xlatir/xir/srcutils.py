@@ -2,6 +2,12 @@
 #
 # srcutils.py
 # Utilities for dealing with source files (include directories, etc.)
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
 
 from pathlib import Path
 import logging

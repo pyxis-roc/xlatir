@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2023 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # Imperative to Functional v2
 
 The `imp2func_ssa` (or `imp2func2` or simply `imp2`) package converts

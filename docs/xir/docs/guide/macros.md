@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # XIR Macros
 
 Unlike Python, XIR supports macros to prevent repetitive work. While

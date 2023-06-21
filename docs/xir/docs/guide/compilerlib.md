@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # Compiler Libraries
 
 By default, a function call in XIR is translated into a function call by the compiler backend (i.e. C or SMT2).

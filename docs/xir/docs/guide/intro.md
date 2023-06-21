@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # Introduction to the XIR Specification Language
 
 The XIR Specification Language is used to specify the semantics of

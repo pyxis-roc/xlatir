@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # XIR Classes
 
 XIR supports the Python `class` syntax to specify datatypes similar to

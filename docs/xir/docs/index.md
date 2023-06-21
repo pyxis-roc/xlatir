@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021,2023 University of Rochester
+
+SPDX-License-Identifier: MIT
+-->
+
 # Welcome to the XIR documentation
 
 The Translatable Intermediate Representation (XIR) project is a toolkit for the specification of instruction-set semantics.

@@ -6,6 +6,11 @@
 # XIR/Imp, expanding macros on the way.
 #
 # Author: Sreepathi Pai
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+
 
 from xlatir.xir.syntax import XIRSyntaxCheck, PyToXIRImp
 from xlatir.xir.macros import LoadMacros, ApplyMacros

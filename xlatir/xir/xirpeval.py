@@ -5,6 +5,10 @@
 # An ad hoc partial evaluator for XIR.
 #
 # Author: Sreepathi Pai
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
 
 import ast
 import astunparse

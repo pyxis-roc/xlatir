@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
+#
+
 class TyEqn(object):
     def __init__(self, lhs, rhs, src=None):
         self.lhs = lhs

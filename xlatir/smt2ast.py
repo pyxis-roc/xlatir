@@ -5,6 +5,10 @@
 # A simple, stand-alone SMT-LIBv2 AST for Python
 #
 # Author: Sreepathi Pai
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
 
 import struct # for smt2_literal
 import re # for parser

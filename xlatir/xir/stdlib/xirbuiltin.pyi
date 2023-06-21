@@ -3,6 +3,13 @@
 #
 # Provides the type declarations for standard XIR/Imp functionality
 # that replaces Python functionality.
+#
+#
+# SPDX-FileCopyrightText: 2020,2021,2023 University of Rochester
+#
+# SPDX-License-Identifier: MIT
+#
+# SPDX-Contributor: Sreepathi Pai
 
 from typing import TypeVar, List
 
